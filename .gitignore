@@ -1,0 +1,28 @@
+# Secrets & Local Env
+.env
+backend/.env
+frontend/.env.local
+*.pem
+*.key
+
+# Python & Backend
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+backend/outputs/
+backend/output/
+backend/*.db
+backend/*.db-*
+*.sqlite3
+
+# Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS
+.DS_Store
+Thumbs.db

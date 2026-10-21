@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" fill="none" >
+<rect width="900" height="300" rx="32" fill="#0B0E1F"/>
+<g transform="translate(35 -72) scale(.72)"><g transform="translate(0 0) scale(1)" stroke-linejoin="round" stroke-linecap="round">
+<path d="M105 86 L402 255 L108 426 Z" stroke="#00F0FF" stroke-width="24"/>
+<path d="M126 95 L410 253 L130 408" stroke="#FF2EAE" stroke-width="13"/>
+<path d="M151 119 L365 255 L154 392" stroke="#E8ECFF" stroke-width="8"/>
+<path d="M188 159 L322 255 L190 352 Z" fill="#6B5CFF"/>
+<path d="M189 158 L319 255 L190 350" stroke="#7DF6FF" stroke-width="4" opacity=".9"/>
+<path d="M79 276 L123 251" stroke="#FFD400" stroke-width="8"/>
+<path d="M385 168 L432 139" stroke="#FF7BD0" stroke-width="7"/>
+</g></g>
+<text x="380" y="148" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="82" font-weight="900" text-anchor="start" letter-spacing="-3">Klip-in</text>
+<text x="384" y="194" fill="#00F0FF" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" text-anchor="start" letter-spacing="6">CUT. CLIP. SHARE.</text>
+<path d="M382 215 H730" stroke="#2A3156" stroke-width="2"/>
+<path d="M382 215 H510" stroke="#FF2EAE" stroke-width="3"/>
+
+</svg>

@@ -1,0 +1,427 @@
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Montserrat:wght@600;700;800;900&family=Orbitron:wght@500;700;800;900&family=Poppins:wght@600;700;800;900&family=Rajdhani:wght@400;500;600;700&family=Roboto:wght@700;900&family=Share+Tech+Mono&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Theme tokens ─────────────────────────────────────────────────────────
+   `:root` holds the DARK palette (default, matches the original retro look).
+   `html.light` overrides the same tokens for light mode. All Tailwind colors
+   in tailwind.config.js resolve to `rgb(var(--c-*) / <alpha>)`, so `bg-navy/60`
+   etc. keep working in both themes.
+*/
+:root {
+  color-scheme: dark;
+
+  /* surfaces */
+  --c-navy: 11 14 31;          /* #0B0E1F */
+  --c-navy-1: 17 21 43;        /* mid tone between navy & navy-2 */
+  --c-navy-2: 15 19 40;        /* #0F1328 */
+  --c-navy-3: 22 27 54;        /* #161B36 */
+  --c-panel: 18 22 46;         /* #12162E */
+  --c-panel-2: 26 31 61;       /* #1A1F3D */
+  --c-border: 42 49 86;        /* #2A3156 */
+  --c-border-soft: 30 35 66;   /* #1E2342 */
+
+  /* neon accents */
+  --c-cyan: 0 240 255;         /* #00F0FF */
+  --c-cyan-soft: 125 246 255;  /* #7DF6FF */
+  --c-magenta: 255 46 174;     /* #FF2EAE */
+  --c-magenta-soft: 255 123 208; /* #FF7BD0 */
+  --c-gold: 255 212 0;         /* #FFD400 */
+  --c-gold-soft: 255 229 102;  /* #FFE566 */
+
+  /* semantic */
+  --c-signal: 0 230 118;       /* #00E676 */
+  --c-warn: 255 212 0;         /* #FFD400 */
+  --c-danger: 255 77 109;      /* #FF4D6D */
+  --c-brand: 0 240 255;        /* cyan-ish brand accent */
+
+  /* text */
+  --c-ink: 232 236 255;        /* default light text on dark bg */
+
+  /* chrome gradient (light metal) */
+  --c-chrome-0: 232 246 255;
+  --c-chrome-1: 159 216 255;
+  --c-chrome-2: 77 141 255;
+  --c-chrome-3: 30 58 110;
+  --c-chrome-4: 11 14 31;
+
+  /* shadow tint (used by glow-card / card-chrome) */
+  --c-shadow: 0 0 0;
+}
+
+html.light {
+  color-scheme: light;
+
+  /* surfaces (warm paper-cream palette — off-white with a soft warm tint so
+     bright screens stop glaring; cards a touch lighter than the page) */
+  --c-navy: 245 240 230;       /* page bg — warm paper cream, eyestrain-safe */
+  --c-navy-1: 250 247 240;     /* subtle raised */
+  --c-navy-2: 253 251 246;     /* cards / sidebar — ivory cream */
+  --c-navy-3: 236 230 218;     /* headers / chips */
+  --c-panel: 253 251 246;
+  --c-panel-2: 248 244 235;
+  --c-border: 196 188 168;     /* #C4BCA8 — warm border, visible on cream */
+  --c-border-soft: 214 207 190;/* #D6CFBE — clear menu separators */
+
+  /* accents get deeper so they stay readable on white */
+  --c-cyan: 0 122 138;         /* #007A8A */
+  --c-cyan-soft: 13 148 158;   /* #0D949E */
+  --c-magenta: 190 18 128;     /* #BE1280 */
+  --c-magenta-soft: 219 55 154;
+  --c-gold: 180 134 0;         /* #B48600 */
+  --c-gold-soft: 158 119 0;
+
+  /* semantic */
+  --c-signal: 4 140 90;
+  --c-warn: 180 134 0;
+  --c-danger: 200 30 70;
+  --c-brand: 0 122 138;
+
+  /* text — dark ink (near-black so low-alpha text stays readable) */
+  --c-ink: 8 11 26;
+
+  /* chrome gradient tuned for light backgrounds */
+  --c-chrome-0: 255 255 255;
+  --c-chrome-1: 198 220 255;
+  --c-chrome-2: 138 168 235;
+  --c-chrome-3: 90 118 190;
+  --c-chrome-4: 226 231 244;
+
+  /* shadows soften in light mode */
+  --c-shadow: 30 35 80;
+}
+
+/* `white` is mapped to the --c-ink token in tailwind.config.js, so every
+   `text-white`, `text-white/70`, `bg-white/10`, … adapts to the active theme
+   automatically. Only genuinely dark overlays (video player chrome, caption
+   previews) keep true white via .text-white-solid — it is un-layered, so it
+   wins over the Tailwind utilities. */
+.text-white-solid {
+  color: #fff;
+}
+
+html,
+body {
+  background: rgb(var(--c-navy));
+  color: rgb(var(--c-ink));
+  font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+::selection {
+  background: rgb(var(--c-cyan));
+  color: rgb(var(--c-navy));
+}
+
+/* slim scrollbars */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgb(var(--c-border)); border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: rgb(var(--c-cyan) / 0.33); }
+
+/* focus visibility (accessibility) */
+:focus-visible {
+  outline: 2px solid rgb(var(--c-cyan));
+  outline-offset: 2px;
+}
+
+/* ── retrofuturism helpers ─────────────────────────────────────────────── */
+
+/* synthwave horizon grid: perspective floor + vertical neon bars */
+.synthwave-grid {
+  background-image:
+    linear-gradient(to right, rgb(var(--c-cyan) / 0.35) 1px, transparent 1px),
+    linear-gradient(to top, rgb(var(--c-cyan) / 0.25) 1px, transparent 1px);
+  background-size: 44px 44px;
+  transform: perspective(480px) rotateX(62deg) scale(1.8);
+  transform-origin: center bottom;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 85%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 85%);
+  animation: grid-scroll 1.2s linear infinite;
+}
+@keyframes grid-scroll {
+  from { background-position: 0 0; }
+  to   { background-position: 0 44px; }
+}
+
+/* Music: animated lyric equalizer (YuE2/Suno-style visualiser).
+   Bars stay static until the player is live (`.eq-live`), then pulse in sync. */
+.eq-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  min-height: 12px;
+}
+.eq-bar {
+  flex: 1 1 0;
+  min-width: 2px;
+  border-radius: 9999px;
+  transform-origin: bottom;
+  background: linear-gradient(to top, rgb(var(--c-magenta) / 0.8), rgb(var(--c-cyan) / 0.95));
+}
+.eq-live .eq-bar {
+  animation-name: eq-pulse;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+@keyframes eq-pulse {
+  0%, 100% { transform: scaleY(0.32); }
+  50%      { transform: scaleY(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eq-live .eq-bar { animation: none; }
+}
+
+/* Music: real-time waveform visualizer container.
+   Subtle glow so the canvas bars pop against the dark surface. */
+.music-waveform-wrap {
+  position: relative;
+}
+.music-waveform-wrap::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgb(var(--c-cyan) / 0.15), rgb(var(--c-magenta) / 0.15), rgb(var(--c-cyan) / 0.15));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: -1;
+}
+.music-waveform-wrap.playing::after {
+  opacity: 1;
+}
+
+/* flat blueprint grid (interior screens) */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgb(var(--c-cyan) / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--c-cyan) / 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* CRT scanline overlay */
+.scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgb(var(--c-shadow) / 0.18) 3px,
+    transparent 4px
+  );
+  mix-blend-mode: overlay;
+}
+
+/* chrome text: metallic gradient on top, deep shadow below */
+.text-chrome {
+  background: linear-gradient(180deg, rgb(var(--c-chrome-0)) 0%, rgb(var(--c-chrome-1)) 30%, rgb(var(--c-chrome-2)) 55%, rgb(var(--c-chrome-3)) 72%, rgb(var(--c-chrome-4)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 12px rgb(var(--c-cyan) / 0.35));
+}
+
+/* In light mode the metallic chrome gradient washes out on white — swap it
+   for a high-contrast ink → accent gradient with no glow so headings stay
+   crisp and readable. */
+html.light .text-chrome {
+  background: linear-gradient(180deg, rgb(var(--c-ink)) 0%, rgb(var(--c-ink)) 40%, rgb(var(--c-brand)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: none;
+}
+
+/* neon gradient text (cyan → magenta) */
+.text-neon {
+  background: linear-gradient(92deg, rgb(var(--c-cyan)) 0%, rgb(var(--c-cyan-soft)) 35%, rgb(var(--c-magenta)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 18px rgb(var(--c-cyan) / 0.4));
+}
+
+/* Light mode: deeper accent stops, no glow, so the gradient reads on white. */
+html.light .text-neon {
+  background: linear-gradient(92deg, rgb(var(--c-brand)) 0%, rgb(var(--c-cyan-soft)) 45%, rgb(var(--c-magenta)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: none;
+}
+
+/* Light mode: `white` maps to the dark ink token, so `text-white/25` … are
+   faint gray-on-white. Re-map the alpha steps to darker inks so body text,
+   labels and placeholder text stay readable. Elements that also carry
+   `.text-white-solid` (always-dark video chrome / caption strips) are
+   exempt — those must keep true white. */
+html.light [class*="text-white/20"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.38); }
+html.light [class*="text-white/25"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.46); }
+html.light [class*="text-white/30"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.52); }
+html.light [class*="text-white/35"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.58); }
+html.light [class*="text-white/40"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.66); }
+html.light [class*="text-white/45"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.72); }
+html.light [class*="text-white/50"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.78); }
+html.light [class*="text-white/55"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.84); }
+html.light [class*="text-white/60"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.88); }
+html.light [class*="text-white/70"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.92); }
+html.light [class*="text-white/80"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.95); }
+html.light [class*="text-white/85"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.97); }
+
+/* On gold/cyan/magenta-filled buttons, the text color (often text-navy,
+   which maps to the light page bg) stays light in light mode. Force dark
+   ink on light surfaces; keep white only on dark button variants. */
+html.light .bg-gold:not(.bg-navy),
+html.light .bg-gold-soft:not(.bg-navy),
+html.light .bg-cyan:not(.bg-navy),
+html.light .bg-magenta:not(.bg-navy) {
+  color: rgb(var(--c-ink)) !important;
+}
+
+/* LED dot */
+.led {
+  border-radius: 9999px;
+  box-shadow: 0 0 6px currentColor, 0 0 12px currentColor;
+}
+
+/* chrome border card */
+.card-chrome {
+  background: linear-gradient(160deg, rgb(var(--c-navy-2) / 0.92), rgb(var(--c-navy-1) / 0.94));
+  border: 1px solid rgb(var(--c-cyan) / 0.16);
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--c-ink) / 0.03),
+    0 8px 32px rgb(var(--c-shadow) / 0.5);
+}
+.card-chrome:hover {
+  border-color: rgb(var(--c-cyan) / 0.4);
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--c-ink) / 0.04),
+    0 0 24px rgb(var(--c-cyan) / 0.12),
+    0 12px 40px rgb(var(--c-shadow) / 0.55);
+}
+
+/* ── Brand background line system ────────────────────────────────────────
+   Retro-futurism that feels human-made: organic flowing lines + technical
+   grid, used as a subtle fixed backdrop behind the whole app. Neon is an
+   accent only; content stays readable on top.
+*/
+.klip-bg-lines,
+.klip-bg-circuit,
+.klip-bg-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -10;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+}
+
+.klip-bg-lines {
+  opacity: 0.30;
+  background-image: url('/brand/backgrounds/line-field.svg');
+  /* fade edges + bottom so content breathes */
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 55%, transparent 100%);
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 55%, transparent 100%);
+}
+
+.klip-bg-circuit {
+  opacity: 0.16;
+  background-image: url('/brand/backgrounds/circuit-lines.svg');
+  background-size: 1400px;
+  background-position: top right;
+  -webkit-mask-image: linear-gradient(135deg, #000 0%, transparent 60%);
+  mask-image: linear-gradient(135deg, #000 0%, transparent 60%);
+}
+
+.klip-bg-vignette {
+  z-index: -9;
+  background:
+    radial-gradient(80% 50% at 50% -10%, rgb(var(--c-cyan) / 0.08), transparent 70%),
+    radial-gradient(70% 50% at 100% 100%, rgb(var(--c-magenta) / 0.06), transparent 70%),
+    linear-gradient(to bottom, transparent 60%, rgb(var(--c-navy) / 0.4) 100%);
+}
+
+/* Card surface that needs a touch more opacity so the line bg doesn't fight
+   the content (forms / tables / modals). */
+.klip-surface {
+  background-color: rgb(var(--c-navy-2) / 0.82);
+  backdrop-filter: blur(2px);
+}
+
+/* Light mode: SVG assets are dark-oriented, so drop opacity hard and switch
+   the line layer to a multiply blend so it reads as faint ink on paper. */
+html.light .klip-bg-lines {
+  opacity: 0.10;
+  mix-blend-mode: multiply;
+}
+html.light .klip-bg-circuit {
+  opacity: 0.06;
+  mix-blend-mode: multiply;
+}
+html.light .klip-bg-vignette {
+  background:
+    radial-gradient(80% 50% at 50% -10%, rgb(var(--c-brand) / 0.05), transparent 70%),
+    radial-gradient(70% 50% at 100% 100%, rgb(var(--c-magenta) / 0.04), transparent 70%),
+    linear-gradient(to bottom, transparent 60%, rgb(var(--c-navy) / 0.15) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .klip-bg-lines,
+  .klip-bg-circuit,
+  .klip-bg-vignette { animation: none !important; }
+}
+
+/* porthole: rounded lune frame like a retro viewport */
+.porthole {
+  border-radius: 18px;
+  border: 2px solid rgb(var(--c-cyan) / 0.35);
+  box-shadow:
+    inset 0 0 24px rgb(var(--c-shadow) / 0.55),
+    0 0 0 4px rgb(var(--c-navy) / 1),
+    0 0 0 6px rgb(var(--c-cyan) / 0.15),
+    0 0 32px rgb(var(--c-cyan) / 0.2);
+}
+
+/* VU meter bar */
+.vu-bar {
+  border-radius: 2px;
+  background: linear-gradient(to top, rgb(var(--c-magenta)) 0%, rgb(var(--c-cyan)) 70%, rgb(var(--c-cyan-soft)) 100%);
+  box-shadow: 0 0 8px rgb(var(--c-cyan) / 0.6);
+}
+
+/* ticker marquee strip */
+.marquee-track {
+  animation: marquee 28s linear infinite;
+  will-change: transform;
+}
+
+/* cost/idr mono chip */
+.chip {
+  font-family: 'Share Tech Mono', monospace;
+  border: 1px solid rgb(var(--c-gold) / 0.35);
+  color: rgb(var(--c-gold-soft));
+  background: rgb(var(--c-gold) / 0.08);
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+/* sustainable UX: honor user's reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

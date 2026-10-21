@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" fill="none" >
+<rect width="1200" height="630" fill="#0B0E1F"/>
+<g opacity=".22"><path d="M0 75 C220 40, 480 105, 760 55 S1020 99, 1200 75" stroke="#FF2EAE" fill="none"/><path d="M0 115 C220 80, 480 145, 760 95 S1020 139, 1200 115" stroke="#00F0FF" fill="none"/><path d="M0 155 C220 120, 480 185, 760 135 S1020 179, 1200 155" stroke="#FF2EAE" fill="none"/><path d="M0 195 C220 160, 480 225, 760 175 S1020 219, 1200 195" stroke="#00F0FF" fill="none"/><path d="M0 235 C220 200, 480 265, 760 215 S1020 259, 1200 235" stroke="#FF2EAE" fill="none"/><path d="M0 275 C220 240, 480 305, 760 255 S1020 299, 1200 275" stroke="#00F0FF" fill="none"/><path d="M0 315 C220 280, 480 345, 760 295 S1020 339, 1200 315" stroke="#FF2EAE" fill="none"/><path d="M0 355 C220 320, 480 385, 760 335 S1020 379, 1200 355" stroke="#00F0FF" fill="none"/><path d="M0 395 C220 360, 480 425, 760 375 S1020 419, 1200 395" stroke="#FF2EAE" fill="none"/><path d="M0 435 C220 400, 480 465, 760 415 S1020 459, 1200 435" stroke="#00F0FF" fill="none"/><path d="M0 475 C220 440, 480 505, 760 455 S1020 499, 1200 475" stroke="#FF2EAE" fill="none"/></g>
+<path d="M0 510 H1200 M0 550 H1200 M0 590 H1200" stroke="#00F0FF" stroke-opacity=".08"/>
+<text x="68" y="88" fill="#00F0FF" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="900" text-anchor="start" letter-spacing="5">KLIP-IN</text><text x="68" y="252" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="66" font-weight="900" text-anchor="start" letter-spacing="0">Ubah video panjang</text><text x="68" y="327" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="900" text-anchor="start" letter-spacing="0">jadi momen yang layak dibagikan.</text>
+<text x="72" y="382" fill="#7DF6FF" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" text-anchor="start" letter-spacing="0">AI clipper untuk kreator Indonesia</text><text x="72" y="552" fill="#FF2EAE" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="800" text-anchor="start" letter-spacing="5">CUT. CLIP. SHARE.</text>
+<g transform="translate(795 60) scale(.62)"><g transform="translate(0 0) scale(1)" stroke-linejoin="round" stroke-linecap="round">
+<path d="M105 86 L402 255 L108 426 Z" stroke="#00F0FF" stroke-width="24"/>
+<path d="M126 95 L410 253 L130 408" stroke="#FF2EAE" stroke-width="13"/>
+<path d="M151 119 L365 255 L154 392" stroke="#E8ECFF" stroke-width="8"/>
+<path d="M188 159 L322 255 L190 352 Z" fill="#6B5CFF"/>
+<path d="M189 158 L319 255 L190 350" stroke="#7DF6FF" stroke-width="4" opacity=".9"/>
+<path d="M79 276 L123 251" stroke="#FFD400" stroke-width="8"/>
+<path d="M385 168 L432 139" stroke="#FF7BD0" stroke-width="7"/>
+</g></g>
+</svg>

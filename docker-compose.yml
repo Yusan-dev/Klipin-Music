@@ -1,0 +1,45 @@
+name: klipin-music
+
+# ─── Klipin Music Standalone (Suno AI Studio Clone) ──────────────────────
+# Dedicated deployment for Klipin Music so hosting never mixes with the
+# Klipin Video Clipper service, while reusing the exact same `backend/.env`.
+#
+# Run standalone:
+#   docker compose -f docker-compose.music.yml up -d --build
+#
+# Backend API : http://localhost:8002  (FastAPI music_service:app)
+# Frontend UI : http://localhost:5175  (VITE_APP_MODE=music -> opens Music Studio directly)
+
+services:
+  music-api:
+    build: ./backend
+    container_name: klipin-music-api
+    env_file: backend/.env
+    environment:
+      - KLIPIN_SERVICE_MODE=music
+    command: ["uvicorn", "music_service:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./backend:/app
+      - ${MODAL_CONFIG_PATH:-C:/Users/xpass/.modal.toml}:/app/.modal.toml:ro
+      - klipin_music_output:/app/output
+    restart: unless-stopped
+
+  music-web:
+    build: ./frontend
+    container_name: klipin-music-web
+    environment:
+      - VITE_API_URL=${KLIPIN_MUSIC_PUBLIC_API_URL:-http://localhost:8002}
+      - VITE_APP_MODE=music
+    ports:
+      - "5175:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+    depends_on:
+      - music-api
+
+volumes:
+  klipin_music_output:

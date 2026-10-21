@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1024" fill="none" >
+<rect width="1440" height="1024" fill="#0B0E1F"/>
+<text x="60" y="70" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="900" text-anchor="start" letter-spacing="0">KLIP-IN / BRAND ASSET MAP</text><text x="60" y="102" fill="#7DF6FF" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="600" text-anchor="start" letter-spacing="0">Retro futurism • restrained neon • human geometry</text>
+<rect x="60" y="145" width="600" height="250" rx="28" fill="#12162E" stroke="#2A3156"/>
+<g transform="translate(90 96) scale(.50)"><g transform="translate(0 0) scale(1)" stroke-linejoin="round" stroke-linecap="round">
+<path d="M105 86 L402 255 L108 426 Z" stroke="#00F0FF" stroke-width="24"/>
+<path d="M126 95 L410 253 L130 408" stroke="#FF2EAE" stroke-width="13"/>
+<path d="M151 119 L365 255 L154 392" stroke="#E8ECFF" stroke-width="8"/>
+<path d="M188 159 L322 255 L190 352 Z" fill="#6B5CFF"/>
+<path d="M189 158 L319 255 L190 350" stroke="#7DF6FF" stroke-width="4" opacity=".9"/>
+<path d="M79 276 L123 251" stroke="#FFD400" stroke-width="8"/>
+<path d="M385 168 L432 139" stroke="#FF7BD0" stroke-width="7"/>
+</g></g><text x="350" y="265" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="62" font-weight="900" text-anchor="start" letter-spacing="0">Klip-in</text><text x="355" y="304" fill="#00F0FF" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" text-anchor="start" letter-spacing="5">CUT. CLIP. SHARE.</text>
+<rect x="700" y="145" width="680" height="250" rx="28" fill="#12162E" stroke="#2A3156"/>
+<rect x="735" y="195" width="72" height="72" rx="14" fill="#0F1328"/><text x="771" y="295" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" text-anchor="middle" letter-spacing="0">NAVY</text><rect x="835" y="195" width="72" height="72" rx="14" fill="#00F0FF"/><text x="871" y="295" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" text-anchor="middle" letter-spacing="0">CYAN</text><rect x="935" y="195" width="72" height="72" rx="14" fill="#FF2EAE"/><text x="971" y="295" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" text-anchor="middle" letter-spacing="0">MAG</text><rect x="1035" y="195" width="72" height="72" rx="14" fill="#FFD400"/><text x="1071" y="295" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" text-anchor="middle" letter-spacing="0">GOLD</text><rect x="1135" y="195" width="72" height="72" rx="14" fill="#E8ECFF"/><text x="1171" y="295" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" text-anchor="middle" letter-spacing="0">INK</text>
+<rect x="60" y="430" width="800" height="520" rx="28" fill="#12162E" stroke="#2A3156"/><g transform="translate(105 450) scale(.72)"><ellipse cx="256" cy="450" rx="145" ry="18" fill="#00F0FF" opacity=".08"/>
+<rect x="116" y="95" width="280" height="280" rx="78" fill="#E8ECFF" stroke="#0B0E1F" stroke-width="14"/>
+<rect x="142" y="135" width="228" height="145" rx="42" fill="#0F1328" stroke="#00F0FF" stroke-width="6"/>
+<circle cx="210" cy="203" r="14" fill="#00F0FF"/><path d="M288 197 l12 12 -12 12 -12-12z" fill="#FF2EAE"/>
+<path d="M210 243 Q256 272 302 239" stroke="#E8ECFF" stroke-width="7" stroke-linecap="round"/>
+<path d="M115 178 L78 150" stroke="#FF2EAE" stroke-width="16" stroke-linecap="round"/><circle cx="63" cy="140" r="24" fill="#1A1F3D" stroke="#FF2EAE" stroke-width="5"/>
+<path d="M397 178 L434 150" stroke="#00F0FF" stroke-width="16" stroke-linecap="round"/><circle cx="449" cy="140" r="24" fill="#1A1F3D" stroke="#00F0FF" stroke-width="5"/>
+<path d="M198 375 L175 430 M314 375 L337 430" stroke="#0B0E1F" stroke-width="20" stroke-linecap="round"/>
+<path d="M148 433 H205 M307 433 H364" stroke="#FF2EAE" stroke-width="12" stroke-linecap="round"/>
+<path d="M205 90 L256 54 L308 90" stroke="#FF2EAE" stroke-width="8" stroke-linejoin="round"/><path d="M242 66 L256 80 L270 66" fill="#FFD400"/>
+<rect x="170" y="300" width="172" height="42" rx="14" fill="#1A1F3D"/><path d="M195 321 H238 M255 321 H318" stroke="#00F0FF" stroke-width="5" stroke-linecap="round"/></g>
+<text x="555" y="520" fill="#FF2EAE" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="900" text-anchor="start" letter-spacing="0">KLIP-BOT</text><text x="555" y="555" fill="#7DF6FF" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="600" text-anchor="start" letter-spacing="0">Onboarding / empty states / help</text>
+<rect x="900" y="430" width="480" height="245" rx="28" fill="#12162E" stroke="#2A3156"/><text x="930" y="475" fill="#FF2EAE" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="800" text-anchor="start" letter-spacing="0">BACKGROUND</text>
+<path d="M930 535 C1030 490 1100 590 1200 535 S1330 570 1350 520" stroke="#00F0FF"/><path d="M930 565 C1030 520 1100 620 1200 565 S1330 600 1350 550" stroke="#FF2EAE"/><path d="M930 615 H1350" stroke="#00F0FF" opacity=".18"/>
+<rect x="900" y="705" width="480" height="245" rx="28" fill="#12162E" stroke="#2A3156"/><text x="930" y="750" fill="#FFD400" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="800" text-anchor="start" letter-spacing="0">USAGE RULE</text><text x="930" y="790" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" text-anchor="start" letter-spacing="0">Neon = accent, not surface.</text><text x="930" y="822" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" text-anchor="start" letter-spacing="0">Lines = texture, not content.</text><text x="930" y="854" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" text-anchor="start" letter-spacing="0">Mascot = moments, not everywhere.</text>
+</svg>
