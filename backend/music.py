@@ -1110,10 +1110,15 @@ def _voice_restyle_cover(spec: dict, job_dir: Path, output: Path, log=None) -> P
         **spec,
         "bpm": int(round(float(bpm))) if bpm and 45 <= float(bpm) <= 210 else 0,
         "music_key": str(key or ""),
-        "ref_audio_b64": guide_b64,
+        "ref_audio_b64": source_b64 if _mulacover_modal_enabled() else guide_b64,
+        "cover_source_b64": source_b64 if _mulacover_modal_enabled() else guide_b64,
         "ref_strength": strength,
         "prompt": arrangement_prompt,
-        "lyrics": "[Instrumental]\n[Verse]\n(instrumental groove)\n[Chorus]\n(instrumental hook)\n[Outro]",
+        "lyrics": (
+            spec.get("lyrics")
+            if _mulacover_modal_enabled() and str(spec.get("lyrics") or "").strip()
+            else "[Intro]\n\n[Verse]\nLa la la\n\n[Outro]"
+        ),
         "cover_style_prompt": "",
         "instrumental": True,
         "groove_reset": True,
@@ -1121,7 +1126,19 @@ def _voice_restyle_cover(spec: dict, job_dir: Path, output: Path, log=None) -> P
     restyled_path = job_dir / "cover_backing_restyled.mp3"
     log and log(f"🎛️ Menata ulang aransemen instrumen ke {info['label']} (MuLaCover)…")
     if _mulacover_modal_enabled():
-        _mulacover_modal_generate(restyle_spec, restyled_path, log=log)
+        raw_mula = job_dir / "cover_mulacover_raw.mp3"
+        _mulacover_modal_generate(restyle_spec, raw_mula, log=log)
+        # Extract the clean instrumental accompaniment from the MuLaCover render
+        # so the beat-locked original/Seed-VC vocal sits cleanly on top without double vocals.
+        try:
+            mula_sep_dir = job_dir / "_mula_sep"
+            mula_sep_dir.mkdir(parents=True, exist_ok=True)
+            _, mula_inst, _ = _separate_source_stems(
+                base64.b64encode(raw_mula.read_bytes()).decode("ascii"),
+                duration, mula_sep_dir, pitch_shift=0, log=log)
+            shutil.copyfile(mula_inst, restyled_path)
+        except Exception:  # noqa: BLE001
+            shutil.copyfile(raw_mula, restyled_path)
     elif _ace_modal_enabled():
         _ace_step_modal_generate(restyle_spec, restyled_path, log=log)
     elif _ace_step_url():
