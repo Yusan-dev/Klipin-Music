@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './Icon.jsx'
+import { IS_MUSIC_STANDALONE } from '../router.js'
+
+const MUSIC_ITEMS = [
+  { label: 'Buat Lagu', hint: 'studio lagu AI', path: '#/music', icon: 'music', keywords: 'music lagu create buat lagu ai riwayat' },
+  { label: 'Buat Cover', hint: 'cover lagu dari link / upload', path: '#/cover', icon: 'features', keywords: 'cover remix upload mulacover reggae' },
+  { label: 'Harga', hint: 'kredit prabayar', path: '#/pricing', icon: 'pricing', keywords: 'pricing kredit harga topup' },
+  { label: 'Tagihan', hint: 'riwayat & langganan', path: '#/billing', icon: 'billing', keywords: 'billing tagihan payment invoice' },
+  { label: 'Pengaturan', hint: 'preferensi akun', path: '#/settings', icon: 'settings', keywords: 'settings preferensi' },
+]
 
 const ITEMS = [
   { label: 'Dashboard', hint: 'beranda & statistik', path: '#/', icon: 'dashboard', keywords: 'home beranda' },
@@ -25,9 +34,10 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
   const listRef = useRef(null)
 
   const results = useMemo(() => {
+    const source = IS_MUSIC_STANDALONE ? MUSIC_ITEMS : ITEMS
     const query = q.trim().toLowerCase()
-    if (!query) return ITEMS
-    return ITEMS.filter((it) => `${it.label} ${it.hint} ${it.keywords}`.toLowerCase().includes(query))
+    if (!query) return source
+    return source.filter((it) => `${it.label} ${it.hint} ${it.keywords}`.toLowerCase().includes(query))
   }, [q])
 
   useEffect(() => {

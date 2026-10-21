@@ -44,10 +44,10 @@ import {
 
 const DURATIONS = [60, 90, 120, 150, 180, 210, 240, 300]
 const VOCAL_GENDERS = [
-  { id: 'auto', label: 'Auto (bebas)' },
-  { id: 'female', label: '👩 Wanita' },
-  { id: 'male', label: '👨 Pria' },
-  { id: 'duet', label: '👥 Duet' },
+  { id: 'auto', label: 'Auto' },
+  { id: 'female', label: 'Wanita' },
+  { id: 'male', label: 'Pria' },
+  { id: 'duet', label: 'Duet' },
 ]
 // Engine + take controls. Values map 1:1 to MusicGenerateRequest so nothing is
 // hidden from the API. `available` is filled from the engine preflight at runtime.
@@ -105,31 +105,76 @@ const STAGE_FLOOR = {
 }
 const GROUP_ORDER = ['Nusantara', 'Asia', 'Timur Tengah', 'Eropa & Global', 'Lainnya']
 const STATUS_META = {
-  queued: { label: 'Dalam antrean', className: 'border-warn/40 bg-warn/10 text-warn' },
-  processing: { label: 'Menyusun lagu', className: 'border-cyan/40 bg-cyan/10 text-cyan-soft' },
-  completed: { label: 'Selesai', className: 'border-signal/40 bg-signal/10 text-signal' },
-  failed: { label: 'Gagal', className: 'border-danger/40 bg-danger/10 text-danger' },
+  queued: { label: 'Antrean', className: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
+  processing: { label: 'Memproses', className: 'border-amber-400/35 bg-amber-400/10 text-amber-200' },
+  completed: { label: 'Selesai', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
+  failed: { label: 'Gagal', className: 'border-red-500/30 bg-red-500/10 text-red-400' },
 }
 
 // Estimasi durasi saat "Auto ikuti lirik": ~4.7 dtk per baris nyanyi + intro/outro.
 const AUTO_SECONDS_PER_LINE = 4.7
 
-// Grup accordion untuk form Create: hirarki jelas, bukan tumpukan dropdown.
+function StudioIcon({ name, className = 'h-3.5 w-3.5' }) {
+  const props = {
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.75,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    className,
+    'aria-hidden': 'true',
+  }
+  switch (name) {
+    case 'wand':
+      return <svg {...props}><path d="M15 4V2m0 14v-2M8 9h2m10 0h2m-4.2-4.2L19 3.5m-1.2 9.7L19 14.5M3 21l9-9m.2-6.2L11 4.5" /></svg>
+    case 'dice':
+      return <svg {...props}><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1" fill="currentColor" /><circle cx="15.5" cy="8.5" r="1" fill="currentColor" /><circle cx="12" cy="12" r="1" fill="currentColor" /><circle cx="8.5" cy="15.5" r="1" fill="currentColor" /><circle cx="15.5" cy="15.5" r="1" fill="currentColor" /></svg>
+    case 'sliders':
+      return <svg {...props}><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" /></svg>
+    case 'disc':
+      return <svg {...props}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="2.5" /><path d="M12 3a9 9 0 0 1 9 9" /></svg>
+    case 'mic':
+      return <svg {...props}><rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10a7 7 0 0 0 14 0M12 17v4m-4 0h8" /></svg>
+    case 'repeat':
+      return <svg {...props}><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>
+    case 'folder':
+      return <svg {...props}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+    case 'chevron':
+      return <svg {...props}><polyline points="6 9 12 15 18 9" /></svg>
+    case 'trash':
+      return <svg {...props}><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m5 0V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2" /></svg>
+    case 'share':
+      return <svg {...props}><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
+    case 'extend':
+      return <svg {...props}><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
+    case 'link':
+      return <svg {...props}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+    case 'upload':
+      return <svg {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+    case 'refresh':
+      return <svg {...props}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+    default:
+      return <svg {...props}><circle cx="12" cy="12" r="8" /></svg>
+  }
+}
+
+// Flat hairline disclosure section for Suno Create Dock (no nested boxes inside boxes)
 const Group = ({ title, subtitle, defaultOpen = false, children }) => {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <section className="rounded-xl border border-white/10 bg-black/20">
+    <section className="border-t border-[#26262e] pt-3">
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
-        className="flex w-full items-center justify-between gap-2 px-3.5 py-3 text-left">
+        className="flex w-full items-center justify-between gap-2 py-1 text-left group">
         <span>
-          <span className="block text-xs font-bold uppercase tracking-widest text-white/60">{title}</span>
+          <span className="block text-xs font-medium text-[#d4d4d8] group-hover:text-[#f4f4f6] transition-colors">{title}</span>
           {subtitle && (
-            <span className="mt-0.5 block text-[11px] font-normal normal-case tracking-normal text-white/40">{subtitle}</span>
+            <span className="mt-0.5 block text-[11px] text-[#71717a]">{subtitle}</span>
           )}
         </span>
-        <span className="shrink-0 text-white/40">{open ? '▲' : '▼'}</span>
+        <StudioIcon name="chevron" className={`h-3.5 w-3.5 text-[#71717a] transition-transform ${open ? 'rotate-180 text-[#f4f4f6]' : ''}`} />
       </button>
-      {open && <div className="space-y-4 border-t border-white/10 px-3.5 py-3.5">{children}</div>}
+      {open && <div className="mt-3 space-y-3.5 pb-1">{children}</div>}
     </section>
   )
 }
@@ -228,6 +273,16 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     return seg === 'cover' ? 'cover' : seg === 'history' ? 'history' : 'create'
   })
   const [duration, setDuration] = useState(180)
+  // Sidebar "Buat Lagu" / "Buat Cover" share the same route; keep the tab in
+  // sync with the hash so clicking either link switches the studio panel.
+  useEffect(() => {
+    const onHash = () => {
+      const seg = window.location.hash.replace(/^#\/?/, '').split(/[?/]/)[0]
+      setStudioTab(seg === 'cover' ? 'cover' : seg === 'history' ? 'history' : 'create')
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
   const [autoDuration, setAutoDuration] = useState(false)
   const [genreQuery, setGenreQuery] = useState('')
   const [genreOpen, setGenreOpen] = useState(false)
@@ -274,7 +329,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const [remixUrl, setRemixUrl] = useState('')
   const [remixGenre, setRemixGenre] = useState('reggae')
   const [remixGender, setRemixGender] = useState('female')
-  const [remixEngine, setRemixEngine] = useState('mulacover')
+  const [remixEngine, setRemixEngine] = useState('voice')
   const [remixPitch, setRemixPitch] = useState('auto')
   const [remixRestyle, setRemixRestyle] = useState(true)
   const [remixVoiceMode, setRemixVoiceMode] = useState('manual')
@@ -284,6 +339,9 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const [remixRightsConfirmed, setRemixRightsConfirmed] = useState(false)
   const [remixBusy, setRemixBusy] = useState(false)
   const [shareBusy, setShareBusy] = useState(false)
+  const [coverSourceTab, setCoverSourceTab] = useState('url')
+  const [feedFilter, setFeedFilter] = useState('all')
+  const [mobilePane, setMobilePane] = useState('create')
 
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -606,19 +664,19 @@ export default function Music({ user, authChecked = false, onSignIn }) {
       return `Lagu siap diputar.${al}`
     }
     if (job.status === 'queued') return 'Menunggu slot worker GPU…'
-    if (stage === 'writing') return '✍️ Menyusun lirik & aransemen…'
+    if (stage === 'writing') return 'Menyusun lirik & aransemen…'
     if (stage === 'generating') {
-      if (job.provider?.includes('diffrhythm')) return '⚡ DiffRhythm menyusun lagu penuh…'
-      if (job.take_mode === 'draft' || job.provider?.includes('ace-step')) return '⚡ Draft ACE-Step berjalan…'
-      return '🎤 Worker Music L4 menyusun vokal…'
+      if (job.provider?.includes('diffrhythm')) return 'DiffRhythm menyusun lagu penuh…'
+      if (job.take_mode === 'draft' || job.provider?.includes('ace-step')) return 'Draft ACE-Step berjalan…'
+      return 'Worker Music L4 menyusun vokal…'
     }
-    if (stage === 'mixing') return '🎚️ Menggabungkan vokal & musik…'
-    if (stage === 'cover') return '🖼️ Menyiapkan cover art…'
-    if (stage === 'aligning') return '🎤 Menyelaraskan lirik (Whisper)…'
-    if (stage === 'mastering') return '🔊 Mastering audio (LUFS + WAV)…'
-    if (stage === 'stale') return '⏱️ Worker tidak merespons — job dihentikan.'
-    if (stage === 'draft-render') return '🎼 Menyusun draft…'
-    if (stage === 'final-render') return '🎼 Menyusun lagu final…'
+    if (stage === 'mixing') return 'Menggabungkan vokal & musik…'
+    if (stage === 'cover') return 'Menyiapkan cover art…'
+    if (stage === 'aligning') return 'Menyelaraskan lirik (Whisper)…'
+    if (stage === 'mastering') return 'Mastering audio (LUFS + WAV)…'
+    if (stage === 'stale') return 'Worker tidak merespons — job dihentikan.'
+    if (stage === 'draft-render') return 'Menyusun draft…'
+    if (stage === 'final-render') return 'Menyusun lagu final…'
     if (job.status === 'processing') return 'Menghubungkan ke worker Music L4…'
     return stage || ''
   }, [job, elapsed])
@@ -1631,243 +1689,261 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         ? `Lengkapi ${missing.length} bagian wajib untuk melanjutkan.`
         : 'Siap dibuat — worker akan memproses lagu di latar belakang.'
 
+  const engineLabel = (providerOptions.find((item) => item.id === provider) || {}).label || 'HeartMuLa'
+  const fieldCls = 'w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-3 py-2 text-[13px] text-[#f4f4f6] outline-none transition placeholder:text-[#5c5c66] focus:border-[#52525b] disabled:cursor-not-allowed disabled:opacity-50'
+  const labelCls = 'mb-1.5 block text-[11px] font-medium text-[#a1a1aa]'
+
   return (
-    <div className="mx-auto max-w-[1680px] px-3 pb-28 pt-5 sm:px-5 lg:px-7">
-      {/* Suno AI Studio Top Header Bar */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#11131a]/90 px-4 py-3 shadow-xl backdrop-blur-md">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#ff5a1f] via-[#ff2d78] to-[#b829ff] text-white shadow-lg">
-              <Icon name="music" className="h-5 w-5" />
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-base font-black tracking-tight text-white">Klipin Music</span>
-                <span className="rounded-full border border-[#ff5a1f]/40 bg-[#ff5a1f]/15 px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-[#ff9a62]">
-                  Suno Studio v4.5
-                </span>
-              </div>
-              <p className="text-[11px] text-white/45">
-                Full-Song AI Studio · Nusantara & Global · Apache 2.0 Commercial Ready
-              </p>
-            </div>
-          </div>
-
-          <div className="hidden h-6 w-px bg-white/10 sm:block" />
-
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Bagian studio musik">
-            {[
-              { id: 'create', label: '✨ Create Song' },
-              { id: 'cover', label: '🎛️ Audio / Cover' },
-              { id: 'history', label: '🗂️ Library (' + historyList.length + ')' },
-            ].map((tab) => (
-              <button key={tab.id} type="button" onClick={() => setStudioTab(tab.id)}
-                aria-pressed={studioTab === tab.id}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
-                  studioTab === tab.id
-                    ? 'bg-gradient-to-r from-[#ff5a1f] via-[#ff2d78] to-magenta text-white shadow-md'
-                    : 'border border-white/10 bg-white/5 text-white/65 hover:border-white/25 hover:text-white'}`}>
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 font-mono text-[10px] text-white/70">
-            {(providerOptions.find((item) => item.id === provider) || {}).label || 'HeartMuLa'} · L4
+    <div className="min-h-[calc(100vh-57px)] bg-[#0e0e11] pb-24 text-[#f4f4f6]">
+      {/* Studio toolbar — one flat row, no nested cards */}
+      <div className="sticky top-[57px] z-20 flex h-12 items-center gap-3 border-b border-[#26262e] bg-[#0e0e11]/95 px-4 backdrop-blur sm:px-5">
+        <span className="text-[15px] font-semibold tracking-tight">Klipin Music</span>
+        <nav className="ml-2 flex items-center gap-0.5" aria-label="Bagian studio musik">
+          {[
+            { id: 'create', label: 'Create' },
+            { id: 'cover', label: 'Cover' },
+            { id: 'history', label: `Library${historyList.length ? ` · ${historyList.length}` : ''}` },
+          ].map((tab) => (
+            <button key={tab.id} type="button" onClick={() => setStudioTab(tab.id)}
+              aria-pressed={studioTab === tab.id}
+              className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition ${
+                studioTab === tab.id ? 'bg-[#1f1f26] text-[#f4f4f6]' : 'text-[#8e8e99] hover:text-[#f4f4f6]'}`}>
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+        <div className="ml-auto flex items-center gap-3 text-[12px] text-[#8e8e99]">
+          <span className="hidden truncate md:inline">{engineLabel}</span>
+          <span className="flex items-center gap-1.5">
+            <span className={`h-1.5 w-1.5 rounded-full ${
+              engineBusy || engineReady === null ? 'bg-[#71717a]' : engineReady ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+            {engineBusy ? 'Memeriksa…' : engineReady === null ? 'Status worker' : engineReady ? 'Siap' : 'Belum siap'}
           </span>
-          <div className={`rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-widest ${
-            engineReady === null ? 'border-white/15 bg-white/5 text-white/50'
-              : engineReady ? 'border-signal/25 bg-signal/10 text-signal'
-                : 'border-warn/40 bg-warn/10 text-warn'}`}>
-            {engineBusy ? '● memeriksa worker…' : engineReady === null
-              ? '● status worker belum diketahui'
-              : engineReady ? '● engine lagu siap' : '● engine lagu belum siap'}
-          </div>
-          <button type="button" onClick={refreshEngine} disabled={engineBusy}
-            className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] font-bold text-white/70 transition hover:border-cyan/50 disabled:opacity-40">
-            ↻ Cek worker
+          <button type="button" onClick={refreshEngine} disabled={engineBusy} title="Cek ulang worker"
+            className="rounded-md p-1.5 text-[#8e8e99] transition hover:bg-[#1c1c22] hover:text-[#f4f4f6] disabled:opacity-40">
+            <StudioIcon name="refresh" className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>
 
-      {(catalogError || (engine && !engine.ready)) && (
-        <div className="mb-4 space-y-2">
+      {(catalogError || (engine && !engine.ready) || (authChecked && !user)) && (
+        <div className="space-y-2 border-b border-[#26262e] px-4 py-3 sm:px-5">
           {catalogError && (
             <Notice tone="err" title="Katalog musik gagal dimuat" text={catalogError}
               action={{ label: 'Coba lagi', onClick: () => loadCatalog(true) }} />
           )}
           {engine && !engine.ready && (
-            <Notice tone="warn" title="Engine lagu penuh belum siap" text={engine.message}
+            <Notice tone="warn" title="Engine lagu belum siap" text={engine.message}
               action={{ label: 'Cek ulang', onClick: refreshEngine }} />
+          )}
+          {authChecked && !user && (
+            <Notice tone="warn" title="Belum masuk"
+              text="Masuk untuk membuat lagu, melihat riwayat, dan memantau render yang sedang berjalan."
+              action={{ label: 'Masuk', onClick: onSignIn }} />
           )}
         </div>
       )}
 
-      {authChecked && !user && (
-        <div className="mb-4">
-          <Notice tone="warn" title="Sesi login tidak aktif"
-            text="Status lagu dan hasil Modal tidak bisa disinkronkan sebelum kamu masuk lagi. Jangan membuat job baru dulu; masuk untuk melanjutkan pemantauan job sebelumnya."
-            action={{ label: 'Masuk untuk melanjutkan', onClick: onSignIn }} />
-        </div>
-      )}
+      {/* Mobile pane switcher (desktop shows panes side by side) */}
+      <div className="flex border-b border-[#26262e] xl:hidden">
+        {[{ id: 'create', label: studioTab === 'cover' ? 'Cover' : 'Create' }, { id: 'songs', label: 'Lagu' }].map((p) => (
+          <button key={p.id} type="button" onClick={() => setMobilePane(p.id)}
+            className={`flex-1 py-2.5 text-[13px] font-medium ${mobilePane === p.id ? 'border-b-2 border-[#f59e0b] text-[#f4f4f6]' : 'text-[#8e8e99]'}`}>
+            {p.label}
+          </button>
+        ))}
+      </div>
 
-      {/* Suno 3-Pane Studio Workspace: Left Create/Cover Dock | Center Song Feed | Right Player & Lyrics Inspector */}
-      <div className="grid items-start gap-5 xl:grid-cols-[430px_minmax(0,1fr)_390px]">
-        <section className="card-chrome overflow-hidden rounded-2xl border border-white/10 bg-[#12141d]">
-          {/* Suno Left Dock Pill Header */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-black/25 px-4 py-3">
-            <div className="flex items-center gap-1.5" role="group" aria-label="Mode pembuatan lagu">
-              <button type="button" onClick={() => { setStudioTab('create'); setSimpleMode(false) }}
-                className={`rounded-full px-3 py-1 text-[11px] font-bold transition ${studioTab !== 'cover' && !simpleMode ? 'bg-white text-navy shadow' : 'border border-white/10 bg-white/5 text-white/60 hover:text-white'}`}>
-                ⚙ Custom
-              </button>
-              <button type="button" onClick={() => { setStudioTab('create'); setSimpleMode(true) }}
-                className={`rounded-full px-3 py-1 text-[11px] font-bold transition ${studioTab !== 'cover' && simpleMode ? 'bg-white text-navy shadow' : 'border border-white/10 bg-white/5 text-white/60 hover:text-white'}`}>
-                ✨ Simple
-              </button>
-              <button type="button" onClick={() => setStudioTab(studioTab === 'cover' ? 'create' : 'cover')}
-                className={`rounded-full px-3 py-1 text-[11px] font-bold transition ${studioTab === 'cover' ? 'bg-gradient-to-r from-[#ff5a1f] to-[#ff2d78] text-white shadow' : 'border border-cyan/35 bg-cyan/10 text-cyan-soft hover:border-cyan'}`}>
-                🎛️ Audio / Cover
-              </button>
+      {/* 3 panes: Create dock | Song list | Inspector. Fixed widths only on
+          screens wide enough; below 2xl the inspector drops under the list so
+          nothing is ever squeezed or overlapped. */}
+      <div className="flex flex-col xl:flex-row">
+        <section className={`${mobilePane === 'create' ? 'block' : 'hidden'} xl:block xl:w-[380px] xl:shrink-0 xl:border-r xl:border-[#26262e]`}>
+          <div className="xl:sticky xl:top-[105px] xl:max-h-[calc(100vh-105px)] xl:overflow-y-auto">
+          {/* Mode switch */}
+          <div className="flex items-center justify-between gap-2 px-4 pt-4">
+            <div className="inline-flex rounded-lg bg-[#18181d] p-0.5" role="group" aria-label="Mode pembuatan lagu">
+              {[
+                { id: 'custom', label: 'Custom', on: studioTab !== 'cover' && !simpleMode, go: () => { setStudioTab('create'); setSimpleMode(false) } },
+                { id: 'simple', label: 'Simple', on: studioTab !== 'cover' && simpleMode, go: () => { setStudioTab('create'); setSimpleMode(true) } },
+                { id: 'cover', label: 'Cover', on: studioTab === 'cover', go: () => setStudioTab('cover') },
+              ].map((m) => (
+                <button key={m.id} type="button" onClick={m.go} aria-pressed={m.on}
+                  className={`rounded-md px-3 py-1 text-[12px] font-medium transition ${m.on ? 'bg-[#2a2a32] text-[#f4f4f6]' : 'text-[#8e8e99] hover:text-[#f4f4f6]'}`}>
+                  {m.label}
+                </button>
+              ))}
             </div>
-            <button type="button" onClick={() => setInstrumental((v) => !v)}
-              className={`rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold transition ${
-                instrumental ? 'border-magenta bg-magenta/20 text-white' : 'border-white/10 bg-white/5 text-white/50 hover:text-white'}`}>
-              {instrumental ? '🎵 Instrumental ON' : '🎤 Vocal'}
-            </button>
+            {studioTab !== 'cover' && (
+              <label className="flex cursor-pointer items-center gap-2 text-[12px] text-[#a1a1aa]">
+                Instrumental
+                <button type="button" role="switch" aria-checked={instrumental} onClick={() => setInstrumental((v) => !v)}
+                  className={`relative h-[18px] w-8 rounded-full transition ${instrumental ? 'bg-[#f59e0b]' : 'bg-[#3f3f46]'}`}>
+                  <span className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-all ${instrumental ? 'left-[16px]' : 'left-[2px]'}`} />
+                </button>
+              </label>
+            )}
           </div>
+
           <div className="space-y-4 p-4">
             {showErrors && missing.length > 0 && studioTab === 'create' && (
-              <Notice tone="warn" title={`${missing.length} bagian yang harus diisi`}
+              <Notice tone="warn" title={`${missing.length} bagian wajib diisi`}
                 text={missing.map((item) => `• ${item}`).join('\n')} />
             )}
             {requestError && (
               <Notice tone="err" title="Permintaan ditolak" text={requestError} />
             )}
             {simpleMode && studioTab === 'create' && (
-              <p className="text-[11px] leading-5 text-white/45">
-                Mode Simple: tulis ide lalu tekan <b className="text-white/70">Buat lagu</b>. Beralih ke
-                <b className="text-white/70"> Custom</b> untuk lirik, persona, bahasa ganda, BPM/key, dan kontrol lanjutan.
+              <p className="text-[12px] leading-5 text-[#8e8e99]">
+                Tulis ide lagu lalu tekan Create. Pindah ke Custom untuk lirik, persona, bahasa ganda, dan kontrol lanjutan.
               </p>
             )}
 
-            {studioTab === 'cover' && <section className="rounded-xl border border-cyan/25 bg-cyan/5 p-4">
-              <div className="mb-1 text-xs font-bold uppercase tracking-widest text-cyan-soft">Cover lagu dari link</div>
-              <p className="mb-3 text-[11px] leading-5 text-white/50">Tempel link YouTube publik. Klipin mengambil audio, mengekstrak lirik sumber terlebih dahulu, lalu menyanyikannya dengan persona/gender terpilih dalam aransemen genre baru. Default memakai MuLaCover agar irama, melodi, dan chord asli tetap; bila worker itu mati, DiffRhythm/HeartMuLa dipakai sebagai fallback. ACE-Step hanya draft cepat, bukan cover faithful. Gunakan hanya materi yang kamu punya izinnya.</p>
-              <input value={remixUrl} onChange={(e) => setRemixUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan/60" />
-              <label className="mt-3 block">
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-white/45">Lirik manual (opsional) — satu baris = satu kalimat/frasa vokal</span>
-                <textarea value={remixLyrics} onChange={(e) => setRemixLyrics(e.target.value)} rows={6} placeholder={'[Verse]\nEntah sampai kapan aku harus menunggu\nSesuatu yang sangat sulit ku jalani\n…'} className="w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[12px] leading-5 text-white outline-none focus:border-cyan/60" />
-                <span className="mt-1 block text-[10px] leading-4 text-white/40">Isi agar ketukan vokal mengikuti frasa asli. Kosongkan untuk ekstraksi lirik otomatis (ASR).</span>
-              </label>
-              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr]">
-                <select value={remixGenre} onChange={(e) => setRemixGenre(e.target.value)} className="rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
-                  {(catalog.genres || []).map((g) => {
-                    const id = g.id || g
-                    return <option key={id} value={id}>{g.label || id}</option>
-                  })}
-                </select>
-                <input value={remixPrompt} onChange={(e) => setRemixPrompt(e.target.value)} placeholder="Arahan tambahan (opsional)" className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-cyan/60" />
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-white/45">Gender vokal cover</span>
-                  <select value={remixGender} disabled={!!identityPersona} onChange={(e) => setRemixGender(e.target.value)} className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none disabled:opacity-60">
-                    {VOCAL_GENDERS.map((g) => (
-                      <option key={g.id} value={g.id}>{g.id === 'auto' ? 'Ikuti gender/persona' : g.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <div className="flex items-end">
-                  <p className="text-[11px] leading-5 text-white/50">
-                    {identityPersona
-                      ? `Persona "${identityPersona.name}" aktif — suara & gender mengikuti persona.`
-                      : personaId
-                        ? 'Persona gaya aktif — pilih gender di samping.'
-                        : 'Pilih persona di bawah untuk memakai suara virtual/rekaman.'}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-3">
-                <label className="block">
-                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-white/45">Engine cover</span>
-                  <select value={remixEngine} onChange={(e) => {
-                    const next = e.target.value
-                    setRemixEngine(next)
-                    if (next === 'arrangement') setRemixPitch('0')
-                    else if (next === 'voice' && remixPitch === '0') setRemixPitch('auto')
-                  }} className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
-                    <option value="mulacover">⭐ MuLaCover — Melodi & Chord Asli + Aransemen Baru (Disarankan)</option>
-                    <option value="arrangement">🎚️ Aransemen Baru (MuLaCover) + Timpa Vokal Asli (Demucs Stem)</option>
-                    <option value="voice">🎤 Voice-conversion (Seed-VC) + Aransemen Baru (MuLaCover)</option>
-                    <option value="diffrhythm">⚡ DiffRhythm — Reimagine Melodi Baru (Apache 2.0)</option>
-                    <option value="heartmula">📝 HeartMuLa — Lirik Terkunci, Melodi Baru</option>
-                    <option value="ace-step">Draft Cepat (ACE-Step — Kualitas Terbatas)</option>
-                    <option value="">🤖 Otomatis — MuLaCover → Arrangement → DiffRhythm</option>
-                  </select>
-                </label>
-                <p className="mt-1 text-[11px] leading-5 text-white/45">
-                  {remixEngine === 'arrangement'
-                    ? '⭐ Mode Cover YouTube (seperti Reggae Hits / Koplo Cover): vokal asli penyanyi dari sumber dipisahkan (Demucs Stem), dibersihkan, dan langsung ditimpa di atas aransemen musik baru sesuai genre pilihan (BPM & progresi chord terkunci).'
-                    : remixEngine === 'voice'
-                      ? 'Voice-conversion: vokal asli diisolasi lalu warna suaranya diganti (Seed-VC) memakai persona/gender terpilih — melodi, lirik, dan timing tetap utuh (bisa sekaligus ganti aransemen).'
-                      : remixEngine === 'diffrhythm'
-                        ? 'DiffRhythm (Apache 2.0) menyanyikan lirik sumber apa adanya dengan melodi & aransemen baru — hasil cepat, ber-vokal, dan durasi penuh.'
-                        : remixEngine === ''
-                          ? 'Otomatis memakai MuLaCover/Arrangement agar irama, melodi, dan chord asli tetap; DiffRhythm/HeartMuLa dipakai bila worker faithful tidak aktif.'
-                          : remixEngine === 'mulacover'
-                            ? 'MuLaCover menjaga melodi, chord, dan timeline asli lewat kondisi simbolik (MIDI + Chord) dan menyanyikannya ulang dengan AI.'
-                            : remixEngine === 'ace-step'
-                              ? 'ACE-Step draft cepat (25 step) dengan referensi audio.'
-                              : 'HeartMuLa mengunci lirik tetapi menggubah melodi baru.'}
-                </p>
-                {(remixEngine === 'voice' || remixEngine === 'arrangement') && (
-                  <label className="mt-2 block">
-                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-white/45">Nada vokal (pitch)</span>
-                    <select value={remixPitch} onChange={(e) => setRemixPitch(e.target.value)} className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
-                      <option value="0">0 — Pertahankan nada vokal asli (disarankan untuk Vokal Asli)</option>
-                      <option value="auto">Otomatis — geser oktaf sesuai gender target</option>
-                      <option value="2">+2 semitone — naikkan sedikit</option>
-                      <option value="-2">-2 semitone — turunkan sedikit</option>
-                      <option value="12">+12 — pria ke wanita</option>
-                      <option value="-12">-12 — wanita ke pria</option>
-                    </select>
-                  </label>
-                )}
-                {remixEngine === 'voice' && (
-                  <label className="mt-2 block">
-                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-white/45">Sumber suara</span>
-                    <select value={remixVoiceMode} onChange={(e) => setRemixVoiceMode(e.target.value)} className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
-                      <option value="manual">Saya pilih (persona / gender)</option>
-                      <option value="auto">AI Klipin pilih otomatis</option>
-                    </select>
-                  </label>
-                )}
-                {remixEngine === 'voice' && (
-                  <label className="mt-2 flex items-center gap-2 text-[11px] text-white/65">
-                    <input type="checkbox" checked={remixRestyle} onChange={(e) => setRemixRestyle(e.target.checked)} className="accent-cyan" />
-                    Ganti aransemen ke genre (restyle instrumental)
-                  </label>
-                )}
-              </div>
-              <div className="mt-3 flex items-center gap-3 text-[11px] text-white/55">
-                <span>Ikuti lagu: {Math.round(remixStrength * 100)}%</span>
-                <input type="range" min="0.1" max="0.9" step="0.1" value={remixStrength} onChange={(e) => setRemixStrength(Number(e.target.value))} className="flex-1 accent-cyan" />
-              </div>
-              <label className="mt-3 flex items-start gap-2 rounded-lg border border-white/10 bg-black/20 p-2.5 text-[11px] leading-5 text-white/60">
-                <input type="checkbox" checked={remixRightsConfirmed} onChange={(e) => setRemixRightsConfirmed(e.target.checked)} className="mt-0.5 accent-cyan" />
-                <span>Saya memiliki hak/izin memakai lagu sumber ini untuk membuat cover.</span>
-              </label>
-              <button type="button" onClick={remixFromUrl} disabled={!remixUrl.trim() || remixBusy || busy || !remixRightsConfirmed} className="mt-3 w-full rounded-lg border border-cyan/40 bg-cyan/10 px-3 py-2.5 text-sm font-black text-cyan-soft transition hover:border-cyan disabled:opacity-40">
-                {remixBusy ? 'Ekstrak lirik & membuat cover…' : '🔁 Buat cover dari link'}
-              </button>
-            </section>}
-
             {studioTab === 'cover' && (
-              <CoverCreate user={user} authChecked={authChecked} onSignIn={onSignIn} embedded />
+              <div className="space-y-4">
+                <div className="inline-flex w-full rounded-lg bg-[#18181d] p-0.5">
+                  {[{ id: 'url', label: 'Dari link YouTube', icon: 'link' }, { id: 'upload', label: 'Upload file', icon: 'upload' }].map((t) => (
+                    <button key={t.id} type="button" onClick={() => setCoverSourceTab(t.id)}
+                      className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[12px] font-medium transition ${
+                        coverSourceTab === t.id ? 'bg-[#2a2a32] text-[#f4f4f6]' : 'text-[#8e8e99] hover:text-[#f4f4f6]'}`}>
+                      <StudioIcon name={t.icon} className="h-3.5 w-3.5" />{t.label}
+                    </button>
+                  ))}
+                </div>
+
+                {coverSourceTab === 'upload' ? (
+                  <CoverCreate user={user} authChecked={authChecked} onSignIn={onSignIn} embedded />
+                ) : (
+                  <div className="space-y-3.5">
+                    <div>
+                      <label className={labelCls}>Link lagu sumber</label>
+                      <input value={remixUrl} onChange={(e) => setRemixUrl(e.target.value)}
+                        placeholder="https://www.youtube.com/watch?v=…" className={fieldCls} />
+                    </div>
+
+                    <div>
+                      <label className={labelCls}>Mode cover</label>
+                      <select value={remixEngine} onChange={(e) => {
+                        const next = e.target.value
+                        setRemixEngine(next)
+                        if (next === 'arrangement') setRemixPitch('0')
+                        else if (next === 'voice' && remixPitch === '0') setRemixPitch('auto')
+                      }} className={fieldCls}>
+                        <option value="voice">Ganti suara (Seed-VC) + aransemen genre baru</option>
+                        <option value="arrangement">Vokal asli + aransemen genre baru</option>
+                        <option value="mulacover">MuLaCover — AI nyanyi ulang, melodi &amp; chord asli</option>
+                        <option value="diffrhythm">DiffRhythm — melodi baru</option>
+                        <option value="heartmula">HeartMuLa — lirik terkunci, melodi baru</option>
+                        <option value="ace-step">ACE-Step — draft cepat</option>
+                        <option value="">Otomatis</option>
+                      </select>
+                      <p className="mt-1.5 text-[11px] leading-[1.5] text-[#71717a]">
+                        {remixEngine === 'voice'
+                          ? 'Vokal asli dipisah (Demucs 4-stem), warna suaranya diganti ke gender/persona target. Melodi, lirik, dan timing tetap; drum & bass disusun ulang mengikuti beat asli.'
+                          : remixEngine === 'arrangement'
+                            ? 'Suara penyanyi asli dipertahankan, hanya aransemen musik yang diganti ke genre pilihan dengan beat terkunci.'
+                            : remixEngine === 'mulacover'
+                              ? 'AI menyanyikan ulang dengan melodi & chord asli (MIDI + chord conditioning).'
+                              : remixEngine === 'diffrhythm'
+                                ? 'Lirik sumber dinyanyikan dengan melodi & aransemen baru.'
+                                : remixEngine === 'ace-step'
+                                  ? 'Draft cepat dengan referensi audio, kualitas terbatas.'
+                                  : remixEngine === 'heartmula'
+                                    ? 'Lirik dikunci, melodi digubah ulang.'
+                                    : 'Memilih engine faithful yang aktif secara otomatis.'}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className={labelCls}>Genre</label>
+                        <select value={remixGenre} onChange={(e) => setRemixGenre(e.target.value)} className={fieldCls}>
+                          {(catalog.genres || []).map((g) => {
+                            const id = g.id || g
+                            return <option key={id} value={id}>{g.label || id}</option>
+                          })}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Vokal</label>
+                        <select value={remixGender} disabled={!!identityPersona} onChange={(e) => setRemixGender(e.target.value)} className={fieldCls}>
+                          {VOCAL_GENDERS.map((g) => (
+                            <option key={g.id} value={g.id}>{g.id === 'auto' ? 'Ikuti persona' : g.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    {identityPersona && (
+                      <p className="-mt-1.5 text-[11px] text-[#71717a]">Persona “{identityPersona.name}” aktif — suara mengikuti persona.</p>
+                    )}
+
+                    {(remixEngine === 'voice' || remixEngine === 'arrangement') && (
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className={labelCls}>Nada vokal</label>
+                          <select value={remixPitch} onChange={(e) => setRemixPitch(e.target.value)} className={fieldCls}>
+                            <option value="0">Asli (0)</option>
+                            <option value="auto">Otomatis</option>
+                            <option value="2">+2 semitone</option>
+                            <option value="-2">-2 semitone</option>
+                            <option value="12">+12 (pria → wanita)</option>
+                            <option value="-12">-12 (wanita → pria)</option>
+                          </select>
+                        </div>
+                        {remixEngine === 'voice' && (
+                          <div>
+                            <label className={labelCls}>Sumber suara</label>
+                            <select value={remixVoiceMode} onChange={(e) => setRemixVoiceMode(e.target.value)} className={fieldCls}>
+                              <option value="manual">Persona / gender</option>
+                              <option value="auto">Pilih otomatis</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {remixEngine === 'voice' && (
+                      <label className="flex items-center gap-2 text-[12px] text-[#a1a1aa]">
+                        <input type="checkbox" checked={remixRestyle} onChange={(e) => setRemixRestyle(e.target.checked)} className="h-3.5 w-3.5 accent-[#f59e0b]" />
+                        Ganti aransemen ke genre
+                      </label>
+                    )}
+
+                    <div>
+                      <label className={labelCls}>Lirik (opsional)</label>
+                      <textarea value={remixLyrics} onChange={(e) => setRemixLyrics(e.target.value)} rows={5}
+                        placeholder={'Kosongkan untuk ekstraksi otomatis.\n[Verse]\nsatu baris = satu frasa vokal'}
+                        className={`${fieldCls} resize-y font-mono text-[12px] leading-5`} />
+                    </div>
+
+                    <div>
+                      <label className={labelCls}>Arahan tambahan</label>
+                      <input value={remixPrompt} onChange={(e) => setRemixPrompt(e.target.value)} placeholder="opsional" className={fieldCls} />
+                    </div>
+
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
+                        <span>Kemiripan dengan lagu asli</span>
+                        <span className="font-mono tabular-nums text-[#71717a]">{Math.round(remixStrength * 100)}%</span>
+                      </div>
+                      <input type="range" min="0.1" max="0.9" step="0.1" value={remixStrength}
+                        onChange={(e) => setRemixStrength(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
+                    </div>
+
+                    <label className="flex items-start gap-2 text-[12px] leading-5 text-[#a1a1aa]">
+                      <input type="checkbox" checked={remixRightsConfirmed} onChange={(e) => setRemixRightsConfirmed(e.target.checked)} className="mt-1 h-3.5 w-3.5 accent-[#f59e0b]" />
+                      <span>Saya punya hak/izin memakai lagu sumber ini.</span>
+                    </label>
+
+                    <button type="button" onClick={remixFromUrl}
+                      disabled={!remixUrl.trim() || remixBusy || busy || !remixRightsConfirmed}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#f59e0b] px-4 py-2.5 text-[13px] font-semibold text-[#0e0e11] transition hover:bg-[#fbbf24] disabled:cursor-not-allowed disabled:opacity-40">
+                      {remixBusy ? <><Spinner className="h-3.5 w-3.5" /> Menyiapkan cover…</> : 'Create cover'}
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
+
 
             {studioTab !== 'cover' && (<>
 
@@ -2620,63 +2696,69 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             )}
             </>)}
           </div>
+          </div>
         </section>
 
-        {/* Pane 2 (Center): Suno Workspace Song List, Active Takes & Inspire */}
-        <section className="space-y-4">
-          {/* Active Render / Live Takes Card — always visible during Create OR Cover! */}
+                {/* Pane 2 (Center): Song List, Active Takes & Inspire */}
+        <section className={`min-w-0 flex-1 p-4 ${mobilePane === 'songs' ? 'block' : 'hidden'} xl:block`}>
+          {/* Active Render / Live Takes Card */}
           {(running || working || takes.length > 1 || jobError) && (
-            <div className="rounded-2xl border border-[#ff2d78]/40 bg-gradient-to-r from-[#26122c] via-[#161926] to-[#111c2d] p-4 shadow-lg">
+            <div className="mb-4 rounded-xl border border-[#2c2c35] bg-[#141418] p-3.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-[#ff5a1f]" />
-                  <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-white/80">
-                    {running || working ? 'Live Render Queue' : 'Take Comparison'}
+                  <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-[#f59e0b]" />
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-[#a1a1aa]">
+                    {running || working ? 'Memproses' : 'Hasil Take'}
                   </span>
                   {job?.metadata?.cover_mode && (
-                    <span className="rounded-full border border-cyan/40 bg-cyan/15 px-2 py-0.5 font-mono text-[9px] font-bold uppercase text-cyan-soft">
+                    <span className="rounded border border-[#f59e0b]/30 bg-[#f59e0b]/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#f59e0b]">
                       COVER · {job?.metadata?.cover_engine || job?.provider || 'mulacover'}
                     </span>
                   )}
                 </div>
-                <span className="font-mono text-[11px] text-white/60">
+                <span className="font-mono text-[11px] tabular-nums text-[#71717a]">
                   {formatClock(elapsed)} · {progress}%
                 </span>
               </div>
-              <p className="mt-1 text-xs font-semibold text-white/85">
+              <p className="mt-1 text-xs font-medium text-[#f4f4f6]">
                 {stageText || 'Menghubungkan ke worker GPU L4…'}
               </p>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/50">
+              <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-[#26262e]">
                 <div className={`h-full rounded-full transition-all duration-500 ${
-                  job?.status === 'failed' ? 'bg-danger'
-                    : job?.status === 'completed' ? 'bg-signal' : 'bg-gradient-to-r from-[#ff5a1f] via-[#ff2d78] to-cyan'}`}
+                  job?.status === 'failed' ? 'bg-[#ef4444]'
+                    : job?.status === 'completed' ? 'bg-[#10b981]' : 'bg-[#f59e0b]'}`}
                   style={{ width: `${progress}%` }} />
               </div>
-              {takes.length > 1 && (
+
+              {takes.length > 0 && (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {takes.map((t) => {
+                  {takes.map((t, idx) => {
                     const active = job?.job_id === t.job_id
-                    const meta = STATUS_META[t.status] || null
-                    const label = t.provider?.includes('diffrhythm')
-                      ? `⚡ DiffRhythm · Take ${Number(t.take_index || 0) + 1}`
-                      : t.take_mode === 'draft' ? '⚡ A · Draft ACE-Step' : '🎤 B · Final HeartMuLa'
+                    const isTakeCompleted = t.status === 'completed'
+                    const isTakeFailed = t.status === 'failed'
                     return (
                       <button key={t.job_id} type="button" onClick={() => selectTake(t)}
-                        className={`rounded-xl border p-2.5 text-left transition ${active ? 'border-[#ff2d78] bg-[#ff2d78]/15' : 'border-white/10 bg-black/25 hover:border-[#ff2d78]/50'}`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-bold text-white">{label}</span>
-                          {meta && (
-                            <span className={`rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase ${meta.className}`}>{meta.label}</span>
-                          )}
+                        className={`flex items-center justify-between rounded-lg border p-2.5 text-left transition ${
+                          active ? 'border-[#f59e0b] bg-[#1c1c22]' : 'border-[#26262e] bg-[#18181d] hover:border-[#3f3f46]'}`}>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-[10px] font-bold text-[#f59e0b]">Take {idx + 1}</span>
+                            <span className="truncate text-xs font-medium text-[#f4f4f6]">{t.title || 'Lagu'}</span>
+                          </div>
+                          <span className="mt-0.5 block truncate font-mono text-[10px] text-[#71717a]">
+                            {t.take_mode || t.provider} · {t.metadata?.duration ? formatClock(t.metadata.duration) : ''}
+                          </span>
                         </div>
-                        <div className="mt-1 font-mono text-[10px] text-white/40">
-                          seed {t.seed} · {t.provider || '…'} · {t.metadata?.stage || t.status}
-                        </div>
+                        <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase ${
+                          isTakeCompleted ? 'text-[#10b981]' : isTakeFailed ? 'text-[#ef4444]' : 'text-[#f59e0b]'}`}>
+                          {t.status}
+                        </span>
                       </button>
                     )
                   })}
                 </div>
               )}
+
               {jobError && (
                 <div className="mt-3">
                   <Notice tone="err" title="Job gagal" text={jobError}
@@ -2686,39 +2768,38 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             </div>
           )}
 
-          {/* Suno Workspace Song Feed Card */}
-          <div className="card-chrome rounded-2xl border border-white/10 bg-[#12141d] p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+          {/* Workspace Song Feed */}
+          <div className="rounded-xl border border-[#26262e] bg-[#141418] p-3.5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-[#26262e] pb-3">
               <div>
-                <h3 className="text-sm font-black tracking-tight text-white">Riwayat lagu & Workspace</h3>
-                <p className="text-[11px] text-white/45">
-                  Klik lagu untuk membuka player, waveform, dan lirik karaoke di panel kanan.
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[#d4d4d8]">Riwayat Lagu &amp; Library</h3>
+                <p className="text-[11px] text-[#71717a]">
+                  Pilih lagu untuk memutar di player dan melihat lirik karaoke.
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <input value={historyQuery}
                   onChange={(e) => { setHistoryQuery(e.target.value); loadHistory(e.target.value) }}
-                  placeholder="Cari judul/genre…" aria-label="Cari riwayat"
-                  className="w-40 rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] text-white outline-none focus:border-cyan/60" />
-                {historyBusy && <Spinner className="h-3.5 w-3.5" />}
+                  placeholder="Cari lagu / genre…" aria-label="Cari riwayat"
+                  className="w-36 rounded-md border border-[#26262e] bg-[#1c1c22] px-2.5 py-1 text-[11px] text-[#f4f4f6] outline-none placeholder:text-[#5c5c66] focus:border-[#52525b]" />
+                {historyBusy && <Spinner className="h-3 w-3" />}
                 <button type="button" onClick={() => loadHistory(historyQuery)} disabled={historyBusy || !user}
-                  className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-bold text-white/70 transition hover:border-cyan/50 disabled:opacity-40">
-                  ↻ Segarkan
+                  className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2.5 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:bg-[#26262e] hover:text-[#f4f4f6] disabled:opacity-40">
+                  Segarkan
                 </button>
               </div>
             </div>
 
             {!user ? (
-              <p className="py-6 text-center text-sm text-white/40">
-                Masuk untuk melihat riwayat lagu dan memutar ulang hasil sebelumnya.
+              <p className="py-6 text-center text-xs text-[#71717a]">
+                Masuk untuk melihat riwayat lagu dan memutar hasil sebelumnya.
               </p>
             ) : historyList.length === 0 ? (
-              <p className="py-6 text-center text-sm text-white/40">
-                Belum ada lagu. Take pertama yang dibuat akan tercatat di sini beserta
-                status dan pesan error-nya bila gagal.
+              <p className="py-6 text-center text-xs text-[#71717a]">
+                Belum ada lagu. Buat take pertama untuk melihat hasilnya di sini.
               </p>
             ) : (
-              <div className="max-h-[680px] space-y-2 overflow-y-auto pr-1">
+              <div className="max-h-[640px] space-y-1.5 overflow-y-auto pr-1">
                 {historyList.map((entry) => {
                   const meta = STATUS_META[entry.status] || null
                   const label = entry.metadata?.genre_label || entry.genre || '—'
@@ -2735,67 +2816,49 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                           openHistoryJob(entry)
                         }
                       }}
-                      title={entry.status === 'completed' ? 'Buka di player' : 'Lihat detail & error'}
-                      className={`group flex items-center gap-3.5 rounded-xl border p-2.5 text-left transition ${
+                      className={`group flex items-center gap-3 rounded-lg border p-2 text-left transition ${
                         isSelected
-                          ? 'border-[#ff2d78]/60 bg-gradient-to-r from-[#ff2d78]/15 to-cyan/10 shadow-md'
-                          : 'border-white/10 bg-black/25 hover:border-white/25 hover:bg-white/[0.04]'}`}>
-                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-white/15 bg-gradient-to-br from-magenta/20 to-cyan/20">
+                          ? 'border-[#f59e0b]/50 bg-[#1c1c22]'
+                          : 'border-transparent bg-[#18181d] hover:border-[#26262e] hover:bg-[#1c1c22]'}`}>
+                      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md bg-[#26262e]">
                         {thumb ? (
                           <img src={resolveMediaAsset(thumb)} alt="" loading="lazy"
                             className="h-full w-full object-cover" />
                         ) : (
-                          <span className="flex h-full w-full items-center justify-center">
-                            <Icon name="music" className="h-5 w-5 text-white/50" />
+                          <span className="flex h-full w-full items-center justify-center text-[#71717a]">
+                            <Icon name="music" className="h-4 w-4" />
                           </span>
                         )}
                         {isSelected && playing && (
-                          <span className="absolute inset-0 flex items-center justify-center bg-black/55">
-                            <Equalizer playing bars={4} className="h-5 w-6" />
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/60">
+                            <Equalizer playing bars={3} className="h-3 w-4" />
                           </span>
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-1.5">
-                            <span className="truncate text-sm font-bold text-white">
+                            <span className="truncate text-xs font-medium text-[#f4f4f6]">
                               {entry.title || entry.job_id}
                             </span>
                             {isCover && (
-                              <span className="shrink-0 rounded border border-cyan/35 bg-cyan/10 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase text-cyan-soft">
+                              <span className="shrink-0 rounded bg-[#26262e] px-1 py-0.5 font-mono text-[8px] font-semibold uppercase text-[#f59e0b]">
                                 COVER
-                              </span>
-                            )}
-                            {entry.provider && (
-                              <span className="hidden shrink-0 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[8px] text-white/55 sm:inline">
-                                {entry.provider}
                               </span>
                             )}
                           </div>
                           {meta && (
-                            <span className={`shrink-0 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase ${meta.className}`}>
+                            <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase ${meta.className}`}>
                               {meta.label}
                             </span>
                           )}
                         </div>
-                        <span className="mt-0.5 block font-mono text-[10px] text-white/45">
+                        <span className="mt-0.5 block truncate font-mono text-[10px] text-[#71717a]">
                           {label} · {lang} · {formatClock(entry.metadata?.duration || entry.duration || 0)}
                           {typeof entry.created_at === 'number' && (
                             <> · {formatHistoryStamp(entry.created_at)}</>
                           )}
                         </span>
-                        {entry.status === 'completed' && entry.audio_path && (
-                          <span className="mt-1.5 block" onClick={(e) => e.stopPropagation()}
-                            onKeyDown={(e) => e.stopPropagation()}>
-                            <audio src={resolveMediaAsset(entry.audio_path)} controls
-                              preload="none" className="h-8 w-full" />
-                          </span>
-                        )}
-                        {entry.status === 'failed' && entry.error && (
-                          <span className="mt-1.5 line-clamp-2 rounded bg-danger/10 p-1.5 text-[11px] leading-4 text-danger">
-                            {entry.error}
-                          </span>
-                        )}
                       </div>
                     </div>
                   )
@@ -2804,62 +2867,57 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             )}
           </div>
 
-          {/* Suno Inspire Bar */}
-          <div className="card-chrome rounded-2xl border border-white/10 bg-[#12141d] p-4">
+          {/* Inspire Bar */}
+          <div className="mt-4 rounded-xl border border-[#26262e] bg-[#141418] p-3.5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-white">✨ Inspire — buat dari lagu acuan</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[#d4d4d8]">Inspire — Kombinasi Lagu Acuan</h3>
               <button type="button" onClick={applyInspire} disabled={!inspireIds.length || !user}
-                className="rounded-full border border-magenta/40 bg-magenta/10 px-3 py-1 text-[11px] font-bold text-white transition hover:border-magenta disabled:opacity-40">
-                Terapkan ke form ({inspireIds.length})
+                className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2.5 py-1 text-[11px] font-medium text-[#f4f4f6] transition hover:bg-[#26262e] disabled:opacity-40">
+                Terapkan ({inspireIds.length})
               </button>
             </div>
-            <p className="mb-2.5 text-[11px] leading-5 text-white/45">
-              Pilih beberapa lagu yang kamu suka untuk menggabungkan gaya, genre dominan, BPM, dan key-nya.
+            <p className="mb-2 text-[11px] text-[#71717a]">
+              Pilih beberapa lagu acuan untuk menggabungkan style tags, genre dominan, BPM, dan key.
             </p>
             {!user || historyList.length === 0 ? (
-              <p className="text-xs text-white/40">Belum ada lagu acuan. Lagu selesai akan muncul di sini.</p>
+              <p className="text-xs text-[#52525b]">Belum ada lagu acuan.</p>
             ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {historyList.filter((e) => e.status === 'completed').slice(0, 12).map((entry) => {
+              <div className="flex flex-wrap gap-1">
+                {historyList.filter((e) => e.status === 'completed').slice(0, 10).map((entry) => {
                   const on = inspireIds.includes(entry.job_id)
                   return (
                     <button key={entry.job_id} type="button" onClick={() => toggleInspire(entry.job_id)}
-                      className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
-                        on ? 'border-magenta/60 bg-magenta/20 text-white' : 'border-white/10 bg-white/5 text-white/55 hover:text-white'}`}>
+                      className={`rounded-md border px-2 py-0.5 text-[11px] font-medium transition ${
+                        on ? 'border-[#f59e0b]/50 bg-[#f59e0b]/15 text-[#f59e0b]' : 'border-[#26262e] bg-[#18181d] text-[#8e8e99] hover:text-[#f4f4f6]'}`}>
                       {on ? '✓ ' : ''}{entry.title || entry.job_id}
                     </button>
                   )
                 })}
               </div>
             )}
-            {inspireInfo && <p className="mt-2 text-[11px] leading-4 text-signal">{inspireInfo}</p>}
+            {inspireInfo && <p className="mt-2 text-[11px] text-[#f59e0b]">{inspireInfo}</p>}
           </div>
 
           {feed.length > 0 && (
-            <div className="card-chrome rounded-2xl border border-white/10 bg-[#12141d] p-4">
-              <h3 className="mb-1 text-sm font-bold text-white">🌐 Feed publik</h3>
-              <p className="mb-3 text-xs text-white/40">
-                Lagu yang dibagikan kreator lain — tekan Share pada lagumu untuk tampil di sini.
-              </p>
+            <div className="mt-4 rounded-xl border border-[#26262e] bg-[#141418] p-3.5">
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#d4d4d8]">Feed Publik</h3>
+              <p className="mb-3 text-[11px] text-[#71717a]">Lagu yang dibagikan oleh kreator lain.</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {feed.map((song) => (
-                  <div key={song.job_id} className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div key={song.job_id} className="flex items-start gap-2.5 rounded-lg border border-[#26262e] bg-[#18181d] p-2.5">
                     {song.cover_path ? (
                       <img src={resolveMediaAsset(song.cover_path)} alt="" loading="lazy"
-                        className="h-12 w-12 shrink-0 rounded-lg border border-white/15 object-cover" />
+                        className="h-10 w-10 shrink-0 rounded object-cover" />
                     ) : (
-                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-gradient-to-br from-magenta/20 to-cyan/20">
-                        <Icon name="music" className="h-5 w-5 text-white/50" />
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-[#26262e] text-[#71717a]">
+                        <Icon name="music" className="h-4 w-4" />
                       </span>
                     )}
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs font-bold text-white">{song.title}</div>
-                      <div className="mt-0.5 font-mono text-[10px] text-white/40">
-                        {song.genre} · {song.language} · {formatClock(song.duration || 0)}
+                      <div className="truncate text-xs font-medium text-[#f4f4f6]">{song.title}</div>
+                      <div className="mt-0.5 font-mono text-[10px] text-[#71717a]">
+                        {song.genre} · {formatClock(song.duration || 0)}
                       </div>
-                      {song.audio_path && (
-                        <audio src={resolveMediaAsset(song.audio_path)} controls preload="none" className="mt-1.5 h-8 w-full" />
-                      )}
                     </div>
                   </div>
                 ))}
@@ -2868,153 +2926,86 @@ export default function Music({ user, authChecked = false, onSignIn }) {
           )}
         </section>
 
-        {/* Pane 3 (Right): Suno Song Inspector, Cover Art Hero, Waveform & Karaoke Lyrics */}
-        <section className="space-y-4">
-          <div className="relative overflow-hidden rounded-2xl border border-magenta/30 bg-gradient-to-br from-[#28112f] via-navy-2 to-[#101e3d] p-5 shadow-neon-magenta/20">
-            <div className="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-magenta/20 blur-3xl" />
-            <div className="absolute -bottom-16 left-10 h-48 w-48 rounded-full bg-cyan/20 blur-3xl" />
-
-            <div className="relative space-y-4">
-              <div className="flex items-start gap-4">
-                <div className="relative h-32 w-32 shrink-0 overflow-hidden rounded-2xl border border-white/20 bg-black/40 shadow-neon-magenta/30">
-                  {coverSrc
-                    ? <img src={coverSrc} alt="Cover art" className="h-full w-full object-cover" />
-                    : (
-                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-magenta/30 to-cyan/30">
-                        <Icon name="music" className="h-10 w-10 text-white/60" />
-                      </div>
-                    )}
-                  {coverSource && (
-                    <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[8px] text-white/70 shadow-sm">
-                      {String(coverSource).startsWith('pexels') ? 'pexels' : coverSource}
-                    </span>
+        {/* Pane 3 (Right): Selected Song Inspector, Cover Art & Lyrics */}
+        <section className="w-full shrink-0 border-t border-[#26262e] p-4 xl:w-[350px] xl:border-l xl:border-t-0">
+          <div className="space-y-4 xl:sticky xl:top-[105px] xl:max-h-[calc(100vh-105px)] xl:overflow-y-auto">
+            <div className="rounded-xl border border-[#26262e] bg-[#141418] p-3.5">
+              <div className="flex items-start gap-3">
+                <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[#26262e]">
+                  {coverSrc ? (
+                    <img src={coverSrc} alt="Cover art" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[#71717a]">
+                      <Icon name="music" className="h-6 w-6" />
+                    </div>
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="font-mono text-[10px] uppercase tracking-[.22em] text-white/45">
-                      {running ? 'Now creating'
-                        : job?.status === 'completed' ? 'Hasil terakhir'
-                          : job ? 'Status job' : 'Belum ada lagu'}
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-[#71717a]">
+                      {running ? 'Memproses' : job?.status === 'completed' ? 'Aktif' : 'Detail'}
                     </span>
                     {statusMeta && (
-                      <span className={`rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase ${statusMeta.className}`}>
+                      <span className={`rounded px-1.5 py-0.5 font-mono text-[9px] uppercase ${statusMeta.className}`}>
                         {statusMeta.label}
                       </span>
                     )}
                   </div>
-                  <h2 className="mt-1.5 line-clamp-2 text-lg font-black leading-snug text-white">
-                    {job?.title || title || 'Your next song'}
+                  <h2 className="mt-1 truncate text-sm font-semibold text-[#f4f4f6]">
+                    {job?.title || title || 'Belum ada lagu'}
                   </h2>
-                  <p className="mt-1 text-xs text-white/55">
-                    {(job?.metadata?.genre_label || job?.genre_label || job?.genre
-                      ? (job?.metadata?.genre_label || job?.genre_label || job?.genre)
-                      : (genreInfo?.label || genre))}{' · '}
-                    {(job?.metadata?.language_label || job?.language_label || job?.language
-                      ? (job?.metadata?.language_label || job?.language_label || job?.language)
-                      : languageLabel)}
-                    {job?.metadata?.language_secondary_label ? ` + ${job.metadata.language_secondary_label}` : ''}
-                    {job?.vocal_gender ? ` · ${(VOCAL_GENDERS.find((g) => g.id === job.vocal_gender) || {}).label || job.vocal_gender}` : ''}
-                    {' · '}{job?.provider || 'belum ada provider'}
+                  <p className="mt-0.5 truncate text-[11px] text-[#71717a]">
+                    {(job?.metadata?.genre_label || job?.genre_label || job?.genre) || genre} · {job?.provider || 'engine'}
                   </p>
-                  {job?.job_id && (
-                    <p className="mt-0.5 font-mono text-[10px] text-white/30">job {job.job_id}</p>
-                  )}
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-1.5">
+              <div className="mt-3 flex flex-wrap gap-1 border-t border-[#26262e] pt-3">
                 <button type="button" onClick={() => regenerateCover()}
                   disabled={coverBusy || job?.status !== 'completed'}
-                  title="Ganti cover (cari foto profesional baru)"
-                  className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-bold text-white/80 transition hover:border-cyan/50 disabled:opacity-40">
-                  {coverBusy ? 'Mencari…' : '↻ Ganti cover'}
+                  className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
+                  {coverBusy ? 'Mencari…' : 'Ganti cover'}
                 </button>
-                <label className="cursor-pointer rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-bold text-white/80 transition hover:border-cyan/50"
-                  title="Upload gambar sendiri (max 8 MB)">
-                  ⬆ Upload
-                  <input type="file" accept="image/*" onChange={pickCoverFile} className="hidden" />
-                </label>
                 {job?.audio_path && (
                   <a href={audioUrl} download={`${job.title || 'klipin-music'}.mp3`}
-                    className="rounded-full border border-cyan/30 bg-cyan/10 px-2.5 py-1 text-[10px] font-bold text-cyan-soft transition hover:border-cyan/60">
-                    ⬇ Unduh MP3
+                    className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6]">
+                    Unduh MP3
                   </a>
                 )}
                 {job?.lyrics_path && (
                   <a href={resolveMediaAsset(job.lyrics_path)} download="lyrics.lrc"
-                    className="rounded-full border border-cyan/30 bg-cyan/10 px-2.5 py-1 text-[10px] font-bold text-cyan-soft transition hover:border-cyan/60">
-                    ⬇ .LRC
+                    className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6]">
+                    .LRC
                   </a>
                 )}
                 {wavUrl && (
                   <a href={wavUrl} download="song.wav"
-                    className="rounded-full border border-cyan/30 bg-cyan/10 px-2.5 py-1 text-[10px] font-bold text-cyan-soft transition hover:border-cyan/60">
-                    ⬇ WAV
+                    className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6]">
+                    WAV
                   </a>
                 )}
                 {job?.status === 'completed' && (
                   <>
                     <button type="button" onClick={extendSong} disabled={extendBusy}
-                      title="Lanjutkan lagu +60 dtk dari take ini"
-                      className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-bold text-white/80 transition hover:border-cyan/50 disabled:opacity-40">
-                      {extendBusy ? '…' : '⤢ Extend +60s'}
+                      className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
+                      {extendBusy ? '…' : '+60s'}
                     </button>
                     <button type="button" onClick={loadStems} disabled={stemsBusy}
-                      title="Pisahkan vokal & musik (Demucs)"
-                      className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-bold text-white/80 transition hover:border-cyan/50 disabled:opacity-40">
-                      {stemsBusy ? '…' : '🎚️ Stems'}
+                      className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
+                      {stemsBusy ? '…' : 'Stems'}
                     </button>
                     <button type="button" onClick={savePersona}
-                      title="Simpan genre, gender vokal, dan seed lagu ini sebagai preset gaya; bukan kloning suara"
-                      className="rounded-full border border-magenta/40 bg-magenta/10 px-2.5 py-1 text-[10px] font-bold text-white/85 transition hover:border-magenta disabled:opacity-40">
-                      🎭 Simpan persona gaya
-                    </button>
-                    <button type="button" onClick={coverSong} disabled={coverSongBusy}
-                      title={`Pertahankan lirik dan melodi; ubah vokal serta aransemen ke ${genreInfo?.label || genre}`}
-                      className="rounded-full border border-cyan/30 bg-cyan/10 px-2.5 py-1 text-[10px] font-bold text-cyan-soft transition hover:border-cyan/60 disabled:opacity-40">
-                      {coverSongBusy ? '…' : '🔁 Cover faithful'}
-                    </button>
-                    <button type="button" onClick={toggleShare} disabled={shareBusy}
-                      title="Bagikan ke feed publik / tarik kembali"
-                      className={`rounded-full border px-2.5 py-1 text-[10px] font-bold transition disabled:opacity-40 ${
-                        job.is_public
-                          ? 'border-signal/50 bg-signal/10 text-signal'
-                          : 'border-white/15 bg-white/5 text-white/80 hover:border-cyan/50'}`}>
-                      {shareBusy ? '…' : job.is_public ? '🌐 Publik ✓' : '🔗 Share'}
+                      className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
+                      Simpan persona
                     </button>
                   </>
                 )}
               </div>
 
-              {stemsInfo && (
-                <p className="font-mono text-[10px] text-white/45">{stemsInfo}</p>
-              )}
-              {job?.metadata?.voice_conversion?.status === 'applied' && (
-                <p className="text-[11px] text-signal">✓ Persona suara diterapkan pada vokal.</p>
-              )}
-              {job?.metadata?.voice_conversion?.status === 'not_applied' && (
-                <p role="status" className="rounded-lg border border-warn/30 bg-warn/10 p-2 text-[11px] leading-5 text-warn">
-                  Lagu berhasil dibuat, tetapi persona suara tidak berhasil diterapkan; audio asli tetap tersedia. {job.metadata.voice_conversion.message || ''}
-                </p>
-              )}
-              {job?.metadata?.lyrics_source && (
-                <p className="font-mono text-[10px] text-white/30">
-                  lirik: {job.metadata.lyrics_source}{job.metadata.alignment ? ` · align:${job.metadata.alignment}` : ''}{job.metadata.seed != null ? ` · seed:${job.metadata.seed}` : ''}
-                  {job.metadata.bpm_detected ? ` · ${job.metadata.bpm_detected} BPM` : ''}
-                  {job.metadata.key_detected ? ` · ${job.metadata.key_detected}` : ''}
-                  {job.metadata.instrumental ? ' · instrumental' : ''}
-                  {job.metadata.gpu_sec ? ` · ${job.metadata.gpu_sec}s GPU` : ''}
-                </p>
-              )}
-              {job?.metadata?.language_secondary && (
-                <p className="rounded-lg border border-warn/25 bg-warn/5 px-2 py-1.5 text-[11px] leading-4 text-warn">
-                  Dual language: {job.metadata.language_label} → {job.metadata.language_secondary_label || job.metadata.language_secondary} · {job.metadata.language_mix_label || job.metadata.language_mix}. Review pelafalan Jawa oleh penutur asli.
-                </p>
-              )}
+              {stemsInfo && <p className="mt-2 font-mono text-[10px] text-[#71717a]">{stemsInfo}</p>}
 
               {job?.status === 'completed' ? (
-                <div className="space-y-3 pt-1">
+                <div className="mt-3 space-y-2.5 border-t border-[#26262e] pt-3">
                   <audio ref={audioRef} src={audioUrl} onEnded={() => setPlaying(false)}
                     onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} className="hidden" />
                   <MusicWaveform
@@ -3024,13 +3015,13 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                     currentTime={currentTime}
                     duration={songDuration || job?.duration || duration}
                   />
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between">
                     <button type="button" onClick={togglePlay}
-                      className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-bold text-navy shadow-lg">
-                      <Icon name={playing ? 'pause' : 'play'} className="h-4 w-4" />
-                      {playing ? 'Pause preview' : 'Play preview'}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-[#f4f4f6] px-3 py-1.5 text-xs font-semibold text-[#0e0e11] transition hover:bg-white">
+                      <Icon name={playing ? 'pause' : 'play'} className="h-3.5 w-3.5" />
+                      {playing ? 'Pause' : 'Play'}
                     </button>
-                    <span className="font-mono text-[11px] text-white/45">
+                    <span className="font-mono text-[11px] tabular-nums text-[#71717a]">
                       {formatTime(currentTime)} / {formatTime(songDuration || job?.duration || duration)}
                     </span>
                   </div>
@@ -3038,108 +3029,51 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                     max={Math.max(1, songDuration || job?.duration || duration)} step={0.1}
                     value={Math.min(currentTime, songDuration || job?.duration || duration)}
                     onChange={(e) => seekTo(Number(e.target.value))}
-                    aria-label="Seek" className="w-full accent-cyan" />
+                    aria-label="Seek" className="w-full accent-[#f59e0b]" />
                 </div>
               ) : (
-                <div>
-                  <Equalizer playing={running} bars={36} className="h-12" />
-                  {!job && (
-                    <p className="mt-2 font-mono text-[11px] uppercase tracking-widest text-white/45">
-                      Tekan Create atau pilih lagu di tengah untuk memutar
-                    </p>
-                  )}
+                <div className="mt-3 border-t border-[#26262e] pt-3">
+                  <Equalizer playing={running} bars={24} className="h-8" />
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Synchronized Karaoke Lyrics Timeline Card */}
-          <div className="card-chrome rounded-2xl border border-white/10 bg-[#12141d] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-sm font-bold text-white">
-                Lyrics timeline
-                <Equalizer playing={playing} bars={10} className="h-3.5 w-14" />
-              </h3>
-              <div className="flex items-center gap-1.5">
-                {job?.metadata?.beat_bpm && (
-                  <span title={job.metadata.beat_source === 'beat-this'
-                    ? 'Beat grid + downbeat dari model Beat This!'
-                    : 'Beat grid estimasi onset-autocorr'}
-                    className="rounded-full border border-magenta/30 bg-magenta/10 px-2 py-0.5 font-mono text-[10px] text-white/70">
-                    {Math.round(job.metadata.beat_bpm)} BPM
-                  </span>
-                )}
+            {/* Karaoke Lyrics Timeline */}
+            <div className="rounded-xl border border-[#26262e] bg-[#141418] p-3.5">
+              <div className="mb-2.5 flex items-center justify-between">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[#d4d4d8]">Lirik Timeline</h3>
                 {job?.status === 'completed' && lyricsLines.length > 0 && (
                   <button type="button" onClick={realignTimeline} disabled={realignBusy}
-                    title="Hitung ulang word alignment + beat grid dari audio"
-                    className="rounded-full border border-cyan/30 bg-cyan/10 px-2 py-0.5 font-mono text-[10px] text-cyan-soft transition hover:border-cyan disabled:opacity-40">
-                    {realignBusy ? 'Aligning.' : 'Align ulang'}
+                    className="font-mono text-[10px] text-[#f59e0b] hover:underline disabled:opacity-40">
+                    {realignBusy ? 'Aligning…' : 'Align ulang'}
                   </button>
                 )}
-                <span className="rounded-full bg-cyan/10 px-2 py-0.5 font-mono text-[10px] text-cyan-soft">
-                  {lyricsLines.length || '-'} lines
-                </span>
               </div>
+              {lyricsLines.length ? (
+                <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+                  {lyricsLines.map((line, i) => {
+                    const active = i === activeIndex
+                    return (
+                      <button key={`${line.start}-${i}`} type="button"
+                        ref={active ? activeLineRef : undefined}
+                        onClick={() => seekTo(line.start)}
+                        className={`flex w-full gap-2 rounded px-2 py-1.5 text-left text-xs transition ${
+                          active ? 'bg-[#26262e] font-medium text-[#f59e0b]' : 'text-[#a1a1aa] hover:bg-[#18181d] hover:text-[#f4f4f6]'}`}>
+                        <span className="w-9 shrink-0 font-mono text-[10px] text-[#71717a]">{formatTime(line.start)}</span>
+                        <span className="flex-1 leading-5">{line.text}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-[#52525b]">Lirik dengan timestamp karaoke akan tampil di sini setelah lagu selesai.</p>
+              )}
             </div>
-            {realignInfo && (
-              <p className="mb-2 text-[11px] leading-4 text-cyan-soft">{realignInfo}</p>
-            )}
-            {lyricsLines.length ? (
-              <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
-                {lyricsLines.map((line, i) => {
-                  const active = i === activeIndex
-                  return (
-                    <button key={`${line.start}-${i}`} type="button"
-                      ref={active ? activeLineRef : undefined}
-                      onClick={() => seekTo(line.start)}
-                      title="Klik untuk lompat ke baris ini"
-                      className={`flex w-full gap-2.5 rounded-lg border px-3 py-2 text-left transition ${
-                        active
-                          ? 'border-cyan/60 bg-cyan/15 shadow-neon-cyan/20'
-                          : 'border-white/5 bg-black/15 hover:border-cyan/30'}`}>
-                      <span className="w-11 shrink-0 font-mono text-[10px] text-cyan-soft/60">
-                        {formatTime(line.start)}
-                      </span>
-                      {active && <Equalizer playing={playing} bars={4} className="h-4 w-5 shrink-0" />}
-                      <span className={`text-xs leading-5 ${active ? 'font-bold text-white' : 'text-white/75'}`}>
-                        {active && Array.isArray(line.words) && line.words.length ? (
-                          line.words.map((word, wi) => {
-                            const singing = currentTime >= word.start && currentTime < word.end
-                            const sung = currentTime >= word.end
-                            return (
-                              <span key={`${word.start}-${wi}`}
-                                className={singing ? 'text-cyan-soft' : sung ? 'text-white' : 'text-white/45'}>
-                                {word.text}{wi < line.words.length - 1 ? ' ' : ''}
-                              </span>
-                            )
-                          })
-                        ) : line.text}
-                        {line.language && job?.metadata?.language_secondary && (
-                          <small className="ml-2 rounded border border-white/10 px-1 font-mono text-[9px] uppercase text-cyan-soft/70">{line.language}</small>
-                        )}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            ) : (
-              <p className="text-xs leading-5 text-white/40">
-                Lirik akan muncul di sini dengan timestamp karaoke setelah lagu selesai.
-                Ekspor .LRC siap dipakai di editor video.
-              </p>
-            )}
           </div>
         </section>
       </div>
 
-      <div className="mt-6 grid gap-3 text-xs text-white/45 sm:grid-cols-3">
-        <InfoCard title="HeartMuLa & DiffRhythm"
-          text="HeartMuLa & DiffRhythm (Apache 2.0) berjalan di worker Modal L4 terpisah dari Klipin Video; 100% legal untuk komersialisasi." />
-        <InfoCard title="Genre → bahasa vokal"
-          text="Genre daerah mengunci bahasa vokal (Pop Jawa → Jawa). Nyalakan “Timpa bahasa vokal” untuk memilih sendiri." />
-        <InfoCard title="Cover art profesional"
-          text="Cover otomatis dari Pexels (gratis) sesuai genre & mood, bisa diganti atau upload sendiri." />
-      </div>
+
 
       {/* Sticky Bottom Suno Transport Bar */}
       {job?.status === 'completed' && audioUrl && (

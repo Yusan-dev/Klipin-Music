@@ -23,10 +23,10 @@ const VOICE_OPTIONS = [
 ]
 
 const ENGINES = [
-  { id: 'arrangement', label: '⭐ Aransemen Baru + Vokal Asli (YouTube Cover Style)' },
-  { id: 'mulacover', label: 'MuLaCover - melodi & chord asli (AI nyanyi ulang)' },
-  { id: 'diffrhythm', label: 'DiffRhythm - lagu ulang penuh Apache 2.0 (melodi baru)' },
-  { id: 'ace-step', label: 'ACE-Step - draft cepat, kualitas terbatas' },
+  { id: 'arrangement', label: 'Aransemen Baru + Vokal Asli (YouTube Cover Style)' },
+  { id: 'mulacover', label: 'MuLaCover L4 — melodi & chord asli (AI nyanyi ulang)' },
+  { id: 'diffrhythm', label: 'DiffRhythm — lagu ulang penuh Apache 2.0 (melodi baru)' },
+  { id: 'ace-step', label: 'ACE-Step — draft cepat, kualitas terbatas' },
 ]
 
 const ACCEPT = '.mp3,.wav,.m4a,.aac,.flac,.ogg,.opus,audio/*'
@@ -247,8 +247,136 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
     )
   }
 
+  if (embedded) {
+    return (
+      <div className="space-y-3.5">
+        <div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept={ACCEPT}
+            className="hidden"
+            onChange={(e) => pickFile(e.target.files?.[0])}
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDrag(false)
+              pickFile(e.dataTransfer?.files?.[0])
+            }}
+            className={`flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed px-4 py-5 text-center transition ${
+              drag ? 'border-[#f59e0b] bg-[#f59e0b]/10' : 'border-[#2c2c35] bg-[#18181d] hover:border-[#3f3f4a] hover:bg-[#1c1c22]'
+            }`}
+          >
+            <Icon name="music" className="h-5 w-5 text-[#8e8e99]" aria-hidden />
+            <span className="text-xs font-medium text-[#f4f4f6]">{L.drop}</span>
+            <span className="font-mono text-[10px] text-[#6e6e7a]">{L.dropHint}</span>
+            {file && (
+              <span className="mt-1 rounded-md border border-[#f59e0b]/40 bg-[#f59e0b]/10 px-2.5 py-0.5 text-[11px] font-medium text-[#fbbf24]">
+                {file.name} · {(file.size / 1_048_576).toFixed(1)} MB
+              </span>
+            )}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.genre}</label>
+            <select value={genre} onChange={(e) => setGenre(e.target.value)}
+              className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
+              {genres.map((g) => (
+                <option key={g.id} value={g.id}>{g.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.voice}</label>
+            <select value={voice} onChange={(e) => setVoice(e.target.value)}
+              className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
+              {VOICE_OPTIONS.map((v) => (
+                <option key={v.id} value={v.id}>{v.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.engine}</label>
+          <select value={engine} onChange={(e) => setEngine(e.target.value)}
+            className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
+            {ENGINES.map((e2) => {
+              const status = coverEngines.find((item) => item.id === e2.id)
+              const off = Boolean(status && !status.available)
+              return (
+                <option key={e2.id} value={e2.id} disabled={off}>
+                  {e2.label}{off ? ' — belum aktif di server' : ''}
+                </option>
+              )
+            })}
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.lyrics}</label>
+          <textarea
+            value={lyrics}
+            onChange={(e) => setLyrics(e.target.value)}
+            rows={4}
+            placeholder={L.lyricsHint}
+            className="w-full resize-y rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] placeholder:text-[#5c5c66] outline-none focus:border-[#52525b]"
+          />
+        </div>
+
+        <label className="flex items-start gap-2 text-xs text-[#8e8e99]">
+          <input
+            type="checkbox"
+            checked={rights}
+            onChange={(e) => setRights(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 accent-[#f59e0b]"
+          />
+          <span>{L.rights}</span>
+        </label>
+
+        {error && <p className="text-xs text-[#ef4444]">{error}</p>}
+
+        <button
+          type="button"
+          onClick={create}
+          disabled={busy || engineBlocked}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#f59e0b] px-4 py-2.5 text-xs font-semibold text-[#0e0e11] transition hover:bg-[#fbbf24] disabled:opacity-45"
+        >
+          {busy ? (<><Spinner className="h-3.5 w-3.5" /> {L.creating}</>) : L.create}
+        </button>
+
+        {groupId && (
+          <div className="space-y-2 rounded-lg border border-[#26262e] bg-[#18181d] p-3">
+            <div className="flex items-center justify-between text-[11px] text-[#8e8e99]">
+              <span>{result?.status === 'completed' ? L.done : result?.status === 'failed' ? L.failed : L.waiting}</span>
+              <span className="font-mono tabular-nums">{fmtSecs(elapsed)}</span>
+            </div>
+            <div className="h-1 w-full overflow-hidden rounded-full bg-[#26262e]">
+              <div className="h-full rounded-full bg-[#f59e0b] transition-all" style={{ width: `${progress}%` }} />
+            </div>
+            {result?.status === 'completed' && (
+              <div className="space-y-1.5 pt-1">
+                <audio src={resolveMediaAsset(result.audio_path)} controls preload="none" className="h-8 w-full" />
+                <a href={resolveMediaAsset(result.audio_path)} download className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#f59e0b] hover:underline">
+                  <Icon name="download" className="h-3.5 w-3.5" aria-hidden /> {L.download}
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div className={embedded ? '' : 'mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8'}>
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
       {!embedded && (
         <header className="mb-6">
           <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-cyan-soft">{L.eyebrow}</p>

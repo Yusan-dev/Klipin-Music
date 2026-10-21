@@ -9,7 +9,7 @@ import { IS_MUSIC_STANDALONE } from '../router.js'
 function menuLabels() {
   const en = {
     grp_workspace: 'Workspace', grp_explore: 'Explore', grp_system: 'System',
-    home: 'Dashboard', clip: 'Create Clip', music: 'Music', cover: 'Cover Create',
+    home: 'Dashboard', clip: 'Create Clip', music: 'Music', cover: 'Cover Create', music_create: 'Create',
     library: 'Library', ideas: 'Ideas',
     favorites: 'Favorites', features: 'Features', pricing: 'Pricing',
     billing: 'Billing', settings: 'Settings',
@@ -18,7 +18,7 @@ function menuLabels() {
   }
   const id = {
     grp_workspace: 'Workspace', grp_explore: 'Jelajah', grp_system: 'Sistem',
-    home: 'Dashboard', clip: 'Buat Klip', music: 'Music', cover: 'Buat Cover',
+    home: 'Dashboard', clip: 'Buat Klip', music: 'Music', cover: 'Buat Cover', music_create: 'Buat Lagu',
     library: 'Library', ideas: 'Ideas',
     favorites: 'Favorit', features: 'Fitur', pricing: 'Harga',
     billing: 'Tagihan', settings: 'Pengaturan',
@@ -44,7 +44,7 @@ function SidebarBody({ route, collapsed, onNavigate, onToggle }) {
     {
       label: L.grp_workspace,
       items: [
-        { key: 'music', route: 'music', label: 'Suno Studio', path: '#/music', icon: 'music' },
+        { key: 'music', route: 'music', label: L.music_create, path: '#/music', icon: 'music' },
         { key: 'cover', route: 'music', label: L.cover, path: '#/cover', icon: 'features' },
       ],
     },
@@ -113,7 +113,10 @@ function SidebarBody({ route, collapsed, onNavigate, onToggle }) {
             )}
             <div className="space-y-1">
               {g.items.map((it) => {
-                const active = route.name === it.route
+                const hashSeg = (typeof window !== 'undefined' ? window.location.hash : '').replace(/^#\/?/, '').split(/[?/]/)[0]
+                const active = IS_MUSIC_STANDALONE && it.route === 'music'
+                  ? route.name === 'music' && ((it.key === 'cover') === (hashSeg === 'cover'))
+                  : route.name === it.route
                 return (
                   <a
                     key={it.key}
@@ -147,7 +150,7 @@ function SidebarBody({ route, collapsed, onNavigate, onToggle }) {
 
       {/* system status */}
       <div className="space-y-3 border-t border-border-soft px-5 py-4">
-        {!collapsed && (
+        {!collapsed && !IS_MUSIC_STANDALONE && (
           <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-white/40">
             <div className="flex items-center gap-2">
               <StatusDot tone="ok" />

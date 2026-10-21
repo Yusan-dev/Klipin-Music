@@ -4,6 +4,7 @@ import { isSynced, lastSyncAt, loadFavorites, syncFavorites } from '../criteriaS
 import { Button } from './ui.jsx'
 import Icon from './Icon.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
+import { IS_MUSIC_STANDALONE } from '../router.js'
 
 const CRUMBS = {
   home: 'SYS.DASHBOARD',
@@ -49,6 +50,7 @@ export default function Topbar({ route, user, authChecked, onSignIn, onSignOut, 
           </button>
         )}
         {/* quick-access icon buttons — one tap to the most-used actions */}
+        {!IS_MUSIC_STANDALONE && (
         <button
           type="button"
           onClick={() => navigate('#/library')}
@@ -58,6 +60,7 @@ export default function Topbar({ route, user, authChecked, onSignIn, onSignOut, 
         >
           <Icon name="library" className="h-4 w-4" />
         </button>
+        )}
         <button
           type="button"
           onClick={() => navigate('#/pricing')}

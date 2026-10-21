@@ -42,17 +42,23 @@ export default function AppShell({ route, navigate, onNewClip, user, authChecked
     else navigate(path)
   }
 
+  const isMusicStudio = route?.name === 'music'
+  const effectiveCollapsed = isMusicStudio ? true : collapsed
+
   return (
-    <div className="relative isolate min-h-screen overflow-x-hidden bg-navy text-white">
-      {/* Brand retro-futurism backdrop: organic line field + technical circuit,
-          fixed behind everything, non-interactive. Vignette adds depth. */}
-      <div className="klip-bg-lines" aria-hidden="true" />
-      <div className="klip-bg-circuit" aria-hidden="true" />
-      <div className="klip-bg-vignette" aria-hidden="true" />
+    <div className={`relative isolate min-h-screen overflow-x-hidden text-white ${isMusicStudio ? 'bg-[#0e0e11]' : 'bg-navy'}`}>
+      {/* Brand retro-futurism backdrop: hidden in Music Studio to keep a clean matte Suno surface */}
+      {!isMusicStudio && (
+        <>
+          <div className="klip-bg-lines" aria-hidden="true" />
+          <div className="klip-bg-circuit" aria-hidden="true" />
+          <div className="klip-bg-vignette" aria-hidden="true" />
+        </>
+      )}
 
       <Sidebar
         route={route}
-        collapsed={collapsed}
+        collapsed={effectiveCollapsed}
         open={drawerOpen}
         onClose={close}
         onToggle={toggleCollapsed}
@@ -60,7 +66,7 @@ export default function AppShell({ route, navigate, onNewClip, user, authChecked
       />
 
       {/* main column (offset by sidebar rail on desktop) */}
-      <div className={`relative z-10 flex min-h-screen flex-col transition-[padding] ${collapsed ? 'lg:pl-16' : 'lg:pl-60'}`}>
+      <div className={`relative z-10 flex min-h-screen flex-col transition-[padding] ${effectiveCollapsed ? 'lg:pl-16' : 'lg:pl-60'}`}>
         <Topbar
           route={route}
           user={user}
