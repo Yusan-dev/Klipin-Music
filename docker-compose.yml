@@ -12,7 +12,7 @@ name: klipin-music
 
 services:
   music-api:
-    build: ./backend
+    image: klipin-new-api:latest
     container_name: klipin-music-api
     env_file: backend/.env
     environment:

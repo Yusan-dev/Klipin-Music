@@ -180,8 +180,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:5174",
+        "http://localhost:5175",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
         "https://klip-in.id",
         "https://www.klip-in.id",
     ],
@@ -999,7 +1001,8 @@ class MusicGenerateRequest(BaseModel):
     music_key: str = ""               # hint mis. "C", "A minor", '' = bebas
     persona_id: str = ""              # voice/style lock dari persona tersimpan
     style_tags: str = ""              # tag tambahan (diisi otomatis dari persona)
-    negative_tags: str = ""           # Suno-style "Exclude Styles" (tag yang dihindari)
+    negative_tags: str = ""           # legacy alias untuk Exclude Styles
+    exclude_styles: str = ""          # Suno-style "Exclude Styles" (tag yang dihindari)
     weirdness: int = 50               # creative slider 0-100 (Suno "Weirdness")
     style_influence: int = 50         # creative slider 0-100 (Suno "Style Influence")
 
@@ -2479,14 +2482,37 @@ async def music_extend(job_id: str, req: MusicExtendRequest, _user: dict = Depen
     now = time.time()
     lyrics = ((parent.get("lyrics") or "") + "\n[Extended]\n" + extra)[:6000]
     from music import _normalize_provider
+    # Extend harus mewarisi SELURUH konteks gaya induk. Sebelumnya style tags,
+    # Exclude Styles, slider kreativitas, BPM/key, dan persona ikut hilang,
+    # sehingga lanjutan lagu terdengar seperti lagu yang berbeda.
+    parent_meta = parent.get("metadata") or {}
     spec = {"title": parent.get("title", ""), "prompt": parent.get("prompt", ""),
             "lyrics": lyrics, "genre": parent.get("genre", "pop"),
             "language": parent.get("language", "id"),
             "provider": _normalize_provider(parent.get("provider", "auto")),
-            "seed": (parent.get("seed") or 0) + 1000, "duration": new_duration,
+            "duration": new_duration,
+            "language_secondary": parent_meta.get("language_secondary", ""),
+            "language_mix": parent_meta.get("language_mix", "none"),
             "vocal_gender": parent.get("vocal_gender", "auto"), "full_song": True,
             "take_mode": "final", "take_index": 0, "group_id": "mg_" + _new_job_id(),
-            "parent_job_id": job_id, "lora_id": parent.get("lora_id", "")}
+            "parent_job_id": job_id, "lora_id": parent.get("lora_id", ""),
+            "style_tags": parent_meta.get("style_tags", ""),
+            "negative_tags": parent_meta.get("negative_tags", ""),
+            "exclude_styles": parent_meta.get("exclude_styles", ""),
+            "weirdness": int(parent_meta.get("weirdness", 50) or 50),
+            "style_influence": int(parent_meta.get("style_influence", 50) or 50),
+            "bpm": int(parent.get("bpm") or 0),
+            "music_key": parent.get("music_key", "") or "",
+            "persona_id": parent.get("persona_id", "") or "",
+            "instrumental": bool(parent.get("instrumental")),
+            "seed": (parent.get("seed") or 0) + 1000}
+    # Lagu induk jadi referensi audio supaya karakter vokal & warna bunyi
+    # tetap konsisten pada hasil extend.
+    parent_audio = str(parent.get("audio_path") or "")
+    if parent_audio.startswith("/videos/"):
+        parent_file = OUTPUT_DIR / job_id / parent_audio.split("/")[-1]
+        if parent_file.is_file() and parent_file.stat().st_size > 1024:
+            spec["ref_audio_path"] = str(parent_file)
     from billing import enabled as _billing_enabled
     if _billing_enabled():
         from billing import reserve as _billing_reserve

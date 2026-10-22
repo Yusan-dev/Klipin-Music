@@ -52,10 +52,10 @@ const VOCAL_GENDERS = [
 // Engine + take controls. Values map 1:1 to MusicGenerateRequest so nothing is
 // hidden from the API. `available` is filled from the engine preflight at runtime.
 const PROVIDER_OPTIONS = [
-  { id: 'heartmula', label: 'HeartMuLa — final (default)', hint: 'Engine asli Klipin Music (Apache 2.0) untuk lagu final.' },
-  { id: 'diffrhythm', label: 'DiffRhythm — full song Apache 2.0', hint: 'Latent diffusion lagu penuh yang cepat & legal komersial.' },
-  { id: 'auto', label: 'Auto A/B — draft + final', hint: 'Dua take: draft ACE-Step cepat lalu final HeartMuLa/DiffRhythm.' },
-  { id: 'ace-step', label: 'ACE-Step — draft cepat', hint: 'Iterasi ide lebih murah, kualitas draft.' },
+  { id: 'heartmula', label: 'Klipin Studio Core (Full Song)', hint: 'Mesin utama Klipin Music untuk menghasilkan lagu komplit kualitas studio.' },
+  { id: 'diffrhythm', label: 'Klipin Commercial Engine (LRC)', hint: 'Mesin komersial berbasis difusi dengan lirik sinkron kata-demi-kata.' },
+  { id: 'auto', label: 'Auto Dual-Take — draft + final', hint: 'Dua take langsung: Take A draf cepat, Take B kualitas studio.' },
+  { id: 'ace-step', label: 'Klipin Fast Draft (~1m)', hint: 'Iterasi ide lebih cepat dan hemat sebelum render final.' },
 ]
 const TAKE_COUNTS = [
   { id: 1, label: '1 take — hemat' },
@@ -74,6 +74,12 @@ const STYLE_CHIPS = [
   'uplifting', 'melancholic', 'fast', 'slow', 'warm analog', 'dreamy reverb',
 ]
 const NEGATIVE_CHIPS = ['male vocals', 'female vocals', 'rap', 'autotune', 'screaming', 'heavy metal', 'piano']
+// Filter tab Library (Suno punya Library terpisah dari Studio).
+const LIBRARY_FILTERS = [
+  { id: 'all', label: 'Semua' },
+  { id: 'completed', label: 'Selesai' },
+  { id: 'failed', label: 'Gagal' },
+]
 const RANDOM_IDEAS = [
   'lagu tentang pulang ke kampung halaman saat senja, kenangan masa kecil penuh kehangatan',
   'tentang seseorang yang menahan rindu lewat panggilan yang tak pernah tersambung',
@@ -341,6 +347,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const [shareBusy, setShareBusy] = useState(false)
   const [coverSourceTab, setCoverSourceTab] = useState('url')
   const [feedFilter, setFeedFilter] = useState('all')
+  const [libraryFilter, setLibraryFilter] = useState('all')
   const [mobilePane, setMobilePane] = useState('create')
 
   const [playing, setPlaying] = useState(false)
@@ -1205,6 +1212,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         seed: Number.isFinite(seedValue) ? seedValue : null,
         style_tags: styleTags.trim(),
         negative_tags: negativeTags.trim(),
+        exclude_styles: negativeTags.trim(),
         weirdness: Number(weirdness),
         style_influence: Number(styleInfluence),
         lora_id: loraId.trim(),
@@ -1762,18 +1770,20 @@ export default function Music({ user, authChecked = false, onSignIn }) {
           <div className="xl:sticky xl:top-[105px] xl:max-h-[calc(100vh-105px)] xl:overflow-y-auto">
           {/* Mode switch */}
           <div className="flex items-center justify-between gap-2 px-4 pt-4">
-            <div className="inline-flex rounded-lg bg-[#18181d] p-0.5" role="group" aria-label="Mode pembuatan lagu">
-              {[
-                { id: 'custom', label: 'Custom', on: studioTab !== 'cover' && !simpleMode, go: () => { setStudioTab('create'); setSimpleMode(false) } },
-                { id: 'simple', label: 'Simple', on: studioTab !== 'cover' && simpleMode, go: () => { setStudioTab('create'); setSimpleMode(true) } },
-                { id: 'cover', label: 'Cover', on: studioTab === 'cover', go: () => setStudioTab('cover') },
-              ].map((m) => (
-                <button key={m.id} type="button" onClick={m.go} aria-pressed={m.on}
-                  className={`rounded-md px-3 py-1 text-[12px] font-medium transition ${m.on ? 'bg-[#2a2a32] text-[#f4f4f6]' : 'text-[#8e8e99] hover:text-[#f4f4f6]'}`}>
-                  {m.label}
-                </button>
-              ))}
-            </div>
+            {studioTab !== 'history' ? (
+              <div className="inline-flex rounded-lg bg-[#18181d] p-0.5" role="group" aria-label="Mode pembuatan lagu">
+                {[
+                  { id: 'custom', label: 'Custom', on: studioTab !== 'cover' && !simpleMode, go: () => { setStudioTab('create'); setSimpleMode(false) } },
+                  { id: 'simple', label: 'Simple', on: studioTab !== 'cover' && simpleMode, go: () => { setStudioTab('create'); setSimpleMode(true) } },
+                  { id: 'cover', label: 'Cover', on: studioTab === 'cover', go: () => setStudioTab('cover') },
+                ].map((m) => (
+                  <button key={m.id} type="button" onClick={m.go} aria-pressed={m.on}
+                    className={`rounded-md px-3 py-1 text-[12px] font-medium transition ${m.on ? 'bg-[#2a2a32] text-[#f4f4f6]' : 'text-[#8e8e99] hover:text-[#f4f4f6]'}`}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            ) : <span />}
             {studioTab !== 'cover' && (
               <label className="flex cursor-pointer items-center gap-2 text-[12px] text-[#a1a1aa]">
                 Instrumental
@@ -1945,7 +1955,72 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             )}
 
 
-            {studioTab !== 'cover' && (<>
+            {studioTab === 'history' && (
+              <div className="space-y-3">
+                <div>
+                  <h3 className="text-[11px] font-bold uppercase tracking-widest text-white/55">Library</h3>
+                  <p className="mt-1 text-[11px] leading-4 text-white/40">
+                    Semua lagu yang pernah dibuat, dikelompokkan per status. Klik lagu untuk memutar &amp; membuka lirik.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {LIBRARY_FILTERS.map((f) => {
+                    const on = libraryFilter === f.id
+                    const count = f.id === 'all'
+                      ? historyList.length
+                      : historyList.filter((e) => (e.status === 'completed') === (f.id === 'completed')).length
+                    return (
+                      <button key={f.id} type="button" onClick={() => setLibraryFilter(f.id)}
+                        className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                          on ? 'border-[#f59e0b]/50 bg-[#f59e0b]/15 text-[#f59e0b]'
+                            : 'border-white/10 bg-white/5 text-white/60 hover:text-white'}`}>
+                        {f.label} · {count}
+                      </button>
+                    )
+                  })}
+                </div>
+                {!user ? (
+                  <p className="text-[11px] text-white/40">Masuk untuk melihat library lagu kamu.</p>
+                ) : (
+                  <div className="max-h-[60vh] space-y-1 overflow-y-auto pr-1">
+                    {historyList
+                      .filter((e) => (libraryFilter === 'all'
+                        || (libraryFilter === 'completed') === (e.status === 'completed')))
+                      .map((entry) => (
+                        <button key={entry.job_id} type="button" onClick={() => openHistoryJob(entry)}
+                          className={`flex w-full items-center gap-2 rounded-lg border p-2 text-left transition ${
+                            job?.job_id === entry.job_id
+                              ? 'border-[#f59e0b]/50 bg-[#1c1c22]'
+                              : 'border-white/10 bg-black/20 hover:border-white/25'}`}>
+                          <div className="h-8 w-8 shrink-0 overflow-hidden rounded bg-white/5">
+                            {entry.cover_path ? (
+                              <img src={resolveMediaAsset(entry.cover_path)} alt="" loading="lazy"
+                                className="h-full w-full object-cover" />
+                            ) : (
+                              <span className="flex h-full w-full items-center justify-center text-white/30">
+                                <Icon name="music" className="h-3.5 w-3.5" />
+                              </span>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[11px] font-medium text-white/85">
+                              {entry.title || entry.job_id}
+                            </div>
+                            <div className="truncate font-mono text-[9px] text-white/40">
+                              {entry.metadata?.genre_label || entry.genre || '—'} · {formatClock(entry.duration || 0)}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    {historyList.length === 0 && (
+                      <p className="py-4 text-center text-[11px] text-white/35">Belum ada lagu.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {studioTab !== 'cover' && studioTab !== 'history' && (<>
 
             <Group title="1 · Ide & Judul" subtitle="Cerita/mood lagu dan judulnya" defaultOpen>
             <label className="block">
@@ -2641,7 +2716,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         )
                       })}
                     </div>
-                    <span className="mt-1 block text-[10px] leading-4 text-white/35">Diteruskan ke engine sebagai penanda negatif (-tag) dan arahan “avoid”. Hasil bergantung pada engine.</span>
+                    <span className="mt-1 block text-[10px] leading-4 text-white/35">Diteruskan ke engine sebagai arahan “no &#123;tag&#125;” di akhir gaya (bentuk terverifikasi Suno). Maksimal 3 item.</span>
                   </div>
                   <label className="block">
                     <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">LoRA / slot regional</span>
@@ -2655,14 +2730,26 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         <span>Weirdness</span><span className="font-mono text-white/40">{weirdness}</span>
                       </span>
                       <input type="range" min={0} max={100} value={weirdness} onChange={(e) => setWeirdness(Number(e.target.value))} className="w-full accent-magenta" />
-                      <span className="mt-1 block text-[10px] leading-4 text-white/35">0 = aman & konvensional · 100 = eksperimental.</span>
+                      <span className="mt-1 block text-[10px] leading-4 text-white/35">
+                        {weirdness <= 30 ? 'Aman & konvensional — ikuti tag erat.'
+                          : weirdness <= 45 ? 'Konservatif — struktur lagu lugas.'
+                            : weirdness <= 55 ? 'Seimbang — campuran kontrol & kejutan.'
+                              : weirdness <= 70 ? 'Agak eksperimental — sedikit kejutan.'
+                                : 'Eksperimental — struktur & melodi tak terduga.'}
+                      </span>
                     </label>
                     <label className="block">
                       <span className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/45">
                         <span>Style influence</span><span className="font-mono text-white/40">{styleInfluence}</span>
                       </span>
                       <input type="range" min={0} max={100} value={styleInfluence} onChange={(e) => setStyleInfluence(Number(e.target.value))} className="w-full accent-cyan" />
-                      <span className="mt-1 block text-[10px] leading-4 text-white/35">Seberapa kuat genre/tag gaya diikuti.</span>
+                      <span className="mt-1 block text-[10px] leading-4 text-white/35">
+                        {styleInfluence <= 20 ? 'Tag hanya saran longgar — kreativitas maksimum.'
+                          : styleInfluence <= 35 ? 'Interpretasi longgar — susunan lebih bebas.'
+                            : styleInfluence <= 65 ? 'Seimbang — iterator & tag gaya berpadu.'
+                              : styleInfluence <= 80 ? 'Kuat — patuh pada tag genre.'
+                                : 'Sangat patuh — nyaris tanpa penyimpangan dari tag.'}
+                      </span>
                     </label>
                   </div>
                   <p className="text-[11px] leading-5 text-white/40">
@@ -2993,6 +3080,11 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                     <button type="button" onClick={loadStems} disabled={stemsBusy}
                       className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
                       {stemsBusy ? '…' : 'Stems'}
+                    </button>
+                    <button type="button" onClick={toggleShare} disabled={shareBusy}
+                      title="Bagikan lagu ini ke Feed Publik"
+                      className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
+                      {shareBusy ? '…' : (job?.is_public ? 'Shared' : 'Share')}
                     </button>
                     <button type="button" onClick={savePersona}
                       className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">

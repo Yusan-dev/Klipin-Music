@@ -125,8 +125,82 @@ def _normalize_tags(value: str) -> str:
     return re.sub(r"\s*,\s*", ",", flat).strip(" ,")
 
 
+def _exclude_items(spec: dict) -> list[str]:
+    """Collect the "Exclude Styles" items of a request (max 3).
+
+    Suno field guide (section 8) is explicit about the semantics:
+      * the verified inline form is ``no <element>`` (not ``-tag``, not
+        ``don't add ...``),
+      * exclusions are applied AFTER the positives, so they belong at the
+        very end of the style string,
+      * more than ~3 exclusions destabilise the arrangement.
+
+    ``exclude_styles`` is the dedicated Exclude field; ``negative_tags`` is
+    kept as the legacy alias so old projects and API clients keep working.
+    Both are merged and de-duplicated.
+    """
+    raw: list[str] = []
+    for key in ("exclude_styles", "negative_tags"):
+        raw.extend(re.split(r"[,\n;]+", str(spec.get(key) or "")))
+    items: list[str] = []
+    seen: set[str] = set()
+    for seg in raw:
+        item = seg.strip().lstrip("-").strip()
+        low = item.lower()
+        if not item or low in seen:
+            continue
+        seen.add(low)
+        items.append(item)
+    return items[:3]
+
+
+def _creative_hints(spec: dict) -> list[str]:
+    """Translate the Suno creative sliders into continuous text hints.
+
+    The previous implementation only reacted at the extremes (>=75 / <=25),
+    which left the middle half of both sliders completely inert: dragging
+    Weirdness from 50 to 60 changed nothing at all. The field guide treats
+    both parameters as continuous 0-100 scales, so they are mapped onto four
+    bands with a neutral (untouched) middle band around 50.
+    """
+    hints: list[str] = []
+    try:
+        weirdness = int(spec.get("weirdness", 50))
+    except (TypeError, ValueError):
+        weirdness = 50
+    try:
+        influence = int(spec.get("style_influence", 50))
+    except (TypeError, ValueError):
+        influence = 50
+
+    if weirdness >= 70:
+        hints.append("experimental arrangement, surprising melodic turns, "
+                     "unexpected structure, adventurous")
+    elif weirdness >= 55:
+        hints.append("subtle creative variation, slightly adventurous arrangement")
+    elif weirdness <= 45:
+        hints.append("conventional, predictable, straightforward song structure")
+    elif weirdness <= 30:
+        hints.append("safe, radio-friendly arrangement, follows the style tags closely")
+
+    if influence >= 80:
+        hints.append("strict genre adherence, faithful to the style tags, minimal deviation")
+    elif influence >= 65:
+        hints.append("strong genre adherence, closely follows the style tags")
+    elif influence <= 35:
+        hints.append("loose interpretation of the style tags, freer arrangement choices")
+    elif influence <= 20:
+        hints.append("style tags as loose inspiration only, maximum creative freedom")
+    return hints
+
+
 def tags_for(spec: dict, info: dict | None = None) -> str:
-    """Provider tags: genre + language + gender + BPM/key + persona + idea."""
+    """Provider tags: genre + language + gender + BPM/key + persona + idea.
+
+    Order follows the GMVP priority documented in the field guide
+    (Genre -> Mood -> Instrument -> Vocal -> Production) and the exclusions
+    are appended LAST because Suno applies them after the positives.
+    """
     info = info or genre_info(spec.get("genre") or "pop-jawa")
     gender = str(spec.get("vocal_gender") or "auto").strip().lower()
     parts = [info.get("tags", "")]
@@ -157,34 +231,13 @@ def tags_for(spec: dict, info: dict | None = None) -> str:
     if isinstance(plan, dict):
         for tag in (plan.get("driver_tags") or [])[:4]:
             parts.append(str(tag)[:80])
-    # Suno-style "Exclude Styles": kirim penanda "-tag", "no <item>", dan kalimat
-    # "avoid ..." agar engine yang menghormati tag negatif dapat menghindarinya.
-    negative = str(spec.get("negative_tags") or "").strip()[:300]
-    if negative:
-        items = [seg.strip() for seg in re.split(r"[,\n;]+", negative) if seg.strip()]
-        if items:
-            parts.append(" ".join(f"-{item}" for item in items))
-            parts.append(", ".join(f"no {item}" for item in items))
-            parts.append("avoid " + ", ".join(items))
-    # Creative sliders (Suno): diterjemahkan menjadi arahan teks karena engine
-    # self-hosted tidak punya knob numerik eksplisit. 50 = netral (tidak dikirim).
-    try:
-        weirdness = int(spec.get("weirdness", 50))
-    except (TypeError, ValueError):
-        weirdness = 50
-    if weirdness >= 75:
-        parts.append("experimental, unexpected, adventurous arrangement, surprising twists")
-    elif weirdness <= 25:
-        parts.append("conventional, predictable, radio-friendly, straightforward")
-    try:
-        influence = int(spec.get("style_influence", 50))
-    except (TypeError, ValueError):
-        influence = 50
-    if influence >= 75:
-        parts.append("strong genre adherence, faithful to style")
-    elif influence <= 25:
-        parts.append("subtle genre influence, genre-agnostic, loose interpretation")
+    parts.extend(_creative_hints(spec))
     parts.append(spec.get("prompt") or "")
+    # Exclude Styles ("no X") selalu paling akhir: Suno memproses positives
+    # lebih dulu, exclusions baru diterapkan sesudahnya.
+    excludes = _exclude_items(spec)
+    if excludes:
+        parts.append(", ".join(f"no {item}" for item in excludes))
     return _normalize_tags(",".join(str(part).strip() for part in parts if part))
 
 
@@ -1860,6 +1913,12 @@ def _format_lyrics_for_mulacover(lyrics: str) -> str:
     - One short singable lyric phrase per line (5-7 words)
     - Blank line between sections
     - Strip YouTube/Whisper ASR hallucinations ('Terima kasih', 'telah menonton', etc.)
+
+    The user's own section structure is PRESERVED.  The previous version threw
+    every header away and re-synthesised an alternating ``[Verse]/[Chorus]``
+    block, which destroyed the verbatim chorus repetition and the
+    pipe-stacked meta-tags (``[Chorus | Anthemic | ...]``) that the field
+    guide depends on.  Only over-long lines are re-chunked here.
     """
     raw = str(lyrics or "").strip()
     if not raw:
@@ -1869,12 +1928,15 @@ def _format_lyrics_for_mulacover(lyrics: str) -> str:
         r"jangan\s+lupa\s+subscribe|subtitle\s+oleh|^intro$)",
         re.IGNORECASE,
     )
-    clean_phrases: list[str] = []
+    out: list[str] = []
     for raw_line in raw.splitlines():
         s = raw_line.strip()
         if not s:
             continue
+        # Keep the user's section header exactly as written (incl. pipe stacks).
         if s.startswith("[") and s.endswith("]"):
+            out.append(s)
+            out.append("")
             continue
         s = hallucination_re.sub("", s).strip(" .,-—")
         if not s:
@@ -1887,27 +1949,26 @@ def _format_lyrics_for_mulacover(lyrics: str) -> str:
         for w in words:
             chunk.append(w)
             if len(chunk) >= 6:
-                clean_phrases.append(" ".join(chunk))
+                out.append(" ".join(chunk))
                 chunk = []
         if chunk:
-            if len(chunk) <= 2 and clean_phrases:
-                clean_phrases[-1] = f"{clean_phrases[-1]} {' '.join(chunk)}"
+            if len(chunk) <= 2 and out and out[-1] and not out[-1].startswith("["):
+                out[-1] = f"{out[-1]} {' '.join(chunk)}"
             else:
-                clean_phrases.append(" ".join(chunk))
-    if not clean_phrases:
+                out.append(" ".join(chunk))
+    if not any(line and not line.startswith("[") for line in out):
         return raw
-
-    sections: list[str] = ["[Intro]", ""]
-    block_size = 6
-    for idx in range(0, len(clean_phrases), block_size):
-        block = clean_phrases[idx : idx + block_size]
-        sec_num = idx // block_size
-        marker = "[Chorus]" if sec_num % 2 == 1 else "[Verse]"
-        sections.append(marker)
-        sections.extend(block)
-        sections.append("")
-    sections.append("[Outro]")
-    return "\n".join(sections)
+    # Normalize: exactly one blank line between blocks, no trailing blanks.
+    lines: list[str] = []
+    for line in out:
+        if not line:
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
+        lines.append(line)
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines)
 
 
 def _audio_output_quality(path: Path, requested_duration: float) -> dict:
@@ -1973,10 +2034,31 @@ def _mulacover_modal_generate(spec: dict, out_path: Path, log=None) -> dict | No
     groove_reset = bool(spec.get("groove_reset", True))
     # Official HeartMuLa/MuLaCover tag format (assets/tags.txt):
     # topic:[...]; genre:[...]; instrument:[...]; mood:[...]; vocal:[...]
+    #
+    # The topic used to be hardcoded to "longing,love" and the user's own
+    # style field (style tags, Exclude Styles, creative sliders) was dropped
+    # entirely on this path, so a cover could not reflect the request at all.
+    # Build every field from the actual request now.
+    topic = str(spec.get("prompt") or "").strip()[:120] or info.get("mood", "upbeat")
+    topic = re.sub(r"\s+", " ", topic)
+    instrument = info.get("tags", "")
+    extra_style = str(spec.get("style_tags") or "").strip()
+    if extra_style:
+        instrument = f"{instrument}, {extra_style}"
+    plan = spec.get("song_plan")
+    if isinstance(plan, dict):
+        driver = ", ".join(str(t) for t in (plan.get("driver_tags") or [])[:3])
+        if driver:
+            instrument = f"{instrument}, {driver}"
+    mood = info.get("mood", "upbeat")
+    vocal = f"{gender_tag}, clear articulate vocals, studio vocal clarity"
+    excludes = _exclude_items(spec)
+    if excludes:
+        vocal = f"{vocal}, " + ", ".join(f"no {item}" for item in excludes)
     tags = (
-        f"topic:[longing,love]; genre:[{info['label'].lower()}]; "
-        f"instrument:[{info['tags']}]; mood:[{info.get('mood', 'upbeat')}]; "
-        f"vocal:[{gender_tag}]"
+        f"topic:[{topic}]; genre:[{info['label'].lower()}]; "
+        f"instrument:[{instrument}]; mood:[{mood}]; "
+        f"vocal:[{vocal}]"
     )
     formatted_lyrics = _format_lyrics_for_mulacover(spec.get("lyrics", ""))
     seed = spec.get("seed")
@@ -2492,22 +2574,67 @@ def align_timeline(audio_path: Path, lyrics: str, duration: float,
         return base
 
 
-def export_wav_lufs(src: Path, job_dir: Path, log=None) -> str:
-    """Konversi WAV stereo + EQ anti-mud/sibilance + loudness -14 LUFS."""
-    target = job_dir / "song.wav"
+def master_audio(src: Path, log=None) -> bool:
+    """Master the delivered track in place (-14 LUFS + de-mud/de-harsh).
+
+    Previously only a side-car ``song.wav`` was mastered while the MP3 that
+    the user actually downloads stayed raw worker output.  That is the single
+    biggest audible difference against Suno, which delivers a finished,
+    loudness-normalised master.  This applies the same mastering chain to the
+    delivered file itself.
+
+    The duration is pinned with ``-t`` because FFmpeg's single-pass
+    ``loudnorm`` works at an elevated internal sample rate and would otherwise
+    pad the file slightly, which would desynchronise the karaoke timeline.
+    """
+    if not src.is_file() or src.stat().st_size <= 1024:
+        return False
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return False
+    duration = probe_audio_seconds(src)
+    if duration <= 0:
+        return False
     af_chain = (
         "equalizer=f=260:width_type=q:width=1.2:g=-2.5,"
         "equalizer=f=8500:width_type=q:width=2.0:g=-1.5,"
         "loudnorm=I=-14:TP=-1.5:LRA=11"
     )
+    codec = (["-c:a", "libmp3lame", "-b:a", "192k"]
+             if src.suffix.lower() == ".mp3" else ["-c:a", "aac", "-b:a", "192k"])
+    tmp = src.parent / f"{src.stem}.mastered{src.suffix}"
     try:
         r = subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-i", str(src),
-             "-af", af_chain,
+            [ffmpeg, "-y", "-v", "error", "-i", str(src), "-map_metadata", "-1", "-af", af_chain,
+             "-ar", "44100", "-ac", "2", "-t", f"{duration:.3f}",
+             *codec, str(tmp)],
+            capture_output=True, text=True, timeout=900)
+        if r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 1024:
+            src.write_bytes(tmp.read_bytes())
+            tmp.unlink(missing_ok=True)
+            log and log("🎚️ Mastering final: de-mud 260 Hz, de-harsh 8.5 kHz, -14 LUFS")
+            return True
+    except Exception as exc:  # noqa: BLE001 — mastering must not kill the job
+        log and log(f"⚠️ Mastering dilewati ({exc})")
+    tmp.unlink(missing_ok=True)
+    return False
+
+
+def export_wav_lufs(src: Path, job_dir: Path, log=None) -> str:
+    """Convert the (already mastered) track to a 44.1 kHz stereo WAV.
+
+    The mastering chain now lives in :func:`master_audio`, which processes the
+    delivered MP3.  This helper only transcodes that finished master into the
+    lossless side-car, so the WAV and the MP3 are the same mix.
+    """
+    target = job_dir / "song.wav"
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-i", str(src), "-map_metadata", "-1",
              "-c:a", "pcm_s16le", "-ar", "44100", "-ac", "2", str(target)],
-            capture_output=True, text=True, timeout=300)
+            capture_output=True, text=True, timeout=600)
         if r.returncode == 0 and target.exists() and target.stat().st_size > 1024:
-            log and log("🔊 WAV -14 LUFS + de-mud/de-harsh siap")
+            log and log("🔊 WAV 44.1 kHz stereo siap")
             return target.name
     except Exception:  # noqa: BLE001
         pass
@@ -2925,7 +3052,12 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         if diffrhythm_result:
             used, used_detail = "diffrhythm-modal", diffrhythm_result
     # Draft cepat dulu (ACE-Step Modal), final nyawa (HeartMuLa Modal / DiffRhythm Modal).
-    if used == "fallback-bgm" and provider in ("auto", "ace-step") and ace_modal_ready:
+    #
+    # CATATAN urutan: untuk provider="auto" engine FINAL (HeartMuLa 3B /
+    # DiffRhythm) harus menang, bukan draft ACE-Step 1.5B. Sebelumnya cabang
+    # "auto" -> ACE-Step dicek lebih dulu sehingga lagu "otomatis" keluar
+    # sebagai draft berkualitas rendah.
+    if used == "fallback-bgm" and provider == "ace-step" and ace_modal_ready:
         ace_modal_result = _ace_step_modal_generate({**spec, "lyrics": lyrics}, output, log=log)
         if ace_modal_result:
             used, used_detail = "ace-step-modal", ace_modal_result
@@ -2939,6 +3071,11 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         diffrhythm_result = _diffrhythm_modal_generate({**spec, "lyrics": lyrics}, output, log=log)
         if diffrhythm_result:
             used, used_detail = "diffrhythm-modal", diffrhythm_result
+    # Fallback terakhir untuk "auto": draft ACE-Step bila engine final mati.
+    if used == "fallback-bgm" and provider == "auto" and ace_modal_ready:
+        ace_modal_result = _ace_step_modal_generate({**spec, "lyrics": lyrics}, output, log=log)
+        if ace_modal_result:
+            used, used_detail = "ace-step-modal", ace_modal_result
     if used == "fallback-bgm" and provider in ("auto", "ace-step") and _ace_step_url():
         if _ace_step_generate({**spec, "lyrics": lyrics}, output, log=log):
             used = "ace-step"
@@ -3010,6 +3147,14 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
             # The worker may stop early without a silent tail; report the
             # real duration so history/LRC never claim the requested length.
             duration = actual_duration
+    # Mastering FINAL pada file yang diunduh user. Sebelumnya rantai
+    # mastering hanya diterapkan ke file WAV samping, sehingga MP3 yang
+    # diunduh tetap mentah (belum -14 LUFS, belum de-mud/de-harsh) —
+    # perbedaan audition paling mencolok dibanding Suno yang selalu
+    # mengirim master jadi.
+    stage("mastering")
+    if used != "fallback-bgm":
+        master_audio(output, log=log)
     # Pasca-proses lokal (cover, whisper-align, WAV LUFS, BPM/key) saling
     # independen — jalankan paralel lewat thread pool. Ini memangkas wall-time
     # setelah GPU selesai TANPA mengubah satu bit pun kualitas audio.
@@ -3035,7 +3180,6 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
     line_timeline = annotate_lyric_languages(line_timeline, spec)
     lrc = job_dir / "lyrics.lrc"
     _write_lrc(lrc, line_timeline)
-    stage("mastering")
     aligned = sum(1 for x in line_timeline if x.get("source") == "whisper")
     metadata = {
         "schema": "klipin-music/v3", "provider": used, "model_ready": used != "fallback-bgm",
@@ -3074,6 +3218,11 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         "song_plan": spec.get("song_plan") or {},
         "hook": spec.get("hook") or "",
         "style_tags": spec.get("style_tags") or "",
+        "negative_tags": spec.get("negative_tags") or "",
+        "exclude_styles": spec.get("exclude_styles") or "",
+        "weirdness": int(spec.get("weirdness", 50) or 50),
+        "style_influence": int(spec.get("style_influence", 50) or 50),
+        "mastered": bool(used != "fallback-bgm"),
         "voice_conversion": voice_conversion,
         "model": str((used_detail or {}).get("model", "")),
         "parent_job_id": spec.get("parent_job_id") or "",
