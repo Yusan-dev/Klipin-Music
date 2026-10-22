@@ -28,6 +28,8 @@ import app as _main_app  # noqa: E402
 ALLOWED_PREFIXES = (
     "/api/music",
     "/api/auth",
+    "/api/criteria",
+    "/api/brand-kit",
     "/api/pricing",
     "/api/billing",
     "/api/payment",

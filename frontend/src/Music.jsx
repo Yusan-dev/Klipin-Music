@@ -472,6 +472,16 @@ export default function Music({ user, authChecked = false, onSignIn }) {
           setBusy(true)
           const started = Number(active.created_at || active.updated_at || 0) * 1000
           startedAt.current = started > 0 ? started : Date.now()
+        } else if (!job || ['queued', 'processing'].includes(job?.status)) {
+          // Jika tidak ada job aktif dan job saat ini masih memproses atau kosong,
+          // pasang lagu completed terbaru agar langsung siap putar di player.
+          const latestCompleted = jobs.find((item) => item.status === 'completed')
+          if (latestCompleted) {
+            setJob(latestCompleted)
+            setTakes([latestCompleted])
+            setBusy(false)
+            setGroupId('')
+          }
         }
       }
     } catch {
@@ -561,6 +571,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
       if (preferred) setJob(preferred)
       if (next.length && next.every((t) => ['completed', 'failed'].includes(t.status))) {
         setBusy(false)
+        setGroupId('')
         loadHistory()
         return true
       }
@@ -1839,28 +1850,28 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         if (next === 'arrangement') setRemixPitch('0')
                         else if (next === 'voice' && remixPitch === '0') setRemixPitch('auto')
                       }} className={fieldCls}>
-                        <option value="voice">Ganti suara (Seed-VC) + aransemen genre baru</option>
-                        <option value="arrangement">Vokal asli + aransemen genre baru</option>
-                        <option value="mulacover">MuLaCover — AI nyanyi ulang, melodi &amp; chord asli</option>
-                        <option value="diffrhythm">DiffRhythm — melodi baru</option>
-                        <option value="heartmula">HeartMuLa — lirik terkunci, melodi baru</option>
-                        <option value="ace-step">ACE-Step — draft cepat</option>
-                        <option value="">Otomatis</option>
+                        <option value="voice">Klipin Neural Restyle — ganti suara + aransemen genre baru</option>
+                        <option value="arrangement">Klipin Smart Arrange — vokal asli + aransemen genre baru</option>
+                        <option value="mulacover">Klipin Commercial Engine — nyanyi ulang, melodi &amp; chord asli</option>
+                        <option value="diffrhythm">Klipin Full Restyle — melodi baru &amp; lirik terkunci</option>
+                        <option value="heartmula">Klipin Studio Core — melodi studio baru</option>
+                        <option value="ace-step">Klipin Fast Draft — render cepat</option>
+                        <option value="">Otomatis (Rekomendasi Terbaik)</option>
                       </select>
                       <p className="mt-1.5 text-[11px] leading-[1.5] text-[#71717a]">
                         {remixEngine === 'voice'
-                          ? 'Vokal asli dipisah (Demucs 4-stem), warna suaranya diganti ke gender/persona target. Melodi, lirik, dan timing tetap; drum & bass disusun ulang mengikuti beat asli.'
+                          ? 'Vokal asli dipisah (Demucs), timbre suara diadaptasi ke gender/persona pilihan. Melodi, lirik, dan ketukan tetap utuh.'
                           : remixEngine === 'arrangement'
-                            ? 'Suara penyanyi asli dipertahankan, hanya aransemen musik yang diganti ke genre pilihan dengan beat terkunci.'
+                            ? 'Vokal asli penyanyi dipertahankan, seluruh aransemen instrumen diaransemen ulang ke genre baru dengan tempo sinkron.'
                             : remixEngine === 'mulacover'
-                              ? 'AI menyanyikan ulang dengan melodi & chord asli (MIDI + chord conditioning).'
+                              ? 'Model AI menyanyikan ulang dengan melodi dan harmoni chord asli yang setia pada lagu sumber.'
                               : remixEngine === 'diffrhythm'
-                                ? 'Lirik sumber dinyanyikan dengan melodi & aransemen baru.'
+                                ? 'Lirik lagu sumber dinyanyikan ulang dengan aransemen dan gaya melodi baru yang segar.'
                                 : remixEngine === 'ace-step'
-                                  ? 'Draft cepat dengan referensi audio, kualitas terbatas.'
+                                  ? 'Draft cover cepat untuk pratinjau instan dengan konsumsi waktu minimal.'
                                   : remixEngine === 'heartmula'
-                                    ? 'Lirik dikunci, melodi digubah ulang.'
-                                    : 'Memilih engine faithful yang aktif secara otomatis.'}
+                                    ? 'Lirik dikunci presisi, diaransemen dengan mesin studio Klipin.'
+                                    : 'Memilih mesin cover terbaik yang aktif secara otomatis.'}
                       </p>
                     </div>
 
