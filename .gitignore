@@ -1,6 +1,7 @@
 # Secrets & Local Env
 .env
 backend/.env
+backend/.modal.toml
 frontend/.env.local
 *.pem
 *.key
@@ -13,9 +14,26 @@ __pycache__/
 venv/
 backend/outputs/
 backend/output/
+backend/uploads/
+backend/data/
+backend/.cache/
+backend/.local/
 backend/*.db
 backend/*.db-*
 *.sqlite3
+outputs/
+scratch_ace_test/
+
+# Local test media & scratch artifacts
+/*.mp3
+/*.wav
+/*.mp4
+/*.m4a
+/*.mid
+/*.vtt
+/*.json
+!package.json
+!package-lock.json
 
 # Frontend
 node_modules/

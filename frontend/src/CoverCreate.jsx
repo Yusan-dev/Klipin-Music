@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './components/Icon.jsx'
+import StudioEqualizer, { STUDIO_EQ_PRESETS } from './components/StudioEqualizer.jsx'
 import { Button, Field, Panel, Select, Spinner, TextInput } from './components/ui.jsx'
 import {
   coverUploadMusic,
+  equalizeMusicJob,
   getMusicGenres,
   getMusicGroup,
   resolveMediaAsset,
@@ -23,10 +25,14 @@ const VOICE_OPTIONS = [
 ]
 
 const ENGINES = [
-  { id: 'arrangement', label: 'Aransemen Baru + Vokal Asli (YouTube Cover Style)' },
-  { id: 'mulacover', label: 'MuLaCover L4 — melodi & chord asli (AI nyanyi ulang)' },
-  { id: 'diffrhythm', label: 'DiffRhythm — lagu ulang penuh Apache 2.0 (melodi baru)' },
-  { id: 'ace-step', label: 'ACE-Step — draft cepat, kualitas terbatas' },
+  { id: 'yue2_comfy', label: '✨ YuE2 + SheetSage2 (ComfyUI Headless — VRAM 6-8GB)' },
+  { id: 'yue2_native', label: '⚡ YuE2 + SheetSage2 (Native Python SDK — VRAM 16-24GB)' },
+  { id: 'voice', label: '🎯 Persona Baru + Aransemen Baru (Lirik & Ketukan Terkunci — Rekomendasi)' },
+  { id: 'arrangement', label: '🎛️ Vokal Asli + Aransemen Baru (Beat-Locked 4-Stem)' },
+  { id: 'voice_pure', label: '🎤 Persona Baru + Musik Asli (Pure Voice Swap)' },
+  { id: 'mulacover', label: '✨ MuLaCover L4 — Melodi & Harmoni Asli (Generative AI)' },
+  { id: 'diffrhythm', label: 'DiffRhythm — Lagu ulang penuh Apache 2.0 (Melodi baru)' },
+  { id: 'ace-step', label: 'ACE-Step — Draft cepat, kualitas terbatas' },
 ]
 
 const ACCEPT = '.mp3,.wav,.m4a,.aac,.flac,.ogg,.opus,audio/*'
@@ -86,8 +92,9 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
   const [file, setFile] = useState(null)
   const [genre, setGenre] = useState('dangdut-koplo')
   const [voice, setVoice] = useState('auto')
-  const [engine, setEngine] = useState('mulacover')
+  const [engine, setEngine] = useState('yue2_comfy')
   const [lyrics, setLyrics] = useState('')
+  const [stylePrompt, setStylePrompt] = useState('')
   const [seed, setSeed] = useState('')
   const [takes, setTakes] = useState(1)
   const [rights, setRights] = useState(false)
@@ -98,7 +105,19 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
   const [error, setError] = useState('')
   const [startedAt, setStartedAt] = useState(0)
   const [now, setNow] = useState(Date.now())
+  const [showStudioEq, setShowStudioEq] = useState(false)
+  const [mediaNonce, setMediaNonce] = useState(0)
+  const [eqConfig, setEqConfig] = useState(() => ({
+    preset: 'flat',
+    bands: [0, 0, 0, 0, 0, 0, 0, 0],
+    preamp_db: 0,
+    compressor: 0,
+    stereo_width: 1.0,
+    reverb: 0,
+    normalize_lufs: true,
+  }))
   const fileRef = useRef(null)
+  const previewAudioRef = useRef(null)
 
   useEffect(() => {
     let live = true
@@ -136,14 +155,21 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
       return false
     }
     const poll = async () => {
+      let errStatus = null
+      let retryAfter = 0
       try {
         const g = await getMusicGroup(groupId)
         if (stopped) return
         if (applyTakes(g.takes || [])) return
       } catch (e) {
-        if (!stopped) setError(`Gagal memantau render: ${e.message}`)
+        errStatus = e?.status
+        retryAfter = e?.retryAfter || 0
+        if (!stopped && errStatus !== 429) setError(`Gagal memantau render: ${e.message}`)
       }
-      if (!stopped) timer = setTimeout(poll, POLL_MS)
+      if (!stopped) {
+        const delay = errStatus === 429 ? Math.min(10000, Math.max(3000, retryAfter * 1000 || 5000)) : POLL_MS
+        timer = setTimeout(poll, delay)
+      }
     }
     const run = async () => {
       let ended = false
@@ -217,9 +243,16 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
       fd.append('vocal_gender', voice)
       fd.append('cover_engine', engine)
       fd.append('lyrics', lyrics)
+      if (stylePrompt.trim()) fd.append('prompt', stylePrompt.trim())
       fd.append('seed', seed ? String(parseInt(seed, 10) || 0) : '0')
       fd.append('take_count', String(takes))
       fd.append('rights_confirmed', 'true')
+      if (eqConfig?.preset) fd.append('eq_preset', eqConfig.preset)
+      if (Array.isArray(eqConfig?.bands)) fd.append('eq_bands', JSON.stringify(eqConfig.bands))
+      if (eqConfig?.preamp_db !== undefined) fd.append('eq_preamp_db', String(eqConfig.preamp_db))
+      if (eqConfig?.compressor !== undefined) fd.append('eq_compressor', String(eqConfig.compressor))
+      if (eqConfig?.stereo_width !== undefined) fd.append('eq_stereo_width', String(eqConfig.stereo_width))
+      if (eqConfig?.reverb !== undefined) fd.append('eq_reverb', String(eqConfig.reverb))
       const res = await coverUploadMusic(fd)
       setGroupId(res.group_id || '')
     } catch (e) {
@@ -227,6 +260,15 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
       setBusy(false)
     }
   }
+
+  const handleServerEq = useCallback(async (targetJobId, payload) => {
+    const updated = await equalizeMusicJob(targetJobId, payload)
+    if (updated?.job_id) {
+      setGroupTakes((prev) => prev.map((t) => (t.job_id === updated.job_id ? updated : t)))
+      setMediaNonce((n) => n + 1)
+    }
+    return updated
+  }, [])
 
   const reset = () => {
     setGroupId('')
@@ -321,7 +363,81 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
         </div>
 
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.lyrics}</label>
+          <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Arahan gaya &amp; Preset Vibe (opsional)</label>
+          {genre === 'reggae' && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {[
+                {
+                  id: 'boenter',
+                  label: '🌴 Reggae Santai (Gaya BOENTER)',
+                  prompt: 'warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove, muted clean offbeat guitar skank, warm Hammond B3 organ bubble, deep round sub-dub bassline, melodic brass intro hook, relaxed soulful vocal with warm reverb and subtle dub echo, silky analog highs',
+                },
+                {
+                  id: 'ska',
+                  label: '🎺 Reggae Ska & Brass',
+                  prompt: 'upbeat Indonesian ska-reggae cover, lively brass section (trumpet, trombone, saxophone hooks), crisp offbeat guitar skank, bouncy walking dub bassline, tight one-drop snare and rimshot',
+                },
+                {
+                  id: 'acoustic',
+                  label: '🌊 Reggae Akustik Pantai',
+                  prompt: 'acoustic island reggae cover, nylon and steel acoustic guitar offbeat skank, warm cajon and rimshot one-drop, deep upright dub bass, relaxed intimate vocal',
+                },
+                {
+                  id: 'dub',
+                  label: '🔊 Reggae Dub Bass Tebal',
+                  prompt: 'deep roots dub reggae cover, heavy warm sub-bass pocket (60-140 Hz), spacious spring reverb and analog tape echo, laid-back one-drop rimshot, warm Hammond organ bubble',
+                },
+              ].map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setStylePrompt(preset.prompt)}
+                  className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                    stylePrompt === preset.prompt
+                      ? 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fbbf24]'
+                      : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f4a] hover:text-[#f4f4f6]'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <input
+            value={stylePrompt}
+            onChange={(e) => setStylePrompt(e.target.value)}
+            placeholder="Contoh: warm roots reggae, brass intro, dub bassline, santai…"
+            className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] placeholder:text-[#5c5c66] outline-none focus:border-[#52525b]"
+          />
+        </div>
+
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-[11px] font-medium text-[#8e8e99]">{L.lyrics}</label>
+            <button
+              type="button"
+              onClick={() => setShowStudioEq((v) => !v)}
+              className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition ${
+                showStudioEq || eqConfig.preset !== 'flat'
+                  ? 'border-[#10b981]/60 bg-[#10b981]/15 text-[#34d399]'
+                  : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:text-[#f4f4f6]'
+              }`}
+            >
+              🎚️ Studio EQ ({eqConfig.preset === 'custom' ? 'Custom' : (STUDIO_EQ_PRESETS.find((p) => p.id === eqConfig.preset)?.label || 'Flat')})
+            </button>
+          </div>
+          {showStudioEq && (
+            <div className="mb-2.5">
+              <StudioEqualizer
+                audioRef={previewAudioRef}
+                genre={genre}
+                initialEq={eqConfig}
+                onChange={setEqConfig}
+                compact
+                title="PRE-MASTER STUDIO EQUALIZER"
+              />
+            </div>
+          )}
           <textarea
             value={lyrics}
             onChange={(e) => setLyrics(e.target.value)}
@@ -362,11 +478,27 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
               <div className="h-full rounded-full bg-[#f59e0b] transition-all" style={{ width: `${progress}%` }} />
             </div>
             {result?.status === 'completed' && (
-              <div className="space-y-1.5 pt-1">
-                <audio src={resolveMediaAsset(result.audio_path)} controls preload="none" className="h-8 w-full" />
+              <div className="space-y-2 pt-1">
+                <audio
+                  ref={previewAudioRef}
+                  src={`${resolveMediaAsset(result.audio_path)}${String(result.audio_path || '').includes('?') ? '&' : '?'}v=${mediaNonce}`}
+                  crossOrigin="anonymous"
+                  controls
+                  preload="metadata"
+                  className="h-8 w-full"
+                />
                 <a href={resolveMediaAsset(result.audio_path)} download className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#f59e0b] hover:underline">
                   <Icon name="download" className="h-3.5 w-3.5" aria-hidden /> {L.download}
                 </a>
+                <StudioEqualizer
+                  audioRef={previewAudioRef}
+                  jobId={result.job_id}
+                  genre={genre}
+                  initialEq={result.metadata?.studio_eq || eqConfig}
+                  onChange={setEqConfig}
+                  onApplyServerEq={handleServerEq}
+                  compact
+                />
               </div>
             )}
           </div>
@@ -544,11 +676,13 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
               </ul>
 
               {result?.status === 'completed' && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <audio
-                    src={resolveMediaAsset(result.audio_path)}
+                    ref={previewAudioRef}
+                    src={`${resolveMediaAsset(result.audio_path)}${String(result.audio_path || '').includes('?') ? '&' : '?'}v=${mediaNonce}`}
+                    crossOrigin="anonymous"
                     controls
-                    preload="none"
+                    preload="metadata"
                     className="w-full"
                   />
                   <a
@@ -558,6 +692,14 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
                   >
                     <Icon name="download" className="h-4 w-4" aria-hidden /> {L.download}
                   </a>
+                  <StudioEqualizer
+                    audioRef={previewAudioRef}
+                    jobId={result.job_id}
+                    genre={genre}
+                    initialEq={result.metadata?.studio_eq || eqConfig}
+                    onChange={setEqConfig}
+                    onApplyServerEq={handleServerEq}
+                  />
                 </div>
               )}
 

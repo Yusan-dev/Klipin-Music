@@ -3,6 +3,7 @@ import Icon from './components/Icon.jsx'
 import VoiceDesigner, { PrivateVoicePlayer } from './components/VoiceDesigner.jsx'
 import CoverCreate from './CoverCreate.jsx'
 import MusicWaveform from './components/MusicWaveform.jsx'
+import StudioEqualizer, { STUDIO_EQ_PRESETS } from './components/StudioEqualizer.jsx'
 import { Spinner } from './components/ui.jsx'
 import {
   addMusicProjectRevision,
@@ -12,6 +13,7 @@ import {
   createMusicProject,
   deleteMusicLyricsDraft,
   deleteMusicProject,
+  equalizeMusicJob,
   remixMusicUrl,
   createMusicPersona,
   deleteMusicPersona,
@@ -335,7 +337,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const [remixUrl, setRemixUrl] = useState('')
   const [remixGenre, setRemixGenre] = useState('reggae')
   const [remixGender, setRemixGender] = useState('female')
-  const [remixEngine, setRemixEngine] = useState('voice')
+  const [remixEngine, setRemixEngine] = useState('yue2_comfy')
   const [remixPitch, setRemixPitch] = useState('auto')
   const [remixRestyle, setRemixRestyle] = useState(true)
   const [remixVoiceMode, setRemixVoiceMode] = useState('manual')
@@ -344,6 +346,9 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const [remixStrength, setRemixStrength] = useState(0.6)
   const [remixRightsConfirmed, setRemixRightsConfirmed] = useState(false)
   const [remixBusy, setRemixBusy] = useState(false)
+  const [remixAsrSource, setRemixAsrSource] = useState('')
+  const [remixAsrReviewed, setRemixAsrReviewed] = useState(false)
+  const [remixTranscribing, setRemixTranscribing] = useState(false)
   const [shareBusy, setShareBusy] = useState(false)
   const [coverSourceTab, setCoverSourceTab] = useState('url')
   const [feedFilter, setFeedFilter] = useState('all')
@@ -384,6 +389,13 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   }, [catalog.languages, languageSecondary])
   const bilingual = Boolean(languageSecondary && languageMix !== 'none')
   const running = Boolean(job && ['queued', 'processing'].includes(job.status))
+  // Nilai terkini untuk callback/interval berumur panjang (hindari stale closure).
+  const jobRef = useRef(job)
+  jobRef.current = job
+  const historyQueryRef = useRef(historyQuery)
+  historyQueryRef.current = historyQuery
+  const historyReqRef = useRef(0)
+  const autoPickedRef = useRef(false)
   const working = busy || running || takes.some((t) => ['queued', 'processing'].includes(t.status))
   const jobError = job?.status === 'failed'
     ? (job.error || 'Job gagal tanpa pesan dari worker.')
@@ -450,19 +462,25 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     }
   }, [])
 
-  const loadHistory = useCallback(async (query = '') => {
+  // `silent` = background poll: no spinner flicker every few seconds.
+  // historyReqRef drops stale responses (fast typing in the search box or a
+  // background poll finishing after a newer request must not overwrite it).
+  const loadHistory = useCallback(async (query = '', { silent = false } = {}) => {
     if (!user) return
-    setHistoryBusy(true)
+    const reqId = ++historyReqRef.current
+    if (!silent) setHistoryBusy(true)
     try {
       const data = await getMusicJobs(query)
+      if (reqId !== historyReqRef.current) return
       const jobs = data.jobs || []
       setHistoryList(jobs)
 
       // Resume ONLY an in-flight server job after a refresh/reopen so the form
       // does not look idle while the backend is still working. A finished
-      // song is intentionally NOT auto-opened into the player: the last result
+      // song is intentionally NOT auto-opened as a take card: the last result
       // used to stick around forever as a permanent "Now creating" card, which
-      // is confusing. Completed takes stay in Riwayat and open on click.
+      // is confusing. Completed takes stay in Riwayat and open on click (the
+      // newest one is only pre-loaded into the player once, see below).
       if (!(query || '').trim()) {
         const active = jobs.find((item) => ['queued', 'processing'].includes(item.status))
         if (active) {
@@ -472,22 +490,43 @@ export default function Music({ user, authChecked = false, onSignIn }) {
           setBusy(true)
           const started = Number(active.created_at || active.updated_at || 0) * 1000
           startedAt.current = started > 0 ? started : Date.now()
-        } else if (!job || ['queued', 'processing'].includes(job?.status)) {
-          // Jika tidak ada job aktif dan job saat ini masih memproses atau kosong,
-          // pasang lagu completed terbaru agar langsung siap putar di player.
-          const latestCompleted = jobs.find((item) => item.status === 'completed')
-          if (latestCompleted) {
-            setJob(latestCompleted)
-            setTakes([latestCompleted])
-            setBusy(false)
-            setGroupId('')
+        } else {
+          const current = jobRef.current
+          if (!current && !autoPickedRef.current) {
+            // First load with nothing selected: put the newest finished song
+            // in the player ONCE so it is playable right away. Only the
+            // inspector/player is filled (takes stays empty → no "Memproses"
+            // card), and it never overrides a song the user picked later.
+            autoPickedRef.current = true
+            const latestCompleted = jobs.find((item) => item.status === 'completed')
+            if (latestCompleted) {
+              setJob(latestCompleted)
+              setTakes([])
+              setGroupId('')
+            }
+          }
+          // Tidak ada job aktif di server. Hanya bila job yang sedang tampil
+          // masih berstatus memproses (basi), ganti dengan versi terbarunya.
+          // Baca lewat ref: `job` di closure useCallback([user]) selalu nilai
+          // awal (null), dulu membuat player tertimpa lagu terbaru tiap 5 detik
+          // walau pengguna sedang memutar lagu lain dari Riwayat.
+          if (current?.job_id && ['queued', 'processing'].includes(current.status)) {
+            const fresh = jobs.find((item) => item.job_id === current.job_id)
+            if (fresh && ['completed', 'failed'].includes(fresh.status)) {
+              setJob(fresh)
+              setTakes([fresh])
+              setBusy(false)
+              setGroupId('')
+            }
           }
         }
       }
     } catch {
       // Riwayat hanya pelengkap — jangan memblokir panel karena ini.
     } finally {
-      setHistoryBusy(false)
+      // Hanya request terbaru yang menutup spinner (juga bila ia poll senyap
+      // yang menyalip request manual, supaya spinner tidak macet).
+      if (reqId === historyReqRef.current) setHistoryBusy(false)
     }
   }, [user])
 
@@ -515,7 +554,8 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   useEffect(() => { loadHistory() }, [loadHistory])
   useEffect(() => {
     if (!user || busy || groupId) return undefined
-    const id = setInterval(() => { loadHistory() }, 5000)
+    // Pakai query pencarian yang sedang aktif supaya hasil cari tidak tertimpa.
+    const id = setInterval(() => { loadHistory(historyQueryRef.current, { silent: true }) }, 5000)
     return () => clearInterval(id)
   }, [user, busy, groupId, loadHistory])
   useEffect(() => { loadPersonas() }, [loadPersonas])
@@ -579,14 +619,21 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     }
 
     const poll = async () => {
+      let errStatus = null
+      let retryAfter = 0
       try {
         const g = await getMusicGroup(groupId)
         if (stopped) return
         if (applyTakes(g.takes || [])) return
       } catch (e) {
-        if (!stopped) setRequestError(`Gagal memantau grup ${groupId}: ${e.message}`)
+        errStatus = e?.status
+        retryAfter = e?.retryAfter || 0
+        if (!stopped && errStatus !== 429) setRequestError(`Gagal memantau grup ${groupId}: ${e.message}`)
       }
-      if (!stopped) timer = setTimeout(poll, POLL_MS)
+      if (!stopped) {
+        const delay = errStatus === 429 ? Math.min(10000, Math.max(3000, retryAfter * 1000 || 5000)) : POLL_MS
+        timer = setTimeout(poll, delay)
+      }
     }
 
     const run = async () => {
@@ -1231,6 +1278,12 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         bpm: Number(bpm) || 0,
         music_key: musicKey.trim(),
         persona_id: personaId,
+        eq_preset: preEqConfig.preset,
+        eq_bands: preEqConfig.bands,
+        eq_preamp_db: preEqConfig.preamp_db,
+        eq_compressor: preEqConfig.compressor,
+        eq_stereo_width: preEqConfig.stereo_width,
+        eq_reverb: preEqConfig.reverb,
       })
       if (next?.cost_estimate) setCostEstimate(next.cost_estimate)
       if (next?.language) setLanguage(next.language)
@@ -1350,28 +1403,61 @@ export default function Music({ user, authChecked = false, onSignIn }) {
 
   const lyricsLines = job?.metadata?.lyrics_timeline || []
   const mediaBust = `${job?.job_id || ''}:${job?.updated_at || ''}`
+  // Backend re-signs every /videos URL on EVERY response (new exp+sig), so a
+  // re-fetched job object carries a different audio_path string even when the
+  // file is the same. Keying the URL on the object made <audio src> change on
+  // each poll/SSE/group fetch, which reset the element mid-playback (song
+  // stopped, button stuck on "Pause"). Key on the unsigned path + version
+  // instead, so the URL only changes when the actual file/job changes.
+  const [mediaNonce, setMediaNonce] = useState(0)
+  const [showStudioEq, setShowStudioEq] = useState(true)
+  const [showPreEq, setShowPreEq] = useState(false)
+  const [preEqConfig, setPreEqConfig] = useState(() => ({
+    preset: 'flat',
+    bands: [0, 0, 0, 0, 0, 0, 0, 0],
+    preamp_db: 0,
+    compressor: 0,
+    stereo_width: 1.0,
+    reverb: 0,
+    normalize_lufs: true,
+  }))
+  const handleServerEq = useCallback(async (targetJobId, payload) => {
+    const updated = await equalizeMusicJob(targetJobId, payload)
+    if (updated?.job_id) {
+      setJob(updated)
+      setTakes((prev) => prev.map((t) => (t.job_id === updated.job_id ? updated : t)))
+      setHistoryList((prev) => prev.map((t) => (t.job_id === updated.job_id ? updated : t)))
+      setMediaNonce((n) => n + 1)
+    }
+    return updated
+  }, [])
+  const audioPathRaw = job?.status === 'completed' ? String(job.audio_path || '') : ''
+  const audioKey = audioPathRaw ? `${audioPathRaw.split('?')[0]}|${mediaBust}|${mediaNonce}` : ''
   const audioUrl = useMemo(() => {
-    if (job?.status !== 'completed' || !job.audio_path) return ''
-    const url = resolveMediaAsset(job.audio_path)
+    if (!audioKey) return ''
+    const url = resolveMediaAsset(audioPathRaw)
     return mediaBust
       ? `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(mediaBust)}` : url
-  }, [job, mediaBust])
+  }, [audioKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const coverPathRaw = coverUrl || job?.cover_path || job?.metadata?.cover_path || ''
+  const coverKey = coverPathRaw
+    ? `${String(coverPathRaw).split('?')[0]}|${coverBust || mediaBust}|${mediaNonce}` : ''
   const coverSrc = useMemo(() => {
-    const path = coverUrl || job?.cover_path || job?.metadata?.cover_path || ''
-    if (!path) return ''
-    const url = resolveMediaAsset(path)
+    if (!coverKey) return ''
+    const url = resolveMediaAsset(coverPathRaw)
     const bust = coverBust || mediaBust
     return bust ? `${url}${url.includes('?') ? '&' : '?'}cb=${encodeURIComponent(bust)}` : url
-  }, [coverUrl, job, coverBust, mediaBust])
+  }, [coverKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const coverSource = job?.cover_source || job?.metadata?.cover_source || ''
+  const wavPathRaw = String(job?.metadata?.wav_path || '').trim()
+  const wavKey = wavPathRaw ? `${wavPathRaw.split('?')[0]}|${mediaBust}|${mediaNonce}` : ''
   const wavUrl = useMemo(() => {
-    const raw = String(job?.metadata?.wav_path || '').trim()
-    if (!raw) return ''
-    const path = raw.startsWith('/videos/')
-      ? raw
-      : `/videos/${job.job_id}/${raw.replace(/^\/+/, '')}`
+    if (!wavKey) return ''
+    const path = wavPathRaw.startsWith('/videos/')
+      ? wavPathRaw
+      : `/videos/${job.job_id}/${wavPathRaw.replace(/^\/+/, '')}`
     return resolveMediaAsset(path)
-  }, [job])
+  }, [wavKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeIndex = useMemo(() => {
     const total = songDuration || Number(job?.duration) || 0
@@ -1423,11 +1509,30 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     reader.readAsDataURL(file)
   }
 
+  // `playing` follows the element's real play/pause events instead of being
+  // flipped optimistically: play() can reject (autoplay policy, 401/expired
+  // link, unsupported source) and the button used to show "Pause" while
+  // nothing was playing, with an unhandled promise rejection.
+  const startPlayback = () => {
+    const el = audioRef.current
+    if (!el || !el.getAttribute('src')) return
+    const p = el.play()
+    if (p && typeof p.catch === 'function') {
+      p.catch((e) => {
+        setPlaying(false)
+        // AbortError = src changed / pause() raced the play request — benign.
+        if (e?.name !== 'AbortError') {
+          setRequestError(`Lagu gagal diputar: ${e?.message || e}`)
+        }
+      })
+    }
+  }
+
   const togglePlay = () => {
-    if (!audioRef.current) return
-    if (playing) audioRef.current.pause()
-    else audioRef.current.play()
-    setPlaying(!playing)
+    const el = audioRef.current
+    if (!el) return
+    if (!el.paused) el.pause()
+    else startPlayback()
   }
 
   const onTimeUpdate = () => {
@@ -1441,11 +1546,43 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     }
   }
 
-  const seekTo = (seconds) => {
-    if (!audioRef.current) return
-    audioRef.current.currentTime = Math.max(0, Number(seconds) || 0)
-    if (!playing) audioRef.current.play().then(() => setPlaying(true)).catch(() => {})
+  // A signed link can expire (MEDIA_TTL) or the file can be re-rendered.
+  // On a load error, fetch the job once more for a freshly signed URL.
+  const mediaRetryRef = useRef('')
+  const onAudioError = () => {
+    setPlaying(false)
+    const id = job?.job_id
+    if (!id) return
+    const attempt = `${id}|${mediaBust}`
+    if (mediaRetryRef.current === attempt) {
+      setRequestError('Audio lagu gagal dimuat dari server. Coba buka ulang lagu dari Riwayat.')
+      return
+    }
+    mediaRetryRef.current = attempt
+    getMusicStatus(id)
+      .then((fresh) => {
+        if (jobRef.current?.job_id !== id) return
+        setJob(fresh)
+        setMediaNonce((n) => n + 1)
+      })
+      .catch((e) => setRequestError(`Audio lagu gagal dimuat: ${e.message}`))
   }
+
+  const seekTo = (seconds) => {
+    const el = audioRef.current
+    if (!el) return
+    el.currentTime = Math.max(0, Number(seconds) || 0)
+    setCurrentTime(el.currentTime)
+    if (el.paused) startPlayback()
+  }
+
+  // New song/URL: reset the transport so the lyric highlight and seek bar do
+  // not carry the previous song's duration/position.
+  useEffect(() => {
+    setCurrentTime(0)
+    setSongDuration(0)
+    if (!audioUrl) setPlaying(false)
+  }, [audioUrl])
 
   const realignTimeline = async () => {
     if (!job?.job_id || realignBusy) return
@@ -1643,20 +1780,71 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     }
   }
 
+  const fetchAndReviewAsr = async () => {
+    if (!user) { onSignIn(); return }
+    if (!remixUrl.trim() || remixTranscribing) return
+    setRemixTranscribing(true)
+    setRequestError('')
+    try {
+      const effEngine = remixEngine === 'voice_pure' ? 'voice' : remixEngine
+      const res = await remixMusicUrl({
+        url: remixUrl.trim(),
+        genre: remixGenre,
+        rights_confirmed: true,
+        transcribe_only: true,
+        cover_engine: effEngine,
+      })
+      if (res.lyrics) {
+        setRemixLyrics(res.lyrics)
+      }
+      setRemixAsrSource(res.lyrics_source || 'audio_asr')
+      setRemixAsrReviewed(true)
+    } catch (e) {
+      setRequestError(`Gagal transkripsi audio dari link: ${e.message}`)
+    } finally {
+      setRemixTranscribing(false)
+    }
+  }
+
   const remixFromUrl = async () => {
     if (!user) { onSignIn(); return }
-    if (!remixUrl.trim() || remixBusy) return
+    if (!remixUrl.trim() || remixBusy || remixTranscribing) return
+    if (!remixRightsConfirmed) {
+      setRequestError('Centang pernyataan hak/izin memakai lagu sumber terlebih dahulu.')
+      return
+    }
+    // Review step: jika lirik kosong dan belum di-review ASR, jalankan review step terlebih dahulu
+    if (!remixLyrics.trim() && !remixAsrReviewed && !['arrangement'].includes(remixEngine)) {
+      await fetchAndReviewAsr()
+      return
+    }
     setRemixBusy(true)
     setRequestError('')
     try {
       const coverGender = remixGender === 'auto' ? effectiveGender : remixGender
-      const res = await remixMusicUrl({ url: remixUrl.trim(), genre: remixGenre,
-        prompt: remixPrompt.trim(), ref_strength: Number(remixStrength),
+      const isPureVoice = remixEngine === 'voice_pure'
+      const effEngine = isPureVoice ? 'voice' : remixEngine
+      const effRestyle = isPureVoice ? false : remixRestyle
+      const res = await remixMusicUrl({
+        url: remixUrl.trim(),
+        genre: remixGenre,
+        prompt: remixPrompt.trim(),
+        ref_strength: Number(remixStrength),
         lyrics: remixLyrics.trim(),
         vocal_gender: coverGender,
-        persona_id: personaId, rights_confirmed: remixRightsConfirmed,
-        cover_engine: remixEngine, pitch_shift: remixPitch,
-        restyle: remixRestyle, voice_mode: remixVoiceMode })
+        persona_id: personaId,
+        rights_confirmed: remixRightsConfirmed,
+        cover_engine: effEngine,
+        pitch_shift: remixPitch,
+        restyle: effRestyle,
+        voice_mode: remixVoiceMode,
+        eq_preset: preEqConfig.preset,
+        eq_bands: preEqConfig.bands,
+        eq_preamp_db: preEqConfig.preamp_db,
+        eq_compressor: preEqConfig.compressor,
+        eq_stereo_width: preEqConfig.stereo_width,
+        eq_reverb: preEqConfig.reverb,
+      })
       setGroupId(res.group_id || '')
       const initialTakes = (res.jobs || []).map((t) => ({
         ...t,
@@ -1837,8 +2025,22 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 ) : (
                   <div className="space-y-3.5">
                     <div>
-                      <label className={labelCls}>Link lagu sumber</label>
-                      <input value={remixUrl} onChange={(e) => setRemixUrl(e.target.value)}
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <label className={labelCls}>Link lagu sumber</label>
+                        <button
+                          type="button"
+                          onClick={fetchAndReviewAsr}
+                          disabled={!remixUrl.trim() || remixTranscribing || remixBusy}
+                          className="flex items-center gap-1 text-[11px] font-medium text-[#f59e0b] transition hover:text-[#fbbf24] disabled:opacity-40"
+                        >
+                          {remixTranscribing ? (
+                            <><Spinner className="h-3 w-3" /> Transkripsi ASR…</>
+                          ) : (
+                            <>🎙️ Ambil &amp; Review Lirik (ASR)</>
+                          )}
+                        </button>
+                      </div>
+                      <input value={remixUrl} onChange={(e) => { setRemixUrl(e.target.value); setRemixAsrReviewed(false); }}
                         placeholder="https://www.youtube.com/watch?v=…" className={fieldCls} />
                     </div>
 
@@ -1850,16 +2052,23 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         if (next === 'arrangement') setRemixPitch('0')
                         else if (next === 'voice' && remixPitch === '0') setRemixPitch('auto')
                       }} className={fieldCls}>
-                        <option value="voice">Klipin Neural Restyle — ganti suara + aransemen genre baru</option>
-                        <option value="arrangement">Klipin Smart Arrange — vokal asli + aransemen genre baru</option>
-                        <option value="mulacover">Klipin Commercial Engine — nyanyi ulang, melodi &amp; chord asli</option>
-                        <option value="diffrhythm">Klipin Full Restyle — melodi baru &amp; lirik terkunci</option>
-                        <option value="heartmula">Klipin Studio Core — melodi studio baru</option>
-                        <option value="ace-step">Klipin Fast Draft — render cepat</option>
+                        <option value="yue2_comfy">✨ YuE2 + SheetSage2 (ComfyUI Headless — VRAM 6-8GB)</option>
+                        <option value="yue2_native">⚡ YuE2 + SheetSage2 (Native Python SDK — VRAM 16-24GB)</option>
+                        <option value="voice">🎯 Persona Baru + Aransemen Baru (Lirik &amp; Ketukan Terkunci — Rekomendasi)</option>
+                        <option value="arrangement">🎛️ Vokal Asli + Aransemen Baru (Beat-Locked 4-Stem)</option>
+                        <option value="voice_pure">🎤 Persona Baru + Musik Asli (Pure Voice Swap)</option>
+                        <option value="mulacover">✨ MuLaCover — Melodi &amp; Harmoni Asli (Generative AI)</option>
+                        <option value="diffrhythm">DiffRhythm — Melodi baru &amp; lirik terkunci</option>
+                        <option value="heartmula">HeartMuLa Studio — Melodi studio baru</option>
+                        <option value="ace-step">ACE-Step — Render cepat</option>
                         <option value="">Otomatis (Rekomendasi Terbaik)</option>
                       </select>
                       <p className="mt-1.5 text-[11px] leading-[1.5] text-[#71717a]">
-                        {remixEngine === 'voice'
+                        {remixEngine === 'yue2_comfy'
+                          ? 'SheetSage2 mengekstrak melodi simbolik ABC notation, YuE2 menyanyikan lirik terkunci tanpa stem bleeding via worker ComfyUI (hemat VRAM).'
+                          : remixEngine === 'yue2_native'
+                            ? 'Pipeline native Python SheetSage2 + YuE2 berbobot penuh langsung di GPU server (VRAM 16-24GB).'
+                            : remixEngine === 'voice'
                           ? 'Vokal asli dipisah (Demucs), timbre suara diadaptasi ke gender/persona pilihan. Melodi, lirik, dan ketukan tetap utuh.'
                           : remixEngine === 'arrangement'
                             ? 'Vokal asli penyanyi dipertahankan, seluruh aransemen instrumen diaransemen ulang ke genre baru dengan tempo sinkron.'
@@ -1930,15 +2139,83 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                     )}
 
                     <div>
-                      <label className={labelCls}>Lirik (opsional)</label>
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <label className={labelCls}>Lirik (opsional)</label>
+                        {remixAsrSource && (
+                          <span className="rounded bg-[#10b981]/15 px-2 py-0.5 font-mono text-[10px] text-[#34d399]">
+                            {remixAsrSource === 'groq-whisper-large-v3-turbo' ? 'Groq Whisper' : remixAsrSource === 'user' ? 'Manual' : 'Whisper lokal'}
+                          </span>
+                        )}
+                      </div>
+                      {remixAsrReviewed && (
+                        <div className="mb-2 rounded-lg border border-[#10b981]/30 bg-[#10b981]/10 p-2.5 text-[11px] leading-relaxed text-[#a7f3d0]">
+                          <span className="font-semibold text-[#34d399]">🔍 Review Lirik ASR:</span> Silakan periksa lirik hasil transkripsi di bawah. Koreksi bila ada kata yang keliru sebelum membuat cover.
+                        </div>
+                      )}
                       <textarea value={remixLyrics} onChange={(e) => setRemixLyrics(e.target.value)} rows={5}
                         placeholder={'Kosongkan untuk ekstraksi otomatis.\n[Verse]\nsatu baris = satu frasa vokal'}
                         className={`${fieldCls} resize-y font-mono text-[12px] leading-5`} />
+                      <p className="mt-1 text-[11px] text-[#71717a]">
+                        Lirik dikunci apa adanya tanpa diparafrase atau diterjemahkan model.
+                      </p>
                     </div>
 
                     <div>
-                      <label className={labelCls}>Arahan tambahan</label>
-                      <input value={remixPrompt} onChange={(e) => setRemixPrompt(e.target.value)} placeholder="opsional" className={fieldCls} />
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <label className={labelCls}>Arahan tambahan &amp; Preset Vibe</label>
+                        {remixGenre === 'reggae' && (
+                          <span className="rounded bg-[#f59e0b]/15 px-1.5 py-0.5 text-[10px] font-medium text-[#fbbf24]">
+                            🌴 Preset Reggae AI
+                          </span>
+                        )}
+                      </div>
+                      {remixGenre === 'reggae' && (
+                        <div className="mb-2 flex flex-wrap gap-1.5">
+                          {[
+                            {
+                              id: 'boenter',
+                              label: '🌴 Reggae Santai (Gaya BOENTER)',
+                              strength: 0.4,
+                              prompt: 'warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove, muted clean offbeat guitar skank, warm Hammond B3 organ bubble, deep round sub-dub bassline, melodic brass intro hook, relaxed soulful vocal with warm reverb and subtle dub echo, silky analog highs',
+                            },
+                            {
+                              id: 'ska',
+                              label: '🎺 Reggae Ska & Brass',
+                              strength: 0.4,
+                              prompt: 'upbeat Indonesian ska-reggae cover, lively brass section (trumpet, trombone, saxophone hooks), crisp offbeat guitar skank, bouncy walking dub bassline, tight one-drop snare and rimshot',
+                            },
+                            {
+                              id: 'acoustic',
+                              label: '🌊 Reggae Akustik Pantai',
+                              strength: 0.45,
+                              prompt: 'acoustic island reggae cover, nylon and steel acoustic guitar offbeat skank, warm cajon and rimshot one-drop, deep upright dub bass, relaxed intimate vocal',
+                            },
+                            {
+                              id: 'dub',
+                              label: '🔊 Reggae Dub Bass Tebal',
+                              strength: 0.4,
+                              prompt: 'deep roots dub reggae cover, heavy warm sub-bass pocket (60-140 Hz), spacious spring reverb and analog tape echo, laid-back one-drop rimshot, warm Hammond organ bubble',
+                            },
+                          ].map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => {
+                                setRemixPrompt(preset.prompt)
+                                setRemixStrength(preset.strength)
+                              }}
+                              className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                                remixPrompt === preset.prompt
+                                  ? 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fbbf24]'
+                                  : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f4a] hover:text-[#f4f4f6]'
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <input value={remixPrompt} onChange={(e) => setRemixPrompt(e.target.value)} placeholder="Contoh: warm roots reggae, brass intro, dub bassline, santai…" className={fieldCls} />
                     </div>
 
                     <div>
@@ -1950,15 +2227,50 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         onChange={(e) => setRemixStrength(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
                     </div>
 
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-[#a1a1aa]">Pre-Master Studio Equalizer</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowPreEq((v) => !v)}
+                          className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition ${
+                            showPreEq || preEqConfig.preset !== 'flat'
+                              ? 'border-[#10b981]/60 bg-[#10b981]/15 text-[#34d399]'
+                              : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:text-[#f4f4f6]'
+                          }`}
+                        >
+                          🎚️ {preEqConfig.preset === 'custom' ? 'Custom 8-Band' : (STUDIO_EQ_PRESETS.find((p) => p.id === preEqConfig.preset)?.label || 'Studio Flat')}
+                        </button>
+                      </div>
+                      {showPreEq && (
+                        <StudioEqualizer
+                          audioRef={audioRef}
+                          genre={remixGenre}
+                          initialEq={preEqConfig}
+                          onChange={setPreEqConfig}
+                          compact
+                          title="PRE-MASTER STUDIO EQUALIZER"
+                        />
+                      )}
+                    </div>
+
                     <label className="flex items-start gap-2 text-[12px] leading-5 text-[#a1a1aa]">
                       <input type="checkbox" checked={remixRightsConfirmed} onChange={(e) => setRemixRightsConfirmed(e.target.checked)} className="mt-1 h-3.5 w-3.5 accent-[#f59e0b]" />
                       <span>Saya punya hak/izin memakai lagu sumber ini.</span>
                     </label>
 
                     <button type="button" onClick={remixFromUrl}
-                      disabled={!remixUrl.trim() || remixBusy || busy || !remixRightsConfirmed}
+                      disabled={!remixUrl.trim() || remixBusy || remixTranscribing || busy || !remixRightsConfirmed}
                       className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#f59e0b] px-4 py-2.5 text-[13px] font-semibold text-[#0e0e11] transition hover:bg-[#fbbf24] disabled:cursor-not-allowed disabled:opacity-40">
-                      {remixBusy ? <><Spinner className="h-3.5 w-3.5" /> Menyiapkan cover…</> : 'Create cover'}
+                      {remixBusy ? (
+                        <><Spinner className="h-3.5 w-3.5" /> Menyiapkan cover…</>
+                      ) : remixTranscribing ? (
+                        <><Spinner className="h-3.5 w-3.5" /> Mentranskripsi lirik ASR…</>
+                      ) : (!remixLyrics.trim() && !remixAsrReviewed && !['arrangement'].includes(remixEngine)) ? (
+                        <>🎙️ Ambil Lirik &amp; Review ASR</>
+                      ) : (
+                        'Konfirmasi &amp; Buat Cover'
+                      )}
                     </button>
                   </div>
                 )}
@@ -3055,6 +3367,11 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                   <p className="mt-0.5 truncate text-[11px] text-[#71717a]">
                     {(job?.metadata?.genre_label || job?.genre_label || job?.genre) || genre} · {job?.provider || 'engine'}
                   </p>
+                  {job?.metadata?.lyrics_source && (
+                    <p className="mt-1 font-mono text-[10px] text-[#10b981]">
+                      Sumber lirik: {job.metadata.lyrics_source === 'groq-whisper-large-v3-turbo' ? 'Groq Whisper' : job.metadata.lyrics_source === 'user' ? 'Manual pengguna' : job.metadata.lyrics_source === 'source_vocal_stem' ? 'Vokal lagu asli' : 'Whisper ASR'}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -3101,6 +3418,14 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                       className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
                       Simpan persona
                     </button>
+                    <button type="button" onClick={() => setShowStudioEq((v) => !v)}
+                      className={`rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+                        showStudioEq
+                          ? 'border-[#10b981]/60 bg-[#10b981]/15 text-[#34d399]'
+                          : 'border-[#26262e] bg-[#1c1c22] text-[#a1a1aa] hover:text-[#f4f4f6]'
+                      }`}>
+                      🎚️ Studio EQ
+                    </button>
                   </>
                 )}
               </div>
@@ -3109,7 +3434,10 @@ export default function Music({ user, authChecked = false, onSignIn }) {
 
               {job?.status === 'completed' ? (
                 <div className="mt-3 space-y-2.5 border-t border-[#26262e] pt-3">
-                  <audio ref={audioRef} src={audioUrl} onEnded={() => setPlaying(false)}
+                  <audio ref={audioRef} src={audioUrl || undefined} crossOrigin="anonymous" preload="metadata"
+                    onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+                    onEnded={() => setPlaying(false)} onEmptied={() => setPlaying(false)}
+                    onError={onAudioError}
                     onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} className="hidden" />
                   <MusicWaveform
                     src={audioUrl}
@@ -3133,6 +3461,16 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                     value={Math.min(currentTime, songDuration || job?.duration || duration)}
                     onChange={(e) => seekTo(Number(e.target.value))}
                     aria-label="Seek" className="w-full accent-[#f59e0b]" />
+                  {showStudioEq && (
+                    <StudioEqualizer
+                      audioRef={audioRef}
+                      jobId={job.job_id}
+                      genre={job.genre || genre}
+                      initialEq={job.metadata?.studio_eq}
+                      onApplyServerEq={handleServerEq}
+                      compact
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="mt-3 border-t border-[#26262e] pt-3">
@@ -3215,6 +3553,17 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             </div>
 
             <div className="hidden items-center gap-1.5 sm:flex">
+              <button
+                type="button"
+                onClick={() => setShowStudioEq((v) => !v)}
+                className={`rounded-full border px-3 py-1 text-[10px] font-bold transition ${
+                  showStudioEq
+                    ? 'border-[#10b981]/60 bg-[#10b981]/20 text-[#6ee7b7]'
+                    : 'border-white/15 bg-white/5 text-white/80 hover:border-cyan/50'
+                }`}
+              >
+                🎚️ Studio EQ
+              </button>
               <a href={audioUrl} download={`${job.title || 'klipin-music'}.mp3`}
                 className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] font-bold text-white/80 hover:border-cyan/50">
                 ⬇ MP3

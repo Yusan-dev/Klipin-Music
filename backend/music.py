@@ -58,7 +58,7 @@ GENRES = [
     {"id": "edm", "label": "EDM / Dance", "mood": "epic", "tags": "EDM, festival dance, powerful drop, sidechain synths, euphoric build-up"},
     {"id": "dj-remix", "label": "DJ Remix", "mood": "epic", "tags": "DJ remix, club mix, punchy kick, bass drop, sidechain, dancefloor energy"},
     {"id": "pop-remix", "label": "Pop Remix", "mood": "upbeat", "tags": "pop remix, polished vocal, four-on-the-floor drums, synth bass, radio hook"},
-    {"id": "reggae", "label": "Reggae", "mood": "chill", "tags": "roots reggae, one-drop drum groove (kick and snare together on beat 3), offbeat skank guitar on the upbeats, deep dub bass line, relaxed swung feel, no four-on-the-floor kick"},
+    {"id": "reggae", "label": "Reggae", "mood": "chill", "tags": "warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove (soft kick and cross-stick rimshot on beat 3), muted clean electric guitar and warm Hammond B3 organ bubble on the offbeat upbeats, deep round sub-dub bassline (60-160 Hz warm pocket), melodic brass horn hook on intro and interlude, relaxed soulful vocal with warm studio reverb and subtle dub tape echo, silky rolled-off analog highs, no harsh hi-hats, no four-on-the-floor kick"},
     {"id": "dangdut-remix", "label": "Dangdut Remix", "mood": "upbeat", "tags": "dangdut remix, koplo groove, kendang, electronic bass, danceable drop"},
     {"id": "rock", "label": "Rock", "mood": "epic", "tags": "rock, electric guitars, driving drums, powerful chorus, energetic vocal"},
     {"id": "rnb", "label": "R&B / Soul", "mood": "chill", "tags": "R&B, soulful vocal, smooth groove, warm keys, late night vibe"},
@@ -266,6 +266,23 @@ def _voice_modal_enabled() -> bool:
     return os.environ.get("KLIPIN_VOICE_MODAL_ENABLED", "0").strip() == "1"
 
 
+def _yue2_comfy_enabled() -> bool:
+    """Whether YuE2 ComfyUI worker (Modal or local ComfyUI instance) is enabled."""
+    return (
+        os.environ.get("KLIPIN_YUE2_COMFY_ENABLED", "0").strip() == "1"
+        or os.environ.get("KLIPIN_YUE2_MODAL_ENABLED", "0").strip() == "1"
+        or bool(os.environ.get("COMFYUI_URL", "").strip())
+    )
+
+
+def _yue2_native_enabled() -> bool:
+    """Whether YuE2 Native Python SDK worker (Modal or local CUDA) is enabled."""
+    return (
+        os.environ.get("KLIPIN_YUE2_NATIVE_ENABLED", "0").strip() == "1"
+        or os.environ.get("KLIPIN_YUE2_MODAL_ENABLED", "0").strip() == "1"
+    )
+
+
 def _normalize_provider(provider: str | None) -> str:
     """Map persisted runtime provider labels back to request provider IDs.
 
@@ -276,7 +293,9 @@ def _normalize_provider(provider: str | None) -> str:
     existing database rows never break after removing non-commercial YuE2.
     """
     value = str(provider or "auto").strip().lower()
-    if value.startswith("heartmula") or value.startswith("yue2"):
+    if value.startswith("yue2_comfy") or value.startswith("yue2_native") or value == "yue2":
+        return value.split("-")[0]
+    if value.startswith("heartmula"):
         return "heartmula"
     if value.startswith("ace-step") or value.startswith("acestep"):
         return "ace-step"
@@ -821,11 +840,12 @@ def _synthesize_voice_reference(spec: dict, job_dir: Path, log=None) -> str:
 
 GENRE_ARRANGEMENT_BLUEPRINTS: dict[str, str] = {
     "reggae": (
-        "roots Indonesian pop-reggae cover instrumental arrangement (#reggaeindonesia style), "
-        "crisp offbeat guitar and keyboard skank on the '&' upbeats, warm round dub bassline "
-        "following the chord roots, classic one-drop reggae drum groove (rimshot + kick on beat 3, "
-        "crisp hi-hat shuffle), warm brass horn stabs and organ bubble, relaxed santai feel, "
-        "NO four-on-the-floor kick and NO original pop ballad drums"
+        "warm island roots Indonesian pop-reggae cover instrumental arrangement (BOENTER EDM chill reggae vibe), "
+        "laid-back 66-72 BPM half-time feel (130 BPM double-time grid), crisp offbeat guitar and muted clean electric guitar skank panned left "
+        "and warm Hammond B3 organ bubble panned right on the '&' upbeats, deep round sub-dub bassline (60-160 Hz warm pocket) "
+        "following the chord roots, classic one-drop reggae drum groove (cross-stick rimshot + warm kick on beat 3, "
+        "silky rolled-off analog hi-hat shuffle), warm brass/saxophone melodic hooks on intro and instrumental break, "
+        "relaxed santai feel, silky rolled-off highs (>7 kHz), NO harsh metallic cymbals, NO four-on-the-floor kick"
     ),
     "dangdut-koplo": (
         "modern Jawa Timur dangdut koplo live stage instrumental arrangement, syncopated kendang "
@@ -1056,28 +1076,70 @@ def _prepare_harmonic_guide_backing(backing_path: Path, job_dir: Path,
     return backing_path
 
 
-def _mix_vocal_and_arrangement(vocals_path: Path, restyled_path: Path,
-                               output: Path, duration: float,
+def _mix_vocal_and_arrangement(vocals_path: Path | str, restyled_path: Path | str,
+                               output: Path | str, duration: float,
                                genre: str = "", log=None) -> Path:
     """Studio vocal-over-arrangement mixer & master:
     - Cleans residual bleed from isolated vocal stem (highpass 95Hz, de-mud 260Hz,
       presence lift 3.2kHz, optical-style leveling compressor, subtle room glue).
+    - Genre-adaptive vocal styling:
+      * Reggae: Dub tape delay (240ms quarter-note echo) + warm low-mid swing
+        so the vocal phrasing glides naturally into the reggae skank beat.
+      * Koplo: Bright upfront presence + snappy slapback.
     - Carves a -1.8dB mid-range vocal pocket at 2.6kHz in the new genre arrangement
       so the vocal sits naturally inside the band (like YouTube Reggae/Koplo covers).
     - Masters the combined stereo bus to -14 LUFS with true-peak limiting.
     """
+    vocals_path = Path(vocals_path)
+    restyled_path = Path(restyled_path)
+    output = Path(output)
     ffmpeg = _ffmpeg_exe()
-    vocal_chain = (
-        "[1:a]highpass=f=95,lowpass=f=13800,"
-        "equalizer=f=260:width_type=q:width=1.4:g=-2.2,"
-        "equalizer=f=3200:width_type=q:width=1.2:g=2.2,"
-        "acompressor=threshold=-18dB:ratio=3.2:attack=8:release=130:makeup=2.0,"
-        "aecho=0.8:0.86:36:0.11,volume=1.18[v]"
-    )
-    backing_chain = (
-        "[0:a]equalizer=f=2600:width_type=q:width=1.1:g=-1.8,"
-        "volume=0.88[bg]"
-    )
+    gid = str(genre or "").strip().lower()
+
+    if gid in ("reggae", "ska", "dub", "reggae-santai", "reggae-ska", "reggae-dub"):
+        # BOENTER-style warm Reggae vocal pocket:
+        # - Warm low-mid body (+1.2dB at 210Hz), de-box at 340Hz, smooth presence at 2.6kHz
+        # - Gentle analog high-shelf roll-off (-1.8dB at 6.8kHz, lowpass 11.2kHz) so vocal never sounds harsh
+        # - Subtle dub/plate slapback glue (115ms at 0.11 decay) so the vocal sits organically inside the reggae band
+        vocal_chain = (
+            "[1:a]highpass=f=92,lowpass=f=11200,"
+            "equalizer=f=210:width_type=q:width=1.2:g=1.2,"
+            "equalizer=f=340:width_type=q:width=1.4:g=-2.0,"
+            "equalizer=f=2650:width_type=q:width=1.2:g=2.0,"
+            "equalizer=f=6800:width_type=q:width=1.1:g=-1.8,"
+            "acompressor=threshold=-18dB:ratio=3.2:attack=8:release=135:makeup=2.0,"
+            "aecho=0.88:0.84:115:0.11,volume=1.18[v]"
+        )
+    elif gid in ("dangdut", "dangdut-koplo", "dangdut-remix"):
+        vocal_chain = (
+            "[1:a]highpass=f=120,lowpass=f=14500,"
+            "equalizer=f=250:width_type=q:width=1.5:g=-2.8,"
+            "equalizer=f=3500:width_type=q:width=1.2:g=3.2,"
+            "acompressor=threshold=-17dB:ratio=3.8:attack=6:release=110:makeup=2.0,"
+            "aecho=0.85:0.8:90:0.18,volume=1.22[v]"
+        )
+    else:
+        vocal_chain = (
+            "[1:a]highpass=f=95,lowpass=f=13800,"
+            "equalizer=f=260:width_type=q:width=1.4:g=-2.2,"
+            "equalizer=f=3200:width_type=q:width=1.2:g=2.2,"
+            "acompressor=threshold=-18dB:ratio=3.2:attack=8:release=130:makeup=2.0,"
+            "aecho=0.8:0.86:36:0.11,volume=1.18[v]"
+        )
+    if gid in ("reggae", "ska", "dub", "reggae-santai", "reggae-ska", "reggae-dub"):
+        backing_chain = (
+            "[0:a]lowpass=f=11500,"
+            "equalizer=f=1850:width_type=q:width=1.2:g=1.5,"
+            "equalizer=f=2800:width_type=q:width=1.2:g=-1.2,"
+            "equalizer=f=6800:width_type=q:width=1.0:g=-1.0,"
+            "extrastereo=m=1.38,"
+            "volume=0.90[bg]"
+        )
+    else:
+        backing_chain = (
+            "[0:a]equalizer=f=2600:width_type=q:width=1.1:g=-1.8,"
+            "volume=0.88[bg]"
+        )
     filter_complex = (
         f"{backing_chain};{vocal_chain};"
         "[bg][v]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
@@ -1110,285 +1172,186 @@ def _decode_stereo_f32(path: Path, sr: int = 44100, max_sec: float = 600.0):
     return raw[: frames * 2].reshape(frames, 2).copy()
 
 
-def _render_beat_locked_genre_backing(
-    job_dir: Path,
-    backing_path: Path,
-    out_path: Path,
-    genre_id: str,
-    duration: float,
-    bpm_hint: float = 0.0,
-    log=None,
-) -> bool:
-    """Build a 100% beat-locked genre arrangement from 4-stem Demucs tracks.
+def _track_f0_voiced(y, sr: int = 22050):
+    """Fast autocorrelation F0 tracker (85-780 Hz) on voiced frames."""
+    import numpy as np
 
-    Unlike generative text-to-music models (which drift in tempo or play wrong
-    chords), this stem-rearrangement engine:
-      1. Discards 100% of the original pop/rock ``drums.wav`` stem.
-      2. Uses ``Beat This!`` ONNX on ``drums.wav`` to lock onto every exact
-         millisecond beat and downbeat of the original performance (0.0ms drift).
-      3. Reshapes ``other.wav`` (the original studio guitars/keys/chords) into
-         an offbeat Reggae Skank ("&" chop + dub echo) + warm harmonic organ pad.
-      4. Reshapes ``bass.wav`` (the original studio bassline) into a deep
-         Reggae dub sub-bass locked to the original root notes.
-      5. Synthesizes a studio Reggae One-Drop drum & percussion kit (Kick,
-         Wooden Cross-Stick Rimshot, Offbeat Skank Hi-Hat, Cabasa Shaker, and
-         4-bar Dub Fills) directly on the exact millisecond beat timestamps,
-         following the original song's dynamic contour (gentle in soft intros,
-         full groove when the band enters).
-    """
-    try:
-        import numpy as np
-    except Exception:
-        return False
-
-    drums_path = job_dir / "cover_drums_source.mp3"
-    bass_path = job_dir / "cover_bass_source.mp3"
-    other_path = job_dir / "cover_other_source.mp3"
-    if not (other_path.is_file() and bass_path.is_file()):
-        return False
-
-    sr = 44100
-    ffmpeg = _ffmpeg_exe()
-    log and log("🥁 Menyusun aransemen Reggae One-Drop & Offbeat Skank terkunci-ketukan (4-Stem Studio Rearranger)…")
-
-    # 1. Pre-shape harmonic layers with studio EQ & dub delay via FFmpeg
-    skank_src = job_dir / "_other_skank_eq.wav"
-    pad_src = job_dir / "_other_pad_eq.wav"
-    bass_src = job_dir / "_bass_dub_eq.wav"
-    subprocess.run(
-        [ffmpeg, "-y", "-v", "error", "-i", str(other_path),
-         "-af", "highpass=f=280,lowpass=f=6200,equalizer=f=1850:width_type=q:width=1.3:g=5.0,aecho=0.8:0.78:112:0.24",
-         "-ar", str(sr), "-ac", "2", str(skank_src)],
-        capture_output=True, timeout=180, check=False)
-    subprocess.run(
-        [ffmpeg, "-y", "-v", "error", "-i", str(other_path),
-         "-af", "highpass=f=130,lowpass=f=1150,equalizer=f=420:width_type=q:width=1.1:g=2.5",
-         "-ar", str(sr), "-ac", "2", str(pad_src)],
-        capture_output=True, timeout=180, check=False)
-    subprocess.run(
-        [ffmpeg, "-y", "-v", "error", "-i", str(bass_path),
-         "-af", "highpass=f=32,lowpass=f=240,equalizer=f=68:width_type=q:width=1.1:g=5.5,acompressor=threshold=-18dB:ratio=4:attack=5:release=90:makeup=2.5",
-         "-ar", str(sr), "-ac", "2", str(bass_src)],
-        capture_output=True, timeout=180, check=False)
-
-    other_skank = _decode_stereo_f32(skank_src if skank_src.is_file() else other_path, sr, duration)
-    other_pad = _decode_stereo_f32(pad_src if pad_src.is_file() else other_path, sr, duration)
-    bass_arr = _decode_stereo_f32(bass_src if bass_src.is_file() else bass_path, sr, duration)
-    drums_orig = _decode_stereo_f32(drums_path if drums_path.is_file() else backing_path, sr, duration)
-
-    n_samples = min(len(other_skank), len(other_pad), len(bass_arr))
-    if n_samples < sr * 3:
-        return False
-    other_skank = other_skank[:n_samples]
-    other_pad = other_pad[:n_samples]
-    bass_arr = bass_arr[:n_samples]
-
-    # 2. Detect exact beat & downbeat timestamps from the isolated drum stem
-    grid = _beat_this_grid(drums_path if drums_path.is_file() else backing_path, duration=duration)
-    beats = [float(b) for b in (grid.get("beats") or []) if 0.0 <= float(b) < (n_samples / sr)]
-    downbeats = set(round(float(d), 2) for d in (grid.get("downbeats") or []))
-    if len(beats) < 8:
-        eff_bpm = float(bpm_hint or grid.get("bpm") or 120.0)
-        if eff_bpm < 55 or eff_bpm > 190:
-            eff_bpm = 120.0
-        step_sec = 60.0 / eff_bpm
-        beats = list(np.arange(0.0, n_samples / sr, step_sec, dtype=np.float64))
-
-    diffs = np.diff(beats)
-    median_dt = float(np.median(diffs)) if len(diffs) else 0.5
-    median_dt = max(0.28, min(1.0, median_dt))
-
-    # 3. Compute local drum energy of the original song so soft intros stay gentle
-    drum_mono = drums_orig[:n_samples].mean(axis=1) if len(drums_orig) >= n_samples else np.ones(n_samples, dtype=np.float32) * 0.1
-    win_rms = int(sr * 1.2)
-    beat_energies = []
-    for b in beats:
-        idx = int(b * sr)
-        lo = max(0, idx - win_rms // 2)
-        hi = min(len(drum_mono), idx + win_rms // 2)
-        rms = float(np.sqrt(np.mean(drum_mono[lo:hi] ** 2) + 1e-12)) if hi > lo else 0.02
-        beat_energies.append(rms)
-    ref_rms = float(np.percentile(beat_energies, 75)) if beat_energies else 0.05
-    ref_rms = max(ref_rms, 0.008)
-
-    # 4. Pre-synthesize studio Reggae drum & percussion one-shot samples (44.1kHz stereo)
-    rng = np.random.default_rng(1973)
-
-    def _make_kick(length_s: float = 0.24) -> np.ndarray:
-        t = np.linspace(0.0, length_s, int(sr * length_s), endpoint=False, dtype=np.float32)
-        # Pitch drops from 118Hz -> 46Hz rapidly for warm Reggae sub-kick thump
-        freq = 44.0 + 76.0 * np.exp(-t * 34.0)
-        phase = 2.0 * np.pi * np.cumsum(freq) / sr
-        body = np.sin(phase) * np.exp(-t * 11.5)
-        click = np.sin(2.0 * np.pi * 1200.0 * t) * np.exp(-t * 95.0) * 0.22
-        mono = np.tanh((body + click) * 1.45) * 0.88
-        return np.column_stack([mono, mono]).astype(np.float32)
-
-    def _make_rimshot(length_s: float = 0.13) -> np.ndarray:
-        t = np.linspace(0.0, length_s, int(sr * length_s), endpoint=False, dtype=np.float32)
-        # Authentic wooden cross-stick rimshot (430Hz, 1680Hz, 2920Hz resonant wood + crisp snap)
-        wood = (
-            0.55 * np.sin(2.0 * np.pi * 435.0 * t) * np.exp(-t * 38.0)
-            + 0.70 * np.sin(2.0 * np.pi * 1690.0 * t) * np.exp(-t * 52.0)
-            + 0.40 * np.sin(2.0 * np.pi * 2940.0 * t) * np.exp(-t * 70.0)
-        )
-        snap = rng.standard_normal(len(t)).astype(np.float32) * np.exp(-t * 68.0) * 0.35
-        mono = np.tanh((wood + snap) * 1.6) * 0.82
-        return np.column_stack([mono * 0.96, mono * 1.04]).astype(np.float32)
-
-    def _make_hihat(open_hat: bool = False) -> np.ndarray:
-        length_s = 0.16 if open_hat else 0.055
-        t = np.linspace(0.0, length_s, int(sr * length_s), endpoint=False, dtype=np.float32)
-        # Metallic high-frequencyinharmonic partials + differentiated white noise
-        n = rng.standard_normal(len(t)).astype(np.float32)
-        hp = np.diff(n, prepend=0.0)
-        hp2 = np.diff(hp, prepend=0.0)
-        metal = (
-            np.sin(2.0 * np.pi * 6350.0 * t)
-            + np.sin(2.0 * np.pi * 8920.0 * t)
-            + np.sin(2.0 * np.pi * 11400.0 * t)
-        ) * 0.12
-        decay = np.exp(-t * (19.0 if open_hat else 58.0))
-        mono = (hp2 * 0.45 + metal) * decay * (0.48 if open_hat else 0.30)
-        return np.column_stack([mono * 1.06, mono * 0.94]).astype(np.float32)
-
-    def _make_shaker(length_s: float = 0.07) -> np.ndarray:
-        t = np.linspace(0.0, length_s, int(sr * length_s), endpoint=False, dtype=np.float32)
-        n = rng.standard_normal(len(t)).astype(np.float32)
-        hp = np.diff(n, prepend=0.0)
-        env = np.sin(np.pi * (t / length_s)) ** 1.6
-        mono = hp * env * 0.16
-        return np.column_stack([mono * 0.92, mono * 1.08]).astype(np.float32)
-
-    kick_sample = _make_kick()
-    rim_sample = _make_rimshot()
-    hat_closed = _make_hihat(open_hat=False)
-    hat_open = _make_hihat(open_hat=True)
-    shaker_sample = _make_shaker()
-
-    def _place(buf: np.ndarray, sample: np.ndarray, pos: int, gain: float) -> None:
-        if pos < 0 or pos >= len(buf) or gain <= 0.001:
-            return
-        end = min(len(buf), pos + len(sample))
-        buf[pos:end] += sample[: end - pos] * float(gain)
-
-    # 5. Build sample-accurate Skank Envelope, Bass Pocket Envelope & Reggae One-Drop Drum Bus
-    skank_env = np.full(n_samples, 0.06, dtype=np.float32)
-    bass_env = np.ones(n_samples, dtype=np.float32)
-    drums_bus = np.zeros((n_samples, 2), dtype=np.float32)
-
-    bar_beat = 0
-    bar_count = 0
-    is_koplo = "koplo" in genre_id or "dangdut" in genre_id
-    for i, b in enumerate(beats):
-        t0 = b
-        t1 = beats[i + 1] if (i + 1) < len(beats) else min(n_samples / sr, t0 + median_dt)
-        dt = max(0.24, min(1.1, t1 - t0))
-        if round(t0, 2) in downbeats and i > 0:
-            bar_beat = 0
-            bar_count += 1
-        s0 = int(t0 * sr)
-        s_off = int((t0 + 0.48 * dt) * sr)
-        s_off_end = int((t0 + 0.82 * dt) * sr)
-        s_chuck = int((t0 + 0.84 * dt) * sr)
-        s_chuck_end = int((t0 + 0.95 * dt) * sr)
-
-        # Offbeat skank chop ("&" of every beat) on the real guitar/keyboard chords
-        if 0 <= s_off < s_off_end <= n_samples:
-            seg_len = s_off_end - s_off
-            t_seg = np.linspace(0.0, 1.0, seg_len, endpoint=False, dtype=np.float32)
-            # Fast 8% attack, crisp percussive skank decay
-            chop = np.where(t_seg < 0.08, t_seg / 0.08, np.exp(-(t_seg - 0.08) * 3.2))
-            skank_env[s_off:s_off_end] = 0.12 + 1.75 * chop
-            bass_env[s_off:s_off_end] = 0.82
-        if bar_beat in (1, 3) and 0 <= s_chuck < s_chuck_end <= n_samples:
-            seg_len = s_chuck_end - s_chuck
-            t_seg = np.linspace(0.0, 1.0, seg_len, endpoint=False, dtype=np.float32)
-            skank_env[s_chuck:s_chuck_end] = 0.10 + 0.85 * np.exp(-t_seg * 4.0)
-
-        # Dynamic scaling from original drum stem so intros/breakdowns breathe naturally
-        raw_ratio = beat_energies[i] / ref_rms
-        full_band = raw_ratio >= 0.22
-        dyn = float(np.clip(raw_ratio, 0.28, 1.15)) if full_band else 0.28
-
-        # Place Hi-Hat & Shaker on beat and accented offbeat
-        _place(drums_bus, hat_closed, s0, 0.55 * dyn)
-        _place(drums_bus, shaker_sample, int((t0 + 0.25 * dt) * sr), 0.45 * dyn)
-        _place(drums_bus, hat_open, s_off, 0.92 * dyn)
-        _place(drums_bus, shaker_sample, int((t0 + 0.75 * dt) * sr), 0.50 * dyn)
-
-        if is_koplo:
-            # Dangdut Koplo syncopated kick + tak/dut pattern
-            if full_band:
-                if bar_beat in (0, 2):
-                    _place(drums_bus, kick_sample, s0, 1.05 * dyn)
-                    _place(drums_bus, kick_sample, int((t0 + 0.75 * dt) * sr), 0.85 * dyn)
-                else:
-                    _place(drums_bus, rim_sample, s0, 1.0 * dyn)
-                    _place(drums_bus, kick_sample, s_off, 0.90 * dyn)
-                    _place(drums_bus, rim_sample, int((t0 + 0.75 * dt) * sr), 0.85 * dyn)
-            else:
-                if bar_beat == 2:
-                    _place(drums_bus, rim_sample, s0, 0.50)
+    hop = 512
+    win = 2048
+    if len(y) < win:
+        return np.zeros(0, dtype=np.float32)
+    lo = max(2, int(sr / 780.0))
+    hi = min(win - 1, int(sr / 85.0))
+    f0s: list[float] = []
+    for i in range(0, len(y) - win, hop):
+        seg = y[i : i + win]
+        if float(np.sqrt(np.mean(seg * seg))) < 0.018:
+            f0s.append(0.0)
+            continue
+        ac = np.correlate(seg, seg, mode="full")[win - 1 :]
+        if ac[0] <= 1e-9:
+            f0s.append(0.0)
+            continue
+        pk = lo + int(np.argmax(ac[lo:hi]))
+        if ac[pk] > 0.34 * ac[0]:
+            f0s.append(float(sr) / float(pk))
         else:
-            # Authentic Reggae One-Drop + Rockers Chorus Groove:
-            # - Soft intro: subtle cross-stick on beat 3
-            # - Verse/Chorus: signature One-Drop Kick + Rimshot on beat 3 (bar_beat == 2),
-            #   plus Kick on beat 1 during high-energy chorus bars, and pickup kick at bar end
-            if full_band:
-                if bar_beat == 0 and raw_ratio > 0.72:
-                    _place(drums_bus, kick_sample, s0, 0.88 * dyn)
-                if bar_beat == 2:
-                    _place(drums_bus, kick_sample, s0, 1.15 * dyn)
-                    _place(drums_bus, rim_sample, s0, 1.12 * dyn)
-                elif bar_beat == 1 and (bar_count % 2 == 1):
-                    _place(drums_bus, rim_sample, s0, 0.55 * dyn)
-                if bar_beat == 3 and (bar_count % 2 == 1):
-                    _place(drums_bus, kick_sample, s_off, 0.78 * dyn)
-                    if bar_count % 4 == 3:
-                        _place(drums_bus, rim_sample, int((t0 + 0.75 * dt) * sr), 0.85 * dyn)
+            f0s.append(0.0)
+    return np.asarray(f0s, dtype=np.float32)
+
+
+def _lock_vocal_and_backing_key(
+    vocals_path: Path,
+    backing_path: Path,
+    job_dir: Path,
+    source_b64: str,
+    duration: float,
+    requested_shift: int = 0,
+    keep_original_vocal: bool = False,
+    log=None,
+) -> float:
+    """Ensure 100.00% harmonic key lock (0.000 semitones error) between vocal and backing stems.
+
+    Seed-VC's ``--auto-f0-adjust True`` multiplies the vocal F0 by a floating-point
+    ratio ``median(f0_ref) / median(f0_src)`` (e.g. +4.71 or +6.03 semitones) so its
+    diffusion network generates clean target female/male vocal formants, while
+    leaving ``backing_path`` / ``other_path`` / ``bass_path`` at 0.00 semitones.
+    Left uncorrected, the singer sings in a different musical key than the band.
+
+    This function:
+      1. Reconstructs the original source vocal waveform ``source - (backing + drums)``
+         (or reads ``cover_vocals_orig.mp3``) and measures the exact median semitone
+         shift ``delta_s`` applied to ``vocals_path``.
+      2. Locks ``vocals_path`` to the exact target semitone key using FFmpeg
+         ``rubberband=pitch=...:formant=preserved`` so 100% of Seed-VC's female/male
+         vocal tract formants and cengkok are preserved while every sung note lands
+         on the exact pitch of the instrumental chords & bass (0.0 cents drift).
+    """
+    if keep_original_vocal:
+        return 0.0
+    try:
+        import base64
+        import numpy as np
+
+        sr = 22050
+        probe_sec = min(float(duration or 90.0), 90.0)
+        y_conv = _decode_stereo_f32(vocals_path, sr=sr, max_sec=probe_sec).mean(axis=1)
+        if len(y_conv) < sr * 4:
+            return 0.0
+
+        orig_vocal_file = job_dir / "cover_vocals_orig.mp3"
+        if orig_vocal_file.is_file() and orig_vocal_file.stat().st_size > 1024:
+            y_orig = _decode_stereo_f32(orig_vocal_file, sr=sr, max_sec=probe_sec).mean(axis=1)
+        else:
+            src_tmp = job_dir / "_key_probe_source.mp3"
+            if not src_tmp.is_file():
+                src_tmp.write_bytes(base64.b64decode(source_b64))
+            y_src = _decode_stereo_f32(src_tmp, sr=sr, max_sec=probe_sec).mean(axis=1)
+            src_tmp.unlink(missing_ok=True)
+            y_back = _decode_stereo_f32(backing_path, sr=sr, max_sec=probe_sec).mean(axis=1)
+            drums_p = job_dir / "cover_drums_source.mp3"
+            y_drums = (
+                _decode_stereo_f32(drums_p, sr=sr, max_sec=probe_sec).mean(axis=1)
+                if drums_p.is_file()
+                else np.zeros_like(y_back)
+            )
+            n = min(len(y_src), len(y_back), len(y_drums))
+            y_orig = y_src[:n] - y_back[:n] - y_drums[:n]
+
+        f_orig = _track_f0_voiced(y_orig, sr=sr)
+        f_conv = _track_f0_voiced(y_conv, sr=sr)
+        n_f = min(len(f_orig), len(f_conv))
+        if n_f < 10:
+            return 0.0
+        mask = (f_orig[:n_f] > 0.0) & (f_conv[:n_f] > 0.0)
+        if int(np.sum(mask)) < 8:
+            return 0.0
+
+        st_diffs = 12.0 * np.log2(f_conv[:n_f][mask] / f_orig[:n_f][mask])
+        delta_s = float(np.median(st_diffs))
+        f_orig_med = float(np.median(f_orig[:n_f][mask]))
+
+        req_st = int(requested_shift or 0)
+        if req_st != 0:
+            if abs(req_st) == 12:
+                target_vocal_st = float(req_st)
+                target_backing_st = 0.0
             else:
-                if bar_beat == 2:
-                    _place(drums_bus, rim_sample, s0, 0.48)
+                target_vocal_st = float(req_st)
+                target_backing_st = float(req_st)
+        else:
+            # Preserve Seed-VC's natural target register (female/male) by snapping
+            # to the nearest integer semitone (e.g. +3.51 st -> +4.0 st) and transposing
+            # the backing track to match that exact semitone key (0.0 cents drift),
+            # NEVER pitching a female conversion back down to 0.0 st (male register)!
+            snapped_st = float(int(round(delta_s)))
+            snapped_st = max(-7.0, min(7.0, snapped_st))
+            target_vocal_st = snapped_st
+            target_backing_st = 0.0 if abs(int(snapped_st)) == 12 else snapped_st
 
-        bar_beat = (bar_beat + 1) % 4
+        vocal_correction_st = target_vocal_st - delta_s
+        ffmpeg = _ffmpeg_exe()
 
-    # 6. Combine Beat-Locked Skank Guitars/Keys + Warm Harmonic Pad + Dub Bass + Reggae Drums
-    skank_stereo = other_skank * skank_env[:, None]
-    pad_stereo = other_pad * 0.34
-    bass_stereo = bass_arr * (bass_env[:, None] * 1.15)
-    mix = skank_stereo + pad_stereo + bass_stereo + drums_bus * 0.95
+        if abs(vocal_correction_st) > 0.10:
+            ratio = 2.0 ** (vocal_correction_st / 12.0)
+            v_tmp = job_dir / "_vocals_keylocked.mp3"
+            res = subprocess.run(
+                [
+                    ffmpeg, "-y", "-v", "error", "-i", str(vocals_path),
+                    "-af", f"rubberband=pitch={ratio:.6f}:formant=preserved",
+                    "-c:a", "libmp3lame", "-b:a", "192k", str(v_tmp),
+                ],
+                capture_output=True, text=True, timeout=240,
+            )
+            if res.returncode == 0 and v_tmp.is_file() and v_tmp.stat().st_size > 1024:
+                v_tmp.replace(vocals_path)
+                log and log(
+                    f"🎯 Kunci nada vokal diselaraskan ke instrumen "
+                    f"(koreksi pitch {vocal_correction_st:+.2f} st dengan formant vokal tetap utuh)"
+                )
+            else:
+                v_tmp.unlink(missing_ok=True)
 
-    peak = float(np.max(np.abs(mix))) if len(mix) else 0.0
-    if peak > 0.95:
-        mix = mix * (0.92 / peak)
+        if abs(target_backing_st) > 0.10:
+            b_ratio = 2.0 ** (target_backing_st / 12.0)
+            for stem_p in (
+                backing_path,
+                job_dir / "cover_other_source.mp3",
+                job_dir / "cover_bass_source.mp3",
+            ):
+                if stem_p.is_file() and stem_p.stat().st_size > 1024:
+                    s_tmp = job_dir / f"_{stem_p.stem}_shifted.mp3"
+                    r_b = subprocess.run(
+                        [
+                            ffmpeg, "-y", "-v", "error", "-i", str(stem_p),
+                            "-af", f"rubberband=pitch={b_ratio:.6f}",
+                            "-c:a", "libmp3lame", "-b:a", "192k", str(s_tmp),
+                        ],
+                        capture_output=True, text=True, timeout=240,
+                    )
+                    if r_b.returncode == 0 and s_tmp.is_file() and s_tmp.stat().st_size > 1024:
+                        s_tmp.replace(stem_p)
+                    else:
+                        s_tmp.unlink(missing_ok=True)
+        return target_backing_st
+    except Exception as exc:  # noqa: BLE001
+        log and log(f"ℹ️ Penyelarasan nada dilewati ({exc})")
+        return 0.0
 
-    import soundfile as sf
-
-    raw_wav = job_dir / "_beat_locked_backing.wav"
-    sf.write(str(raw_wav), mix, sr)
-    # Add subtle studio room glue and encode to 192k MP3
-    res = subprocess.run(
-        [ffmpeg, "-y", "-v", "error", "-i", str(raw_wav),
-         "-af", "aecho=0.8:0.84:28:0.10,alimiter=limit=0.95",
-         "-c:a", "libmp3lame", "-b:a", "192k", str(out_path)],
-        capture_output=True, text=True, timeout=180)
-    raw_wav.unlink(missing_ok=True)
-    return res.returncode == 0 and out_path.is_file() and out_path.stat().st_size > 1024
 
 
 def _voice_restyle_cover(spec: dict, job_dir: Path, output: Path, log=None) -> Path:
-    """Vocal-locked cover with a genre-restyled instrumental arrangement.
+    """Vocal-locked cover with a 100% beat-locked & key-locked genre instrumental arrangement.
 
     Supports two vocal modes:
     - ``keep_original_vocal=True`` (or ``cover_engine="arrangement"``):
       Preserves the original singer's vocal from the source song (Demucs stem)
-      and overlays it onto the newly arranged genre instrumental (like YouTube
-      Pop-to-Reggae / Koplo covers).
+      and overlays it onto the newly arranged genre instrumental.
     - ``keep_original_vocal=False`` (``cover_engine="voice"`` + ``restyle=True``):
       Converts the isolated vocal to the target Voice Persona / gender via
-      Seed-VC while keeping 100% of the source melody and phrasing, then mixes
-      it over the newly arranged genre instrumental.
+      Seed-VC while keeping 100% of the source melody, cengkok, lyrics, and
+      phrasing, locks the vocal pitch to the exact key of the backing chords,
+      and mixes it over the beat-locked genre instrumental.
     """
     import base64
     from persona_previews import enabled as _vp_enabled, _function as _voice_fn
@@ -1407,7 +1370,37 @@ def _voice_restyle_cover(spec: dict, job_dir: Path, output: Path, log=None) -> P
     )
     pitch_shift = int(spec.get("voice_pitch_shift") or 0)
 
-    if keep_original_vocal:
+    # Check local stem + Seed-VC cache so switching genres on the same song is instant (Rp 0 GPU)
+    raw_source_bytes = base64.b64decode(source_b64)
+    src_sha = hashlib.sha1(raw_source_bytes).hexdigest()[:16]
+    gender_key = "orig" if keep_original_vocal else (
+        str(spec.get("persona_id") or spec.get("vocal_gender") or "female").strip().lower()
+    )
+    stem_cache_dir = job_dir.parent / "_stem_cache" / f"{src_sha}_{gender_key}_{pitch_shift}"
+    vocals_path = job_dir / "cover_vocals.mp3"
+    backing_path = job_dir / "cover_backing_source.mp3"
+
+    cached_ok = (
+        (stem_cache_dir / "cover_vocals.mp3").is_file()
+        and (stem_cache_dir / "cover_backing_source.mp3").is_file()
+        and (stem_cache_dir / "cover_other_source.mp3").is_file()
+        and (stem_cache_dir / "cover_bass_source.mp3").is_file()
+    )
+    if cached_ok:
+        log and log("⚡ Menggunakan cache 4-stem & vokal Seed-VC lagu sumber (hemat waktu & Rp 0 GPU)…")
+        for fname in (
+            "cover_vocals.mp3",
+            "cover_vocals_orig.mp3",
+            "cover_backing_source.mp3",
+            "cover_drums_source.mp3",
+            "cover_bass_source.mp3",
+            "cover_other_source.mp3",
+        ):
+            src_f = stem_cache_dir / fname
+            if src_f.is_file():
+                shutil.copyfile(src_f, job_dir / fname)
+        spec["_stem_separation_method"] = "seed-vc-4stems-cached"
+    elif keep_original_vocal:
         vocals_path, backing_path, sep_method = _separate_source_stems(
             source_b64, duration, job_dir, pitch_shift=pitch_shift, log=log)
         spec["_stem_separation_method"] = sep_method
@@ -1421,15 +1414,21 @@ def _voice_restyle_cover(spec: dict, job_dir: Path, output: Path, log=None) -> P
             reference_path = _synthesize_voice_reference(spec, job_dir, log=log)
             spec["_voice_reference_path"] = reference_path
         ref_b64 = base64.b64encode(Path(reference_path).read_bytes()).decode("ascii")
-        log and log("🎤 Memisah & menyelaraskan warna vokal sumber (Demucs + Seed-VC)…")
-        stems = _voice_fn("convert_stems").remote(
-            source_b64, ref_b64, duration,
-            pitch_shift, bool(spec.get("voice_pitch_auto", True)))
-        vocals_path = job_dir / "cover_vocals.mp3"
-        backing_path = job_dir / "cover_backing_source.mp3"
+        voice_engine = str(spec.get("voice_engine") or os.environ.get("KLIPIN_VOICE_ENGINE", "rvc")).strip().lower()
+        log and log(f"🎤 Memisah & menyelaraskan warna vokal sumber (Demucs + {voice_engine.upper()})…")
+        try:
+            stems = _voice_fn("convert_stems").remote(
+                source_b64, ref_b64, duration,
+                pitch_shift, bool(spec.get("voice_pitch_auto", True)),
+                voice_engine=voice_engine, voice_persona=str(spec.get("vocal_gender") or "female"))
+        except TypeError:
+            stems = _voice_fn("convert_stems").remote(
+                source_b64, ref_b64, duration,
+                pitch_shift, bool(spec.get("voice_pitch_auto", True)))
         vocals_path.write_bytes(base64.b64decode(stems["vocals_b64"]))
         backing_path.write_bytes(base64.b64decode(stems["backing_b64"]))
         for extra_key, extra_name in (
+            ("vocals_orig_b64", "cover_vocals_orig.mp3"),
             ("drums_b64", "cover_drums_source.mp3"),
             ("bass_b64", "cover_bass_source.mp3"),
             ("other_b64", "cover_other_source.mp3"),
@@ -1437,6 +1436,27 @@ def _voice_restyle_cover(spec: dict, job_dir: Path, output: Path, log=None) -> P
             if stems.get(extra_key):
                 (job_dir / extra_name).write_bytes(base64.b64decode(stems[extra_key]))
         spec["_stem_separation_method"] = str(stems.get("method") or "seed-vc-vocal-stem")
+        try:
+            stem_cache_dir.mkdir(parents=True, exist_ok=True)
+            for fname in (
+                "cover_vocals.mp3",
+                "cover_vocals_orig.mp3",
+                "cover_backing_source.mp3",
+                "cover_drums_source.mp3",
+                "cover_bass_source.mp3",
+                "cover_other_source.mp3",
+            ):
+                src_f = job_dir / fname
+                if src_f.is_file():
+                    shutil.copyfile(src_f, stem_cache_dir / fname)
+        except Exception:  # noqa: BLE001
+            pass
+
+    # Lock vocal pitch & backing key so the singer and band are 100.00% in the same key
+    _lock_vocal_and_backing_key(
+        vocals_path, backing_path, job_dir, source_b64, duration,
+        requested_shift=pitch_shift, keep_original_vocal=keep_original_vocal, log=log
+    )
 
     info = genre_info(spec.get("genre") or "reggae")
     detected = analyze_bpm_key(backing_path, log=log)
@@ -1445,16 +1465,15 @@ def _voice_restyle_cover(spec: dict, job_dir: Path, output: Path, log=None) -> P
     if bpm:
         log and log(f"🧭 Tempo & nada sumber terdeteksi: {bpm} BPM{f', {key}' if key else ''}")
 
+    restyled_path = job_dir / "cover_backing_restyled.mp3"
     groove_reset = bool(spec.get("groove_reset", True))
     guide_backing = _prepare_harmonic_guide_backing(
         backing_path, job_dir, info["id"], groove_reset=groove_reset)
     guide_b64 = base64.b64encode(guide_backing.read_bytes()).decode("ascii")
-
     try:
         strength = max(0.15, min(0.85, float(spec.get("restyle_strength", 0.42))))
     except (TypeError, ValueError):
         strength = 0.42
-
     arrangement_prompt = _arrangement_prompt_for_genre(info["id"], info, bpm=bpm, key=key)
     restyle_spec = {
         **spec,
@@ -1473,14 +1492,8 @@ def _voice_restyle_cover(spec: dict, job_dir: Path, output: Path, log=None) -> P
         "instrumental": True,
         "groove_reset": True,
     }
-    restyled_path = job_dir / "cover_backing_restyled.mp3"
-    if _render_beat_locked_genre_backing(
-        job_dir, backing_path, restyled_path, info["id"], duration,
-        bpm_hint=float(bpm or 0.0), log=log
-    ):
-        spec["_arrangement_method"] = "beat-locked-4stem-rearranger"
-    elif _mulacover_modal_enabled():
-        log and log(f"🎛️ Menata ulang aransemen instrumen ke {info['label']} (MuLaCover)…")
+    if _mulacover_modal_enabled():
+        log and log(f"🎛️ Menata ulang aransemen instrumen AI ke {info['label']} (MuLaCover)…")
         raw_mula = job_dir / "cover_mulacover_raw.mp3"
         _mulacover_modal_generate(restyle_spec, raw_mula, log=log)
         try:
@@ -1492,15 +1505,17 @@ def _voice_restyle_cover(spec: dict, job_dir: Path, output: Path, log=None) -> P
             shutil.copyfile(mula_inst, restyled_path)
         except Exception:  # noqa: BLE001
             shutil.copyfile(raw_mula, restyled_path)
+        spec["_arrangement_method"] = "mulacover-ai-arrangement"
     elif _ace_modal_enabled():
+        log and log(f"🎛️ Menata ulang aransemen instrumen AI ke {info['label']} (ACE-Step)…")
         _ace_step_modal_generate(restyle_spec, restyled_path, log=log)
+        spec["_arrangement_method"] = "ace-step-ai-arrangement"
     elif _ace_step_url():
         _ace_step_generate(restyle_spec, restyled_path, log=log)
+        spec["_arrangement_method"] = "ace-step-ai-arrangement"
     else:
-        log and log("ℹ️ Worker GPU aransemen belum aktif — menyusun aransemen BGM lokal…")
-        bgm_fallback = job_dir / "cover_backing_restyled.m4a"
-        render_bgm(info["mood"], str(bgm_fallback), duration, log=log)
-        restyled_path = bgm_fallback
+        shutil.copyfile(guide_backing, restyled_path)
+        spec["_arrangement_method"] = "harmonic-guide-stem"
 
     if not restyled_path.is_file() or restyled_path.stat().st_size < 1024:
         raise RuntimeError("Gagal menata ulang aransemen instrumental.")
@@ -1690,8 +1705,290 @@ def _heartmula_modal_generate(spec: dict, out_path: Path, log=None) -> dict | No
     return result
 
 
-def _lyrics_to_lrc(lyrics: str, duration: float) -> str:
-    """Format plain/structured lyrics into LRC timestamps for DiffRhythm."""
+def _split_long_lyric_line(text: str, limit: int = 120) -> list[str]:
+    """Split a long ASR segment at sentence boundaries.
+
+    Sentence punctuation is preferred so each output line stays a full sung
+    phrase instead of an arbitrary mid-clause cut.
+    """
+    text = " ".join(str(text or "").split()).strip()
+    if not text:
+        return []
+    if len(text) <= limit:
+        return [text]
+    pieces = re.split(r"(?<=[.!?;])\s+", text)
+    out: list[str] = []
+    for piece in pieces:
+        piece = piece.strip()
+        if not piece:
+            continue
+        if len(piece) <= limit:
+            out.append(piece)
+            continue
+        chunk: list[str] = []
+        for word in piece.split():
+            if chunk and len(" ".join(chunk + [word])) > limit:
+                out.append(" ".join(chunk))
+                chunk = [word]
+            else:
+                chunk.append(word)
+        if chunk:
+            out.append(" ".join(chunk))
+    return out
+
+
+def _music_lyrics_from_manual(text: str) -> str:
+    """Lock a user-supplied lyric sheet exactly as typed.
+
+    One line means one sung sentence/phrase, which is what keeps the cover's
+    vocal phrasing and timing tied to the original performance. Line breaks and
+    section markers are preserved; only blank lines are dropped.
+    """
+    raw_lines = [ln.strip() for ln in str(text or "").splitlines()]
+    lines = [ln for ln in raw_lines if ln]
+    if not lines:
+        raise RuntimeError("Lirik manual kosong.")
+    has_marker = any(ln.startswith("[") and ln.endswith("]") for ln in lines)
+    body = "\n".join(lines)
+    if not has_marker:
+        body = "[Verse]\n" + body
+    return body[:6000].strip()
+
+
+def _music_lyrics_from_transcript(transcript: dict | str) -> str:
+    """Turn source-song ASR into locked, sectioned lyrics.
+
+    This deliberately does not ask the lyric writer to paraphrase or improve
+    the text. The cover pipeline must pass the words heard in the source to
+    the singing model unchanged; structural [Intro] and [Instrumental] markers
+    are injected from real ASR segment timestamps when an instrumental intro
+    (>= 6s) or interlude gap (>= 8s) is detected.
+    """
+    if isinstance(transcript, str):
+        return _music_lyrics_from_manual(transcript)
+    lines: list[str] = []
+    first_start: float | None = None
+    prev_end: float = 0.0
+    for segment in (transcript or {}).get("segments") or []:
+        text = " ".join(str(segment.get("text") or "").split()).strip()
+        if not text or text.lower() in {"[musik]", "[music]", "(musik)", "(music)"}:
+            continue
+        seg_lines = _split_long_lyric_line(text)
+        if not seg_lines:
+            continue
+        try:
+            seg_start = float(segment.get("start") or 0.0)
+            seg_end = float(segment.get("end") or seg_start)
+        except (TypeError, ValueError):
+            seg_start, seg_end = 0.0, 0.0
+        if first_start is None:
+            first_start = seg_start
+        elif prev_end > 0.0 and (seg_start - prev_end) >= 8.0:
+            lines.append("[Instrumental]")
+            lines.append("[Verse]")
+        lines.extend(seg_lines)
+        if seg_end > prev_end:
+            prev_end = seg_end
+    if not lines:
+        text = " ".join(str((transcript or {}).get("text") or "").split()).strip()
+        if text:
+            lines = _split_long_lyric_line(text)
+    if not lines:
+        raise RuntimeError("Lirik lagu tidak berhasil diekstrak dari audio sumber.")
+    prefix = "[Intro]\n\n[Verse]\n" if (first_start is not None and first_start >= 6.0) else "[Verse]\n"
+    lyrics = prefix + "\n".join(lines)
+    return lyrics[:6000].strip()
+
+
+def _music_timed_lines_from_transcript(transcript: dict) -> list[dict]:
+    """Extract phrase-accurate timed lines with original ASR timestamps.
+
+    Discards [musik]/[music] markers and splits long segments at sentence boundaries
+    (<= 120 chars) while preserving original timing proportionally.
+    """
+    timed_lines: list[dict] = []
+    segments = (transcript or {}).get("segments") or []
+    for segment in segments:
+        text = " ".join(str(segment.get("text") or "").split()).strip()
+        if not text or text.lower() in {"[musik]", "[music]", "(musik)", "(music)"}:
+            continue
+        start = float(segment.get("start") or 0.0)
+        end = float(segment.get("end") or start)
+        split_lines = _split_long_lyric_line(text, limit=120)
+        if not split_lines:
+            continue
+        if len(split_lines) == 1:
+            timed_lines.append({
+                "text": split_lines[0],
+                "start": round(start, 2),
+                "end": round(end, 2),
+                "section": "Verse",
+            })
+        else:
+            total_chars = sum(max(1, len(ln)) for ln in split_lines)
+            dur = max(0.5, end - start)
+            cur = start
+            for ln in split_lines:
+                frac = max(1, len(ln)) / total_chars
+                ln_dur = dur * frac
+                ln_end = min(end, cur + ln_dur)
+                timed_lines.append({
+                    "text": ln,
+                    "start": round(cur, 2),
+                    "end": round(ln_end, 2),
+                    "section": "Verse",
+                })
+                cur = ln_end
+
+    if not timed_lines:
+        text = " ".join(str((transcript or {}).get("text") or "").split()).strip()
+        if text:
+            split_lines = _split_long_lyric_line(text, limit=120)
+            cur = 0.0
+            for ln in split_lines:
+                timed_lines.append({
+                    "text": ln,
+                    "start": round(cur, 2),
+                    "end": round(cur + 4.0, 2),
+                    "section": "Verse",
+                })
+                cur += 4.0
+
+    return timed_lines
+
+
+def transcribe_audio_groq(audio_path: str | Path, log=None, word_timestamps: bool = False) -> dict:
+    """Transcribe audio with Groq Whisper whisper-large-v3-turbo via stdlib urllib.
+
+    Requires GROQ_API_KEY in environment. Uses verbose_json, temperature=0,
+    and automatic language detection so regional languages (Jawa, Sunda, etc.)
+    are never mangled by forced 'id' tagging.
+    """
+    import json
+    import os
+    import urllib.request
+    import urllib.error
+    import uuid
+
+    key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not key:
+        raise ValueError("GROQ_API_KEY belum disetel.")
+
+    path = Path(audio_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Audio file tidak ditemukan: {path}")
+
+    filename = path.name
+    audio_bytes = path.read_bytes()
+
+    boundary = f"----WebKitFormBoundary{uuid.uuid4().hex}"
+
+    crlf = b"\r\n"
+    b_boundary = boundary.encode("utf-8")
+    body = bytearray()
+    body.extend(b"--" + b_boundary + crlf)
+    body.extend(b'Content-Disposition: form-data; name="model"' + crlf + crlf)
+    body.extend(b"whisper-large-v3-turbo" + crlf)
+
+    body.extend(b"--" + b_boundary + crlf)
+    body.extend(b'Content-Disposition: form-data; name="response_format"' + crlf + crlf)
+    body.extend(b"verbose_json" + crlf)
+
+    body.extend(b"--" + b_boundary + crlf)
+    body.extend(b'Content-Disposition: form-data; name="temperature"' + crlf + crlf)
+    body.extend(b"0" + crlf)
+
+    if word_timestamps:
+        body.extend(b"--" + b_boundary + crlf)
+        body.extend(b'Content-Disposition: form-data; name="timestamp_granularities[]"' + crlf + crlf)
+        body.extend(b"word" + crlf)
+        body.extend(b"--" + b_boundary + crlf)
+        body.extend(b'Content-Disposition: form-data; name="timestamp_granularities[]"' + crlf + crlf)
+        body.extend(b"segment" + crlf)
+
+    body.extend(b"--" + b_boundary + crlf)
+    body.extend(f'Content-Disposition: form-data; name="file"; filename="{filename}"'.encode("utf-8") + crlf)
+    body.extend(b"Content-Type: audio/mpeg" + crlf + crlf)
+    body.extend(audio_bytes)
+    body.extend(crlf)
+    body.extend(b"--" + b_boundary + b"--" + crlf)
+
+    req = urllib.request.Request(
+        "https://api.groq.com/openai/v1/audio/transcriptions",
+        data=bytes(body),
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "User-Agent": "Klipin-Music/1.0",
+        },
+        method="POST",
+    )
+
+    log and log("🎙️ Mengirim audio ke Groq Whisper (whisper-large-v3-turbo, auto-detect bahasa)…")
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            data = resp.read()
+            result = json.loads(data.decode("utf-8"))
+            if not isinstance(result, dict):
+                raise ValueError("Respons Groq bukan JSON dict.")
+            result["source"] = "groq-whisper-large-v3-turbo"
+            return result
+    except urllib.error.HTTPError as exc:
+        err_msg = ""
+        try:
+            err_msg = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            pass
+        raise RuntimeError(f"Groq API HTTP {exc.code}: {err_msg[:300]}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Gagal memanggil Groq Whisper: {exc}") from exc
+
+
+def _transcribe_source_audio(audio_path: str | Path, log=None) -> dict:
+    """Transcribe audio with Groq Whisper first, falling back to local Whisper.
+
+    Logs source of transcription. Never fails silently into creative hallucination.
+    """
+    key = os.environ.get("GROQ_API_KEY", "").strip()
+    if key:
+        try:
+            res = transcribe_audio_groq(audio_path, log=log)
+            log and log("✅ Transkripsi berhasil via Groq Whisper (whisper-large-v3-turbo)")
+            return res
+        except Exception as exc:
+            log and log(f"⚠️ Groq Whisper gagal ({exc}); beralih ke Whisper lokal…")
+    else:
+        log and log("ℹ️ GROQ_API_KEY tidak disetel; menggunakan Whisper lokal…")
+
+    from transcribe import transcribe
+    log and log("🎙️ Menjalankan Whisper lokal untuk transkripsi audio sumber…")
+    res = transcribe(str(audio_path))
+    if not isinstance(res, dict):
+        raise RuntimeError("Hasil transkripsi lokal tidak valid.")
+    res["source"] = res.get("source") or "audio_asr"
+    return res
+
+
+def _lyrics_to_lrc(lyrics: str, duration: float, lyrics_timed: list[dict] | None = None) -> str:
+    """Format plain/structured lyrics into LRC timestamps for DiffRhythm.
+
+    If lyrics_timed with timestamps is provided, uses real ASR timestamps.
+    Otherwise falls back to even slot distribution via normalize_lyrics.
+    """
+    if lyrics_timed and isinstance(lyrics_timed, list):
+        valid = [item for item in lyrics_timed if isinstance(item, dict) and item.get("text")]
+        if valid:
+            lines = []
+            for item in valid:
+                sec = float(item.get("start") or 0.0)
+                mm = int(sec // 60)
+                ss = sec % 60
+                txt = str(item.get("text") or "").strip()
+                if txt:
+                    lines.append(f"[{mm:02d}:{ss:05.2f}]{txt}")
+            if lines:
+                return "\n".join(lines)
+
     raw = str(lyrics or "").strip()
     if not raw:
         return ""
@@ -1730,7 +2027,7 @@ def _diffrhythm_modal_generate(spec: dict, out_path: Path, log=None) -> dict | N
         seed = None
     duration = max(15, min(int(float(spec.get("duration") or 180)), 285))
     instrumental = bool(spec.get("instrumental"))
-    lrc_text = "" if instrumental else _lyrics_to_lrc(spec.get("lyrics", ""), duration)
+    lrc_text = "" if instrumental else _lyrics_to_lrc(spec.get("lyrics", ""), duration, lyrics_timed=spec.get("lyrics_timed"))
     log and log(
         f"⚡ DiffRhythm Modal L4 generation started… ({language['label']}, "
         f"duration={duration}s, seed={seed}, instrumental={instrumental})")
@@ -1925,7 +2222,8 @@ def _format_lyrics_for_mulacover(lyrics: str) -> str:
         return "[Intro]\n\n[Verse]\nLa la la\n\n[Outro]"
     hallucination_re = re.compile(
         r"(terima\s+kasih(\s+kalo|\s+telah|\s+sudah)?(\s+menonton)?\.?|"
-        r"jangan\s+lupa\s+subscribe|subtitle\s+oleh|^intro$)",
+        r"jangan\s+lupa\s+subscribe|subtitle\s+oleh|^intro$|"
+        r"^you\s+might\s+also\s+like$|^embed$|^\d+\s*embed$)",
         re.IGNORECASE,
     )
     out: list[str] = []
@@ -1933,10 +2231,11 @@ def _format_lyrics_for_mulacover(lyrics: str) -> str:
         s = raw_line.strip()
         if not s:
             continue
-        # Keep the user's section header exactly as written (incl. pipe stacks).
+        # Put a blank line BEFORE each section header (never between the header and its stanza).
         if s.startswith("[") and s.endswith("]"):
+            if out and out[-1] != "":
+                out.append("")
             out.append(s)
-            out.append("")
             continue
         s = hallucination_re.sub("", s).strip(" .,-—")
         if not s:
@@ -2006,6 +2305,31 @@ def _audio_output_quality(path: Path, requested_duration: float) -> dict:
             "bytes": size, "mean_db": mean_db}
 
 
+def prewarm_mulacover_symbolic(ref_b64: str, log=None) -> bool:
+    """Fire-and-forget: build the symbolic + vocal-locked MIDI cache early.
+
+    Called while the user is still reviewing the extracted lyrics. The worker
+    caches by the reference-audio hash, so when the user presses "render" the
+    slow YourMT3/ChordNet/Demucs frontend is already done and only the actual
+    singing generation remains. Never raises; never changes the output.
+    """
+    if not ref_b64 or not _mulacover_modal_enabled() or os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    try:
+        from modal_credentials import ensure_modal_credentials
+
+        ensure_modal_credentials()
+        import modal
+
+        app_name = os.environ.get("KLIPIN_MULACOVER_MODAL_APP", "klipin-mulacover")
+        modal.Function.from_name(app_name, "transcribe_ref").spawn(ref_b64)
+        log and log("⚡ Pra-proses melodi vokal dimulai di latar belakang")
+        return True
+    except Exception as exc:  # noqa: BLE001 - prewarm is best-effort only
+        log and log(f"ℹ️ Pra-proses melodi dilewati ({exc})")
+        return False
+
+
 class _EmptyCoverError(RuntimeError):
     """MuLaCover returned a near-empty render (safe to retry once)."""
 
@@ -2061,6 +2385,14 @@ def _mulacover_modal_generate(spec: dict, out_path: Path, log=None) -> dict | No
         f"vocal:[{vocal}]"
     )
     formatted_lyrics = _format_lyrics_for_mulacover(spec.get("lyrics", ""))
+    timed_list = spec.get("lyrics_timed")
+    if isinstance(timed_list, list) and timed_list:
+        try:
+            first_t = float((timed_list[0] or {}).get("start") or 0.0)
+            if first_t >= 6.0 and not formatted_lyrics.lstrip().lower().startswith("[intro"):
+                formatted_lyrics = f"[Intro]\n\n{formatted_lyrics}"
+        except (TypeError, ValueError):
+            pass
     seed = spec.get("seed")
     try:
         seed = int(seed) if seed is not None else None
@@ -2143,6 +2475,128 @@ def _mulacover_modal_generate(spec: dict, out_path: Path, log=None) -> dict | No
     return {**result, "audio_qc": qc, **sampling}
 
 
+def _yue2_cover_generate(spec: dict, out_path: Path, engine_type: str = "yue2_comfy", log=None) -> dict:
+    """Generate cover using SheetSage2 + YuE2 via ComfyUI API or Native Python SDK (Modal Cloud GPU or Local)."""
+    try:
+        from services.lyric_style_agent import normalize_lyrics as normalize_cover_lyrics, build_style_prompt
+        from engines.yue2_comfy_engine import Yue2ComfyEngine
+        from engines.yue2_native_engine import Yue2NativeEngine
+    except ImportError:
+        from backend.services.lyric_style_agent import normalize_lyrics as normalize_cover_lyrics, build_style_prompt
+        from backend.engines.yue2_comfy_engine import Yue2ComfyEngine
+        from backend.engines.yue2_native_engine import Yue2NativeEngine
+
+    source_b64 = str(spec.get("cover_source_b64") or "").strip() or _cover_reference_b64(spec)
+    ref_path = spec.get("ref_audio_path")
+    if not ref_path and source_b64:
+        import base64
+        temp_ref = out_path.parent / "yue2_reference.mp3"
+        temp_ref.write_bytes(base64.b64decode(source_b64))
+        ref_path = temp_ref
+    elif ref_path and not source_b64 and Path(ref_path).is_file():
+        import base64
+        source_b64 = base64.b64encode(Path(ref_path).read_bytes()).decode("ascii")
+
+    if not ref_path or not Path(ref_path).is_file():
+        raise RuntimeError("Cover YuE2 membutuhkan audio referensi sumber.")
+
+    raw_lyrics = str(spec.get("lyrics") or "").strip()
+    formatted_lyrics = normalize_cover_lyrics(raw_lyrics)
+
+    info = genre_info(spec.get("genre") or "pop")
+    style_prompt = build_style_prompt(
+        genre=spec.get("genre") or "pop",
+        arrangement=str(spec.get("prompt") or info.get("tags", "")),
+        vocal_persona_desc=str(spec.get("vocal_persona_desc") or VOCAL_GENDERS.get(str(spec.get("vocal_gender") or "").lower(), "")),
+    )
+
+    duration = max(10, min(int(float(spec.get("duration") or 180)), 600))
+    seed = spec.get("seed")
+    try:
+        seed = int(seed) if seed is not None else 42
+    except (TypeError, ValueError):
+        seed = 42
+
+    # 1. Primary: Modal Cloud GPU Execution (Nvidia L4 / A10G - Super Cepat di Cloud)
+    use_modal = (
+        not os.environ.get("PYTEST_CURRENT_TEST")
+        and os.environ.get("KLIPIN_FORCE_LOCAL", "0").strip() != "1"
+        and (os.environ.get("KLIPIN_YUE2_COMFY_ENABLED", "1").strip() == "1"
+             or os.environ.get("KLIPIN_YUE2_MODAL_ENABLED", "1").strip() == "1")
+    )
+
+    if use_modal:
+        try:
+            from modal_credentials import ensure_modal_credentials, friendly_modal_error
+        except ImportError:
+            from backend.modal_credentials import ensure_modal_credentials, friendly_modal_error
+        ensure_modal_credentials()
+        import modal
+        # Modal Worker Selection:
+        # klipin-yue2-native is the robust native SheetSage2 + YuE2Pipeline on PyTorch L4 GPU.
+        native_app = os.environ.get("KLIPIN_YUE2_NATIVE_APP", "klipin-yue2-native")
+        native_fn = os.environ.get("KLIPIN_YUE2_NATIVE_FUNCTION", "generate_native_cover")
+        comfy_app = os.environ.get("KLIPIN_YUE2_COMFY_APP", "klipin-yue2-native")
+        comfy_fn = os.environ.get("KLIPIN_YUE2_COMFY_FUNCTION", "generate_native_cover")
+
+        if engine_type == "yue2_native":
+            workers_to_try = [(native_app, native_fn)]
+        else:
+            workers_to_try = [(comfy_app, comfy_fn)]
+            if (native_app, native_fn) not in workers_to_try:
+                workers_to_try.append((native_app, native_fn))
+
+        last_exc = None
+        for app_name, fn_name in workers_to_try:
+            log and log(f"🚀 [{engine_type}] Merender langsung di Modal Cloud GPU L4 ({app_name}:{fn_name})...")
+            try:
+                fn = modal.Function.from_name(app_name, fn_name)
+                res = fn.remote(
+                    ref_audio_b64=source_b64,
+                    lyrics=formatted_lyrics,
+                    style=style_prompt,
+                    duration_sec=duration,
+                    seed=seed,
+                )
+                audio_b64 = res.get("audio_b64") if isinstance(res, dict) else None
+                if not audio_b64:
+                    raise RuntimeError(f"Worker Modal {app_name} tidak mengembalikan audio: {str(res)[:300]}")
+
+                import base64
+                out_path.write_bytes(base64.b64decode(audio_b64))
+                return {
+                    "audio_path": str(out_path),
+                    "model": res.get("model", "m-a-p/YuE2-3B"),
+                    "audio_encoder": res.get("audio_encoder", "sheetsage2_bf16"),
+                    "provider": f"{engine_type}-modal",
+                    "duration": duration,
+                }
+            except Exception as exc:
+                last_exc = exc
+                log and log(f"⚠️ Worker Modal {app_name} gagal ({exc}), mencoba worker cadangan...")
+
+        if last_exc and os.environ.get("KLIPIN_ALLOW_LOCAL_FALLBACK", "0").strip() != "1":
+            raise RuntimeError(friendly_modal_error(last_exc, app=workers_to_try[0][0], function=workers_to_try[0][1])) from last_exc
+
+    # 2. Local Fallback (Unit Tests atau explicit local)
+    engine_inst = Yue2NativeEngine() if engine_type == "yue2_native" else Yue2ComfyEngine()
+    result = engine_inst.generate_cover(
+        source_audio_path=Path(ref_path),
+        lyrics=formatted_lyrics,
+        genre_style=style_prompt,
+        vocal_persona=str(spec.get("vocal_gender") or ""),
+        seed=seed,
+        max_duration=duration,
+        output_dir=out_path.parent,
+        log=log,
+    )
+    result_audio = Path(result["audio_path"])
+    if not result_audio.is_file():
+        raise RuntimeError(f"Engine {engine_type} tidak menghasilkan file audio valid.")
+    shutil.copyfile(result_audio, out_path)
+    return result
+
+
 _KEY_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 # Krumhansl major/minor profiles (12 pitch classes, C-based).
 _KRUMHANSL = {
@@ -2151,32 +2605,65 @@ _KRUMHANSL = {
 }
 
 
-def analyze_bpm_key(audio_path: Path, log=None) -> dict:
-    """Detect BPM + musical key with librosa (90s excerpt, CPU). {} bila gagal.
+def _numpy_chroma_key(y, sr: int = 22050) -> str:
+    """Pure NumPy FFT chromagram + Krumhansl-Schmuckler key detector (zero librosa dependency)."""
+    import numpy as np
 
-    Honest by design: returns detected values or nothing — never invented.
-    """
+    n_fft = 4096
+    hop = 2048
+    if len(y) < n_fft:
+        return ""
+    win = np.hanning(n_fft).astype(np.float32)
+    frames = np.lib.stride_tricks.sliding_window_view(y, n_fft)[::hop]
+    S = np.abs(np.fft.rfft(frames * win[None, :], n=n_fft, axis=1))
+    freqs = np.fft.rfftfreq(n_fft, 1.0 / sr)
+    valid = (freqs >= 65.0) & (freqs <= 2000.0)
+    if not np.any(valid):
+        return ""
+    midi = 69.0 + 12.0 * np.log2(np.maximum(freqs[valid], 1.0) / 440.0)
+    pc = np.round(midi).astype(int) % 12
+    chroma = np.zeros(12, dtype=np.float64)
+    S_valid = S[:, valid]
+    for p in range(12):
+        mask = pc == p
+        if np.any(mask):
+            chroma[p] = float(S_valid[:, mask].mean())
+    if np.max(chroma) <= 1e-9:
+        return ""
+    chroma /= np.linalg.norm(chroma) + 1e-12
+    best, best_score = "", -1e9
+    for mode, profile in _KRUMHANSL.items():
+        p_vec = np.asarray(profile, dtype=np.float64)
+        p_vec /= np.linalg.norm(p_vec) + 1e-12
+        for shift in range(12):
+            score = float(np.dot(chroma, np.roll(p_vec, shift)))
+            if score > best_score:
+                best_score, best = score, f"{_KEY_NAMES[shift]} {mode}"
+    return best
+
+
+def analyze_bpm_key(audio_path: Path, log=None) -> dict:
+    """Detect BPM + musical key with librosa or pure-NumPy spectral/Ellis DP fallback."""
     try:
-        import librosa
-        import numpy as np
-        y, sr = librosa.load(str(audio_path), sr=22050, mono=True, duration=90.0)
-        if y.size < sr * 3:
+        sr = 22050
+        stereo = _decode_stereo_f32(Path(audio_path), sr=sr, max_sec=120.0)
+        if len(stereo) < sr * 3:
             return {}
-        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-        bpm = round(float(tempo), 1)
-        chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
-        mean = chroma.mean(axis=1)
-        best, best_score = "", -1.0
-        for mode, profile in _KRUMHANSL.items():
-            p = np.array(profile)
-            for shift in range(12):
-                score = float(np.dot(mean, np.roll(p, shift)))
-                if score > best_score:
-                    best_score, best = score, f"{_KEY_NAMES[shift]} {mode}"
-        out = {"bpm": bpm if 40 <= bpm <= 220 else None, "key": best}
-        log and log(f"🎼 Deteksi: {bpm} BPM, {best}")
+        y = stereo.mean(axis=1)
+        drums_candidate = Path(audio_path).parent / "cover_drums_source.mp3"
+        beat_ref = (
+            drums_candidate
+            if (drums_candidate.is_file() and drums_candidate.stat().st_size > 1024)
+            else Path(audio_path)
+        )
+        grid = detect_downbeats(beat_ref, duration=120.0)
+        bpm = grid.get("bpm")
+        key = _numpy_chroma_key(y, sr=sr)
+        out = {"bpm": bpm if (bpm and 40 <= float(bpm) <= 220) else None, "key": key}
+        if out.get("bpm") or out.get("key"):
+            log and log(f"🎼 Deteksi: {out.get('bpm')} BPM, {out.get('key')}")
         return out
-    except Exception as exc:  # noqa: BLE001 — librosa opsional
+    except Exception as exc:  # noqa: BLE001
         log and log(f"⚠️ Deteksi BPM/key dilewati ({exc})")
         return {}
 
@@ -2439,118 +2926,214 @@ def _beat_this_grid(audio_path: Path, duration: float = 0) -> dict:
     }
 
 
+def _ellis_dp_beat_grid(
+    audio_path: Path,
+    duration: float = 0,
+    bass_path: Path | None = None,
+    other_path: Path | None = None,
+) -> dict:
+    """High-precision Ellis (2007) Dynamic Programming multi-band beat + downbeat tracker.
+
+    Runs at 100 fps (hop=220 at sr=22050, 9.98ms frame resolution) on multi-band
+    log-spectral flux (kick/sub 35-170Hz, snare/body 170-3000Hz, hihat 3000-9500Hz,
+    and chord changes 100-3500Hz). Dynamic programming snaps every beat to the
+    exact local drum/chord transient from 0:00 to the end of the song with 0.0ms
+    cumulative drift.
+    """
+    import numpy as np
+
+    sr = 22050
+    hop = 220
+    n_fft = 1024
+    max_sec = min(float(duration) if duration else 600.0, 600.0)
+    y_main = _decode_stereo_f32(Path(audio_path), sr=sr, max_sec=max_sec).mean(axis=1)
+    if len(y_main) < sr * 2:
+        return {}
+    win = np.hanning(n_fft).astype(np.float32)
+
+    def _band_flux(sig: np.ndarray, fmin: float, fmax: float) -> np.ndarray:
+        pad = np.pad(sig, (n_fft // 2, n_fft // 2))
+        frames = np.lib.stride_tricks.sliding_window_view(pad, n_fft)[::hop]
+        S = np.abs(np.fft.rfft(frames * win[None, :], n=n_fft, axis=1))
+        freqs = np.fft.rfftfreq(n_fft, 1.0 / sr)
+        mask = (freqs >= fmin) & (freqs <= fmax)
+        mag = np.log1p(10.0 * S[:, mask])
+        diff = np.maximum(0.0, np.diff(mag, axis=0, prepend=mag[:1]))
+        env = diff.mean(axis=1)
+        scale = float(np.percentile(env, 95))
+        return (env / (scale + 1e-8)).astype(np.float32)
+
+    o_kick = _band_flux(y_main, 35.0, 170.0)
+    o_snare = _band_flux(y_main, 170.0, 3000.0)
+    o_hat = _band_flux(y_main, 3000.0, 9500.0)
+    n_frames = min(len(o_kick), len(o_snare), len(o_hat))
+
+    if bass_path and Path(bass_path).is_file():
+        y_bass = _decode_stereo_f32(Path(bass_path), sr=sr, max_sec=max_sec).mean(axis=1)
+        if len(y_bass) >= sr * 2:
+            o_b = _band_flux(y_bass, 35.0, 160.0)
+            n_frames = min(n_frames, len(o_b))
+            o_kick = o_kick[:n_frames] + 0.55 * o_b[:n_frames]
+
+    if other_path and Path(other_path).is_file():
+        y_other = _decode_stereo_f32(Path(other_path), sr=sr, max_sec=max_sec).mean(axis=1)
+        if len(y_other) >= sr * 2:
+            o_harm = _band_flux(y_other, 100.0, 3500.0)[:n_frames]
+        else:
+            o_harm = o_snare[:n_frames] * 0.5
+    else:
+        o_harm = _band_flux(y_main, 120.0, 2800.0)[:n_frames]
+
+    o_kick = o_kick[:n_frames]
+    o_snare = o_snare[:n_frames]
+    o_hat = o_hat[:n_frames]
+    o_harm = o_harm[:n_frames]
+
+    onset = (1.3 * o_kick + 1.5 * o_snare + 0.4 * o_hat + 0.8 * o_harm).astype(np.float32)
+    onset = np.convolve(onset, np.array([0.1, 0.25, 0.3, 0.25, 0.1], dtype=np.float32), mode="same")
+    onset /= float(np.percentile(onset, 95)) + 1e-8
+
+    fps = sr / hop
+    ac = np.fft.irfft(np.abs(np.fft.rfft(onset - onset.mean(), n=2 * n_frames)) ** 2)[:n_frames]
+    min_lag = int(round(fps * 60.0 / 175.0))
+    max_lag = min(n_frames - 2, int(round(fps * 60.0 / 68.0)))
+    if max_lag <= min_lag:
+        return {}
+    lags = np.arange(min_lag, max_lag + 1)
+    bpms = 60.0 * fps / lags
+    prior = np.exp(-0.5 * ((np.log2(bpms / 115.0)) / 0.45) ** 2)
+    best_idx = int(np.argmax(ac[lags] * prior))
+    period = float(lags[best_idx])
+
+    # Ellis (2007) Dynamic Programming Beat Tracking
+    tightness = 180.0
+    taus = np.arange(max(4, int(round(period * 0.6))), int(round(period * 1.6)) + 1)
+    tx_cost = -tightness * (np.log(taus / period) ** 2).astype(np.float32)
+
+    cumscore = np.zeros(n_frames, dtype=np.float32)
+    backlink = np.full(n_frames, -1, dtype=np.int32)
+    for i in range(n_frames):
+        valid = taus[taus <= i]
+        if len(valid) == 0:
+            cumscore[i] = onset[i]
+        else:
+            scores = cumscore[i - valid] + tx_cost[: len(valid)]
+            best = int(np.argmax(scores))
+            cumscore[i] = onset[i] + scores[best]
+            backlink[i] = i - int(valid[best])
+
+    tail_win = max(8, min(n_frames // 2, int(round(period * 4))))
+    cur = int(n_frames - tail_win + np.argmax(cumscore[n_frames - tail_win :]))
+    beats_idx: list[int] = []
+    while cur >= 0:
+        beats_idx.append(cur)
+        cur = int(backlink[cur])
+    beats_idx.reverse()
+
+    step_i = max(4, int(round(period)))
+    while beats_idx and beats_idx[0] >= step_i:
+        beats_idx.insert(0, beats_idx[0] - step_i)
+    while beats_idx and beats_idx[-1] + step_i < n_frames:
+        beats_idx.append(beats_idx[-1] + step_i)
+
+    if len(beats_idx) < 4:
+        return {}
+
+    # 4-phase downbeat detection: Beat 1 has strong kick/bass + chord change,
+    # Beats 2 & 4 have strong backbeat snare.
+    best_phase = 0
+    best_phase_score = float("-inf")
+    for phase in range(4):
+        b_down = [b for idx, b in enumerate(beats_idx) if idx % 4 == phase and 0 <= b < n_frames]
+        b_back = [
+            b for idx, b in enumerate(beats_idx)
+            if idx % 4 in ((phase + 1) % 4, (phase + 3) % 4) and 0 <= b < n_frames
+        ]
+        if not b_down:
+            continue
+        s_down = float(o_kick[b_down].mean()) + 0.8 * float(o_harm[b_down].mean())
+        s_back = 0.8 * float(o_snare[b_back].mean()) if b_back else 0.0
+        total_s = s_down + s_back
+        if total_s > best_phase_score:
+            best_phase_score = total_s
+            best_phase = phase
+
+    beats = [round(float(b) / fps, 3) for b in beats_idx]
+    downbeats = [round(float(b) / fps, 3) for idx, b in enumerate(beats_idx) if idx % 4 == best_phase]
+    if duration:
+        beats = [b for b in beats if b < float(duration)]
+        downbeats = [d for d in downbeats if d < float(duration)]
+    if len(beats) < 4:
+        return {}
+    intervals = np.diff(beats)
+    eff_bpm = 60.0 / float(np.median(intervals)) if len(intervals) else (60.0 * fps / period)
+    return {
+        "bpm": round(float(eff_bpm), 1),
+        "beats": beats,
+        "downbeats": downbeats,
+        "time_signature": 4,
+        "source": "ellis-dp-multiband",
+    }
+
+
 def detect_downbeats(audio_path: Path, duration: float = 0,
                      log=None) -> dict:
-    """Beat grid + downbeat dari Beat This! ONNX, fallback onset autocorr.
-
-    Model Beat This! (MIT) memberi downbeat nyata; bila model belum tersedia
-    atau gagal, Klipin memakai autocorrelation onset yang ditandai
-    ``beat_source=onset-autocorr`` supaya UI tidak mengklaim presisi studio.
-    Tidak pernah gagal - mengembalikan {} bila audio tidak bisa dibaca.
-    """
+    """Beat grid + downbeat dari Beat This! ONNX, fallback Ellis DP multiband."""
     try:
         grid = _beat_this_grid(audio_path, duration)
-        if grid:
+        if grid and len(grid.get("beats") or []) >= 8:
             return grid
-        log and log("Beat This! tidak tersedia, fallback onset-autocorr")
-    except Exception as exc:  # noqa: BLE001 - grid opsional
-        log and log(f"Beat This! gagal ({exc}), fallback onset-autocorr")
+    except Exception as exc:  # noqa: BLE001
+        log and log(f"Beat This! gagal ({exc}), beralih ke Ellis DP beat tracker")
     try:
-        import numpy as np
-
-        ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
-        decoded = subprocess.run(
-            [ffmpeg, "-v", "error", "-i", str(audio_path), "-ac", "1",
-             "-ar", "11025", "-t", "360", "-f", "s16le", "-"],
-            capture_output=True, timeout=180)
-        if decoded.returncode != 0 or len(decoded.stdout) < 22050:
-            return {}
-        y = np.frombuffer(decoded.stdout, dtype=np.int16).astype(np.float32)
-        y /= 32768.0
-        sr, hop, frame = 11025, 256, 512
-        if y.size < frame:
-            return {}
-        count = 1 + (y.size - frame) // hop
-        frames = np.lib.stride_tricks.as_strided(
-            y, shape=(count, frame),
-            strides=(y.strides[0] * hop, y.strides[0]))
-        energy = np.sqrt(np.mean(frames * frames, axis=1))
-        onset = np.maximum(0.0, np.diff(energy, prepend=energy[0]))
-        onset -= onset.mean()
-        norm = float(np.linalg.norm(onset))
-        if norm <= 0:
-            return {}
-        onset /= norm
-
-        size = 2 * count
-        spectrum = np.fft.rfft(onset, n=size)
-        autocorr = np.fft.irfft(spectrum * np.conj(spectrum))[:count]
-        if autocorr[0] <= 0:
-            return {}
-        autocorr = autocorr / autocorr[0]
-
-        min_lag = max(2, int(round(60 * sr / (200 * hop))))
-        max_lag = min(count - 1, int(round(60 * sr / (60 * hop))))
-        if max_lag <= min_lag:
-            return {}
-        lags = np.arange(min_lag, max_lag + 1)
-        bpms = 60.0 * sr / (lags * hop)
-        prior = np.exp(-0.5 * (np.log2(bpms / 120.0) / 0.35) ** 2)
-        lag = int(lags[int(np.argmax(autocorr[lags] * prior))])
-
-        bpm = 60.0 * sr / (lag * hop)
-        while bpm < 70 and lag * 2 <= max_lag:
-            lag *= 2
-            bpm *= 2
-        while bpm > 170 and lag // 2 >= min_lag:
-            lag //= 2
-            bpm /= 2
-
-        best_offset, best_score = 0, float("-inf")
-        for offset in range(lag):
-            score = float(onset[np.arange(offset, count, lag)].sum())
-            if score > best_score:
-                best_offset, best_score = offset, score
-        beat_frames = list(range(best_offset, count, lag))
-        beats = [round(f * hop / sr, 3) for f in beat_frames]
-        if duration:
-            beats = [beat for beat in beats if beat < float(duration)]
-        if len(beats) < 4:
-            return {}
-
-        best_shift, best_energy = 0, float("-inf")
-        for shift in range(4):
-            frames_idx = [int(round(beat * sr / hop)) for beat in beats[shift::4]]
-            frames_idx = [i for i in frames_idx if 0 <= i < count]
-            score = float(onset[frames_idx].sum()) if frames_idx else float("-inf")
-            if score > best_energy:
-                best_shift, best_energy = shift, score
-
-        return {
-            "bpm": round(float(bpm), 1),
-            "beats": beats,
-            "downbeats": [round(b, 3) for b in beats[best_shift::4]],
-            "time_signature": 4,
-            "source": "onset-autocorr",
-        }
-    except Exception as exc:  # noqa: BLE001 - grid opsional
-        log and log(f"Beat grid fallback ({exc})")
-        return {}
+        grid = _ellis_dp_beat_grid(audio_path, duration=duration)
+        if grid and len(grid.get("beats") or []) >= 4:
+            return grid
+    except Exception as exc:  # noqa: BLE001
+        log and log(f"Ellis DP beat tracker fallback ({exc})")
+    return {}
 
 
 def align_timeline(audio_path: Path, lyrics: str, duration: float,
                    log=None) -> list[dict]:
-    """Word/line alignment nyata via faster-whisper bila ada; fallback merata.
+    """Word/line alignment via Groq Cloud Whisper (1.5s, 0% CPU) atau faster-whisper hemat CPU bila offline.
 
     Tidak pernah gagal — selalu kembalikan timeline karaoke yang valid.
     """
     base = normalize_lyrics(lyrics, duration)
     if not base or not audio_path.exists():
         return base
+
+    # 1. Prioritas Utama: Groq Cloud Whisper Large-v3 (1.5 detik, 0% CPU laptop)
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if groq_key:
+        try:
+            log and log("🚀 Alignment cepat via Groq Cloud Whisper Large-v3 (0% CPU laptop)…")
+            res = transcribe_audio_groq(audio_path, log=log, word_timestamps=True)
+            raw_words = res.get("words") or []
+            words: list[dict] = []
+            for w in raw_words:
+                t = str(w.get("word") or "").strip()
+                if t:
+                    words.append({
+                        "start": float(w.get("start", 0) or 0),
+                        "end": float(w.get("end", 0) or 0),
+                        "text": t,
+                    })
+            if len(words) >= 4:
+                out = _map_words_to_lines(words, base)
+                if any(line.get("words") for line in out):
+                    log and log(f"🎯 Alignment Groq Whisper selesai: {len(words)} kata → {len(out)} baris")
+                    return out
+        except Exception as groq_err:
+            log and log(f"⚠️ Groq alignment fallback ({groq_err})")
+
+    # 2. Fallback Lokal CPU: model tiny/base hemat daya, batas core CPU agar laptop tidak freeze
     try:
         from faster_whisper import WhisperModel
-        model_name = os.environ.get("KLIPIN_MUSIC_ALIGN_MODEL", "small")
-        model = WhisperModel(model_name, device="cpu", compute_type="int8")
+        model_name = os.environ.get("KLIPIN_MUSIC_ALIGN_MODEL", "tiny")
+        cpu_threads = min(4, max(1, (os.cpu_count() or 2) - 1))
+        model = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=cpu_threads)
         segments, _ = model.transcribe(str(audio_path), word_timestamps=True)
         words: list[dict] = []
         for seg in segments:
@@ -2567,14 +3150,283 @@ def align_timeline(audio_path: Path, lyrics: str, duration: float,
         out = _map_words_to_lines(words, base)
         if not any(line.get("words") for line in out):
             return base
-        log and log(f"🎯 Alignment Whisper: {len(words)} kata → {len(out)} baris")
+        log and log(f"🎯 Alignment Whisper lokal: {len(words)} kata → {len(out)} baris")
         return out
     except Exception as exc:  # noqa: BLE001 — fallback merata tetap valid
         log and log(f"⚠️ Alignment fallback merata ({exc})")
         return base
 
 
-def master_audio(src: Path, log=None) -> bool:
+STUDIO_EQ_BANDS: tuple[int, ...] = (60, 150, 400, 1000, 2400, 5000, 10000, 16000)
+
+STUDIO_EQ_PRESETS: dict[str, dict] = {
+    "flat": {
+        "id": "flat",
+        "label": "Studio Flat (0 dB)",
+        "bands": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "preamp_db": 0.0,
+        "compressor": 0.0,
+        "stereo_width": 1.0,
+        "reverb": 0.0,
+    },
+    "reggae-dub": {
+        "id": "reggae-dub",
+        "label": "Reggae Dub Bass (BOENTER)",
+        "bands": [4.5, 3.2, -2.0, -0.5, 1.2, 1.5, -1.8, -2.5],
+        "preamp_db": 0.5,
+        "compressor": 0.35,
+        "stereo_width": 1.24,
+        "reverb": 0.15,
+    },
+    "vocal-clarity": {
+        "id": "vocal-clarity",
+        "label": "Vocal Clarity & Presence",
+        "bands": [-2.5, -1.5, -2.0, 1.5, 3.5, 3.0, 2.0, 1.5],
+        "preamp_db": 0.0,
+        "compressor": 0.45,
+        "stereo_width": 1.10,
+        "reverb": 0.08,
+    },
+    "koplo-punch": {
+        "id": "koplo-punch",
+        "label": "Koplo Sub Punch",
+        "bands": [5.0, 3.5, -2.5, 0.5, 2.5, 3.2, 2.5, 2.0],
+        "preamp_db": 0.5,
+        "compressor": 0.50,
+        "stereo_width": 1.18,
+        "reverb": 0.05,
+    },
+    "warm-analog": {
+        "id": "warm-analog",
+        "label": "Warm Analog Tape",
+        "bands": [2.5, 2.8, 1.0, 0.5, -0.8, -1.5, -2.2, -3.5],
+        "preamp_db": 0.5,
+        "compressor": 0.30,
+        "stereo_width": 1.12,
+        "reverb": 0.10,
+    },
+    "hifi-master": {
+        "id": "hifi-master",
+        "label": "Hi-Fi Loudness Master",
+        "bands": [3.0, 1.5, -1.5, 0.0, 1.8, 2.5, 3.2, 3.5],
+        "preamp_db": 0.0,
+        "compressor": 0.40,
+        "stereo_width": 1.20,
+        "reverb": 0.05,
+    },
+    "acoustic-intimate": {
+        "id": "acoustic-intimate",
+        "label": "Acoustic Intimate",
+        "bands": [-1.0, 1.5, -1.2, 1.2, 2.2, 2.0, 2.5, 1.8],
+        "preamp_db": 0.0,
+        "compressor": 0.25,
+        "stereo_width": 1.15,
+        "reverb": 0.12,
+    },
+}
+
+
+def normalize_studio_eq_spec(raw: dict | None = None) -> dict:
+    """Validate and clamp a Studio Equalizer & Mastering specification."""
+    raw = dict(raw or {})
+    preset = str(raw.get("preset") or raw.get("eq_preset") or "flat").strip().lower()
+    base = STUDIO_EQ_PRESETS.get(preset, STUDIO_EQ_PRESETS["flat"])
+    if preset not in STUDIO_EQ_PRESETS and preset != "custom":
+        preset = "custom" if raw.get("bands") or raw.get("eq_bands") else "flat"
+
+    raw_bands = raw.get("bands") if "bands" in raw else raw.get("eq_bands")
+    if isinstance(raw_bands, str):
+        try:
+            raw_bands = json.loads(raw_bands)
+        except Exception:
+            raw_bands = [float(x) for x in re.findall(r"-?\d+(?:\.\d+)?", raw_bands)]
+
+    bands: list[float] = []
+    if isinstance(raw_bands, (list, tuple)) and len(raw_bands) > 0:
+        for i in range(len(STUDIO_EQ_BANDS)):
+            try:
+                val = float(raw_bands[i]) if i < len(raw_bands) else 0.0
+            except (TypeError, ValueError):
+                val = 0.0
+            bands.append(round(max(-12.0, min(12.0, val)), 2))
+    else:
+        bands = [float(x) for x in base["bands"]]
+
+    def _clamp_float(val, default: float, lo: float, hi: float) -> float:
+        if val is None or val == "":
+            return default
+        try:
+            return round(max(lo, min(hi, float(val))), 3)
+        except (TypeError, ValueError):
+            return default
+
+    preamp_db = _clamp_float(
+        raw.get("preamp_db", raw.get("eq_preamp_db")),
+        float(base["preamp_db"]), -6.0, 6.0,
+    )
+    compressor = _clamp_float(
+        raw.get("compressor", raw.get("eq_compressor")),
+        float(base["compressor"]), 0.0, 1.0,
+    )
+    stereo_width = _clamp_float(
+        raw.get("stereo_width", raw.get("eq_stereo_width")),
+        float(base["stereo_width"]), 0.5, 2.0,
+    )
+    reverb = _clamp_float(
+        raw.get("reverb", raw.get("eq_reverb")),
+        float(base["reverb"]), 0.0, 0.8,
+    )
+    normalize_lufs = bool(raw.get("normalize_lufs", True))
+    reset = bool(raw.get("reset", False))
+    active = bool(
+        not reset
+        and (
+            any(abs(g) >= 0.1 for g in bands)
+            or abs(preamp_db) >= 0.1
+            or compressor >= 0.05
+            or abs(stereo_width - 1.0) >= 0.03
+            or reverb >= 0.03
+        )
+    )
+    return {
+        "preset": "flat" if reset else preset,
+        "bands": [0.0] * len(STUDIO_EQ_BANDS) if reset else bands,
+        "frequencies": list(STUDIO_EQ_BANDS),
+        "preamp_db": 0.0 if reset else preamp_db,
+        "compressor": 0.0 if reset else compressor,
+        "stereo_width": 1.0 if reset else stereo_width,
+        "reverb": 0.0 if reset else reverb,
+        "normalize_lufs": normalize_lufs,
+        "reset": reset,
+        "active": active,
+    }
+
+
+def apply_studio_eq(src: Path, eq_spec: dict | None = None, log=None) -> dict:
+    """Apply non-destructive 8-band Studio Equalizer + Dynamics Mastering via FFmpeg.
+
+    Preserves a pristine backup (`<stem>.raw_master<suffix>`) before applying the
+    first Studio EQ curve so subsequent EQ tweaks or resets never compound filters
+    or degrade audio quality. Also refreshes `song.wav` if present in the job folder.
+    """
+    spec = normalize_studio_eq_spec(eq_spec)
+    if not src.is_file() or src.stat().st_size <= 1024:
+        raise FileNotFoundError(f"File audio lagu tidak ditemukan atau kosong: {src}")
+
+    backup = src.parent / f"{src.stem}.raw_master{src.suffix}"
+    if spec["reset"]:
+        if backup.is_file() and backup.stat().st_size > 1024:
+            src.write_bytes(backup.read_bytes())
+            if (src.parent / "song.wav").is_file():
+                export_wav_lufs(src, src.parent, log=log)
+        spec["applied"] = False
+        spec["restored_from_backup"] = backup.is_file()
+        return spec
+
+    if not spec["active"]:
+        if backup.is_file() and backup.stat().st_size > 1024:
+            src.write_bytes(backup.read_bytes())
+            if (src.parent / "song.wav").is_file():
+                export_wav_lufs(src, src.parent, log=log)
+        spec["applied"] = False
+        return spec
+
+    if not backup.is_file() or backup.stat().st_size <= 1024:
+        shutil.copy2(src, backup)
+
+    source_input = backup if (backup.is_file() and backup.stat().st_size > 1024) else src
+    ffmpeg = _ffmpeg_exe() if "_ffmpeg_exe" in globals() else (shutil.which("ffmpeg") or "ffmpeg")
+    duration = probe_audio_seconds(source_input)
+
+    filters: list[str] = ["highpass=f=24"]
+    if abs(spec["preamp_db"]) >= 0.1:
+        filters.append(f"volume={spec['preamp_db']:.2f}dB")
+
+    for idx, (freq, gain) in enumerate(zip(STUDIO_EQ_BANDS, spec["bands"])):
+        if abs(gain) < 0.1:
+            continue
+        if idx == 0:
+            filters.append(f"bass=g={gain:.2f}:f={freq}:w=0.65")
+        elif idx == len(STUDIO_EQ_BANDS) - 1:
+            filters.append(f"treble=g={gain:.2f}:f=14000:w=0.65")
+        else:
+            filters.append(f"equalizer=f={freq}:width_type=q:width=1.25:g={gain:.2f}")
+
+    comp = float(spec["compressor"])
+    if comp >= 0.05:
+        thresh_db = -10.0 - comp * 14.0
+        ratio = 1.0 + comp * 4.0
+        makeup = 1.0 + comp * 1.8
+        filters.append(
+            f"acompressor=threshold={thresh_db:.1f}dB:ratio={ratio:.2f}:attack=15:release=180:makeup={makeup:.2f}"
+        )
+
+    width = float(spec["stereo_width"])
+    if abs(width - 1.0) >= 0.03:
+        filters.append(f"extrastereo=m={width:.2f}")
+
+    rev = float(spec["reverb"])
+    if rev >= 0.03:
+        delay_ms = int(round(48 + rev * 65))
+        decay = round(0.08 + rev * 0.24, 3)
+        filters.append(f"aecho=0.82:0.86:{delay_ms}:{decay}")
+
+    if spec["normalize_lufs"]:
+        filters.append("loudnorm=I=-14:TP=-1.5:LRA=11")
+    else:
+        filters.append("alimiter=limit=0.96")
+
+    af_chain = ",".join(filters)
+    codec = (
+        ["-c:a", "libmp3lame", "-b:a", "192k"]
+        if src.suffix.lower() == ".mp3"
+        else ["-c:a", "aac", "-b:a", "192k"]
+    )
+    tmp = src.parent / f"{src.stem}.eq_tmp{src.suffix}"
+    cmd = [
+        ffmpeg, "-y", "-v", "error", "-i", str(source_input),
+        "-map_metadata", "-1", "-af", af_chain,
+        "-ar", "44100", "-ac", "2",
+    ]
+    if duration > 0:
+        cmd.extend(["-t", f"{duration:.3f}"])
+    cmd.extend([*codec, str(tmp)])
+
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if r.returncode != 0 or not tmp.is_file() or tmp.stat().st_size <= 1024:
+            # Fallback without extrastereo/bass/treble if minimal ffmpeg build lacks a filter
+            fallback_filters = [
+                f"equalizer=f={freq}:width_type=q:width=1.2:g={gain:.2f}"
+                for freq, gain in zip(STUDIO_EQ_BANDS, spec["bands"])
+                if abs(gain) >= 0.1
+            ]
+            if abs(spec["preamp_db"]) >= 0.1:
+                fallback_filters.insert(0, f"volume={spec['preamp_db']:.2f}dB")
+            fallback_filters.append("loudnorm=I=-14:TP=-1.5:LRA=11")
+            cmd_fb = [
+                ffmpeg, "-y", "-v", "error", "-i", str(source_input),
+                "-map_metadata", "-1", "-af", ",".join(fallback_filters),
+                "-ar", "44100", "-ac", "2",
+                *codec, str(tmp),
+            ]
+            r = subprocess.run(cmd_fb, capture_output=True, text=True, timeout=600)
+        if r.returncode == 0 and tmp.is_file() and tmp.stat().st_size > 1024:
+            src.write_bytes(tmp.read_bytes())
+            tmp.unlink(missing_ok=True)
+            if (src.parent / "song.wav").is_file():
+                export_wav_lufs(src, src.parent, log=log)
+            log and log(f"🎚️ Studio Equalizer diterapkan ({spec['preset']}): {spec['bands']}")
+            spec["applied"] = True
+            spec["updated_at"] = round(time.time(), 3)
+            return spec
+        err_tail = (r.stderr or "").strip()[-300:]
+        raise RuntimeError(f"FFmpeg Studio EQ gagal: {err_tail}")
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def master_audio(src: Path, log=None, genre: str = "") -> bool:
     """Master the delivered track in place (-14 LUFS + de-mud/de-harsh).
 
     Previously only a side-car ``song.wav`` was mastered while the MP3 that
@@ -2595,11 +3447,23 @@ def master_audio(src: Path, log=None) -> bool:
     duration = probe_audio_seconds(src)
     if duration <= 0:
         return False
-    af_chain = (
-        "equalizer=f=260:width_type=q:width=1.2:g=-2.5,"
-        "equalizer=f=8500:width_type=q:width=2.0:g=-1.5,"
-        "loudnorm=I=-14:TP=-1.5:LRA=11"
-    )
+    gid = str(genre or "").strip().lower()
+    if gid in ("reggae", "ska", "dub", "reggae-santai", "reggae-ska", "reggae-dub"):
+        af_chain = (
+            "highpass=f=28,lowpass=f=11200,"
+            "equalizer=f=95:width_type=q:width=1.0:g=2.8,"
+            "equalizer=f=220:width_type=q:width=1.1:g=1.4,"
+            "equalizer=f=320:width_type=q:width=1.3:g=-1.8,"
+            "equalizer=f=6800:width_type=q:width=1.0:g=-1.8,"
+            "extrastereo=m=1.24,"
+            "loudnorm=I=-14:TP=-1.5:LRA=11"
+        )
+    else:
+        af_chain = (
+            "equalizer=f=260:width_type=q:width=1.2:g=-2.5,"
+            "equalizer=f=8500:width_type=q:width=2.0:g=-1.5,"
+            "loudnorm=I=-14:TP=-1.5:LRA=11"
+        )
     codec = (["-c:a", "libmp3lame", "-b:a", "192k"]
              if src.suffix.lower() == ".mp3" else ["-c:a", "aac", "-b:a", "192k"])
     tmp = src.parent / f"{src.stem}.mastered{src.suffix}"
@@ -2695,18 +3559,33 @@ def _write_lrc(path: Path, lines: list[dict]) -> None:
 
 def probe_audio_seconds(path: Path) -> float:
     """Durasi file audio (0.0 bila tidak diketahui)."""
+    if not path.exists():
+        return 0.0
     ffprobe = shutil.which("ffprobe")
-    if not ffprobe or not path.exists():
-        return 0.0
+    if ffprobe:
+        try:
+            r = subprocess.run(
+                [ffprobe, "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                capture_output=True, text=True, timeout=30)
+            first = (r.stdout or "").strip().splitlines()
+            if first:
+                val = float(first[0])
+                if val > 0.0:
+                    return val
+        except Exception:
+            pass
+    # Fallback to ffmpeg -i when ffprobe is absent (e.g. imageio_ffmpeg environment)
     try:
-        r = subprocess.run(
-            [ffprobe, "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-            capture_output=True, text=True, timeout=30)
-        first = (r.stdout or "").strip().splitlines()
-        return max(0.0, float(first[0])) if first else 0.0
-    except Exception:  # noqa: BLE001 — durasi bersifat best-effort
-        return 0.0
+        ffmpeg = _ffmpeg_exe()
+        r = subprocess.run([ffmpeg, "-i", str(path)], capture_output=True, text=True, timeout=30)
+        m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", r.stderr or "")
+        if m:
+            h, mn, s = m.groups()
+            return max(0.0, int(h) * 3600 + int(mn) * 60 + float(s))
+    except Exception:
+        pass
+    return 0.0
 
 
 def trim_trailing_silence(src: Path, log=None, min_silence: float = 3.0,
@@ -2803,7 +3682,9 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
     cover_mode = bool(spec.get("cover_mode"))
     cover_engine = str(spec.get("cover_engine") or "").strip().lower()
     if cover_engine == "yue2":
-        cover_engine = "diffrhythm"
+        cover_engine = str(os.environ.get("COVER_ENGINE", "yue2_comfy")).strip().lower()
+        if cover_engine not in ("yue2_comfy", "yue2_native"):
+            cover_engine = "yue2_comfy"
     # Existing saved covers default to ACE-Step. URL covers can explicitly use
     # HeartMuLa text-to-song (lyrics locked), DiffRhythm, or the official MuLaCover worker.
     if cover_mode:
@@ -2867,6 +3748,15 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
                 "genre-appropriate vocal; do not rewrite, translate, summarize, "
                 "or add lyrics"
             )
+        if cover_engine in ("yue2_comfy", "yue2_native"):
+            provider = cover_engine
+            spec["provider"] = provider
+            spec["cover_style_prompt"] = (
+                f"symbolic melody-conditioned song cover in {info['label']}; "
+                "preserve the exact melody notes and rhythm via SheetSage2 ABC notation; "
+                "sing the supplied lyrics with zero vocal bleed or hallucination; "
+                f"rebuild the arrangement and instrumentation as {info['tags']}"
+            )
         if cover_engine == "voice":
             # Voice-conversion cover: the source performance (melody, phrasing,
             # timing, original backing) is preserved exactly; only the singer's
@@ -2923,7 +3813,23 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
                                   "target": 0}
     else:
         # Gemini untuk kata: sheet selalu duration-sized, placeholder tidak lolos.
-        if spec.get("_lyrics_locked") and str(spec.get("lyrics") or "").strip():
+        if cover_mode:
+            spec["_lyrics_locked"] = True
+            raw_lyrics = str(spec.get("lyrics") or "").strip()
+            if raw_lyrics:
+                lyrics = raw_lyrics
+                lyric_info = {
+                    "source": spec.get("lyrics_extraction_source") or "user",
+                    "lines": len(normalize_lyrics(lyrics, duration)),
+                }
+            elif cover_engine in ("arrangement", "voice"):
+                lyrics = "[Verse]\n(Vokal asli sumber dipertahankan)"
+                lyric_info = {"source": "source_vocal_stem", "lines": 1}
+            else:
+                raise RuntimeError(
+                    "Cover membutuhkan lirik sumber persis. Lirik sumber tidak ditemukan dan dilarang mengarang lirik baru."
+                )
+        elif spec.get("_lyrics_locked") and str(spec.get("lyrics") or "").strip():
             lyrics = str(spec["lyrics"]).strip()
             lyric_info = {"source": "user", "lines": len(normalize_lyrics(lyrics, duration))}
         else:
@@ -2971,13 +3877,14 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         or (heartmula_ready and provider in ("auto", "heartmula"))
         or (modal_ready and provider in ("auto", "heartmula"))
         or (mulacover_ready and provider == "mulacover")
+        or (cover_mode and cover_engine in ("yue2_comfy", "yue2_native", "yue2"))
     ) else "song.m4a")
     used = "fallback-bgm"
     used_detail: dict = {}
     _gpu_t0 = time.time()
     candidates = ([provider] if provider in ("diffrhythm", "ace-step", "heartmula", "mulacover")
                   else ["heartmula", "diffrhythm", "ace-step"])
-    faithful_audio_cover = cover_mode and cover_engine in ("ace-step", "mulacover")
+    faithful_audio_cover = cover_mode and cover_engine in ("ace-step", "mulacover", "yue2_comfy", "yue2_native", "yue2")
     heartmula_cover = cover_mode and cover_engine == "heartmula"
     if cover_mode and cover_engine == "mulacover" and not mulacover_ready:
         raise RuntimeError(
@@ -2996,6 +3903,14 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         raise RuntimeError(
             "Cover reimagine membutuhkan worker DiffRhythm aktif "
             "(KLIPIN_DIFFRHYTHM_MODAL_ENABLED=1).")
+    if cover_mode and cover_engine in ("yue2_comfy", "yue2") and not _yue2_comfy_enabled():
+        raise RuntimeError(
+            "Cover YuE2 ComfyUI membutuhkan worker aktif "
+            "(KLIPIN_YUE2_COMFY_ENABLED=1 atau COMFYUI_URL).")
+    if cover_mode and cover_engine == "yue2_native" and not _yue2_native_enabled():
+        raise RuntimeError(
+            "Cover YuE2 Native membutuhkan worker aktif "
+            "(KLIPIN_YUE2_NATIVE_ENABLED=1).")
     if cover_mode and cover_engine == "voice" and not _voice_modal_enabled():
         raise RuntimeError(
             "Cover voice-conversion membutuhkan worker Seed-VC aktif "
@@ -3040,6 +3955,12 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
                 output.write_bytes(_b64.b64decode(source_b64))
                 used = "voice-cover"
                 log("🎤 Cover melodi-asli: mengganti warna suara sumber (Demucs + Seed-VC)…")
+    if cover_mode and cover_engine in ("yue2_comfy", "yue2_native"):
+        yue2_result = _yue2_cover_generate(
+            {**spec, "lyrics": lyrics}, output, engine_type=cover_engine, log=log)
+        if yue2_result:
+            used = f"{cover_engine}-cover"
+            used_detail = yue2_result
     if cover_mode and cover_engine == "mulacover":
         mulacover_result = _mulacover_modal_generate(
             {**spec, "lyrics": lyrics}, output, log=log)
@@ -3154,7 +4075,24 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
     # mengirim master jadi.
     stage("mastering")
     if used != "fallback-bgm":
-        master_audio(output, log=log)
+        master_audio(output, log=log, genre=info['id'])
+    studio_eq_result = None
+    if spec.get("studio_eq") or spec.get("eq_preset") or spec.get("eq_bands"):
+        try:
+            studio_eq_result = apply_studio_eq(
+                output,
+                spec.get("studio_eq") or {
+                    "preset": spec.get("eq_preset", "flat"),
+                    "bands": spec.get("eq_bands", []),
+                    "preamp_db": spec.get("eq_preamp_db", 0.0),
+                    "compressor": spec.get("eq_compressor", 0.0),
+                    "stereo_width": spec.get("eq_stereo_width", 1.0),
+                    "reverb": spec.get("eq_reverb", 0.0),
+                },
+                log=log,
+            )
+        except Exception as eq_exc:  # noqa: BLE001 — never fail song generation over post-EQ
+            log and log(f"⚠️ Studio EQ dilewati ({eq_exc})")
     # Pasca-proses lokal (cover, whisper-align, WAV LUFS, BPM/key) saling
     # independen — jalankan paralel lewat thread pool. Ini memangkas wall-time
     # setelah GPU selesai TANPA mengubah satu bit pun kualitas audio.
@@ -3196,7 +4134,8 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         "duration": duration, "lyrics_lines": len(line_timeline),
         "requested_duration": round(requested_duration, 1),
         "auto_duration": bool(spec.get("auto_duration")),
-        "lyrics_source": (lyric_info or {}).get("source", "user"),
+        "lyrics_source": str(spec.get("lyrics_extraction_source") or (lyric_info or {}).get("source", "user")),
+        "lyrics_segments": int(spec.get("lyrics_extraction_segments") or 0),
         "lyrics_target": (lyric_info or {}).get("target"),
         "alignment": "whisper" if aligned else ("none" if instrumental else "even"),
         "aligned_lines": aligned,
@@ -3223,6 +4162,7 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         "weirdness": int(spec.get("weirdness", 50) or 50),
         "style_influence": int(spec.get("style_influence", 50) or 50),
         "mastered": bool(used != "fallback-bgm"),
+        "studio_eq": studio_eq_result or normalize_studio_eq_spec({}),
         "voice_conversion": voice_conversion,
         "model": str((used_detail or {}).get("model", "")),
         "parent_job_id": spec.get("parent_job_id") or "",
@@ -3231,6 +4171,7 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         "cover_fidelity": (
             "original-vocal+genre-restyle"
             if (cover_engine == "arrangement" or spec.get("keep_original_vocal")) else
+            "symbolic-melody-conditioned" if cover_engine in ("yue2_comfy", "yue2_native", "yue2") else
             "reference-symbolic-melody" if cover_engine == "mulacover" else
             "lyrics-locked-melody-regenerated" if cover_engine == "heartmula" else
             "genre-reimagine-melody-regenerated" if cover_engine == "diffrhythm" else
@@ -3251,6 +4192,7 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
             for key in ("cfg_scale", "temperature", "topk", "audio_sec")
             if (used_detail or {}).get(key) is not None
         },
+        "vocal_lock": (used_detail or {}).get("vocal_lock") or {},
         "worker_tail": str((used_detail or {}).get("stdout_tail", ""))[-500:] if used_detail else "",
         "license_note": str((used_detail or {}).get(
             "license_note",
@@ -3266,6 +4208,11 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
             "remix_draft_duration": duration,
             "remix_reference_strength": float(spec.get("ref_strength") or 0.5),
         })
+    if not output.is_file() or output.stat().st_size <= 1024:
+        raise RuntimeError("Output audio kosong atau gagal dihasilkan.")
+    final_qc_duration = probe_audio_seconds(output)
+    if 0.0 < final_qc_duration < 3.0:
+        raise RuntimeError(f"Output audio terpotong (durasi {final_qc_duration:.1f} detik terlalu pendek).")
     (job_dir / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     stage("done")
     return {"provider": used, "duration": duration, "audio_path": str(output),

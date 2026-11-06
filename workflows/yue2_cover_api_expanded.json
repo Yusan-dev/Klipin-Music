@@ -1,0 +1,119 @@
+{
+  "10": {
+    "inputs": {
+      "filename_prefix": "audio/YuE2_cover",
+      "audio": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "SaveAudio"
+  },
+  "45": {
+    "inputs": {
+      "audio": "reference.mp3"
+    },
+    "class_type": "LoadAudio"
+  },
+  "43": {
+    "inputs": {
+      "audio_encoder_name": "sheetsage2_bf16.safetensors"
+    },
+    "class_type": "AudioEncoderLoader"
+  },
+  "41": {
+    "inputs": {
+      "audio_encoder": [
+        "43",
+        0
+      ],
+      "audio": [
+        "45",
+        0
+      ],
+      "mode": "melody"
+    },
+    "class_type": "SheetSage2AudioToABC"
+  },
+  "15": {
+    "inputs": {
+      "ckpt_name": "yue2_3b_int8_convrot.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple"
+  },
+  "25": {
+    "inputs": {
+      "clip": [
+        "15",
+        1
+      ],
+      "style": "reggae",
+      "lyrics": "lyrics",
+      "abc": [
+        "41",
+        0
+      ],
+      "seed": 42,
+      "max_duration": 218.0
+    },
+    "class_type": "YuE2GenerateMusic"
+  },
+  "18": {
+    "inputs": {
+      "conditioning": [
+        "25",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut"
+  },
+  "5": {
+    "inputs": {
+      "seconds": [
+        "25",
+        1
+      ]
+    },
+    "class_type": "EmptyYuE2LatentAudio"
+  },
+  "8": {
+    "inputs": {
+      "model": [
+        "15",
+        0
+      ],
+      "positive": [
+        "25",
+        0
+      ],
+      "negative": [
+        "18",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ],
+      "seed": 42,
+      "steps": 32,
+      "cfg": 1.0,
+      "sampler_name": "dpm_2",
+      "scheduler": "sgm_uniform",
+      "denoise": 1.0
+    },
+    "class_type": "KSampler"
+  },
+  "9": {
+    "inputs": {
+      "samples": [
+        "8",
+        0
+      ],
+      "vae": [
+        "15",
+        2
+      ]
+    },
+    "class_type": "VAEDecodeAudio"
+  }
+}

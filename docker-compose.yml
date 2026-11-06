@@ -32,6 +32,9 @@ services:
     environment:
       - VITE_API_URL=${KLIPIN_MUSIC_PUBLIC_API_URL:-http://localhost:8002}
       - VITE_APP_MODE=music
+      # Must match the host side of `ports` below (HMR websocket).
+      - VITE_HMR_CLIENT_PORT=5175
+      - VITE_PROXY_TARGET=http://music-api:8000
     ports:
       - "5175:5173"
     volumes:

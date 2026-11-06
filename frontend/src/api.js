@@ -55,6 +55,25 @@ function authHeaders(extra = {}) {
   return token ? { Authorization: `Bearer ${token}`, ...extra } : extra
 }
 
+function formatErrorDetail(detail, status) {
+  if (!detail) return `Permintaan gagal (HTTP ${status})`
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item
+        const field = Array.isArray(item?.loc) ? item.loc.slice(1).join('.') : ''
+        const msg = item?.msg || JSON.stringify(item)
+        return field ? `${field}: ${msg}` : msg
+      })
+      .join('; ')
+  }
+  if (typeof detail === 'object') {
+    return detail.message || detail.error || JSON.stringify(detail)
+  }
+  return String(detail)
+}
+
 async function handle(res) {
   const data = await res.json().catch(() => ({}))
   if (res.status === 401) {
@@ -64,7 +83,7 @@ async function handle(res) {
     window.dispatchEvent(new CustomEvent('klipin:unauthorized'))
   }
   if (!res.ok) {
-    const error = new Error(data.detail || `Request failed (${res.status})`)
+    const error = new Error(formatErrorDetail(data.detail || data.error, res.status))
     error.status = res.status
     error.retryAfter = Number(res.headers.get('Retry-After') || 0)
     throw error
@@ -77,7 +96,15 @@ export function postJSON(path, body) {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
-  }).then(handle)
+  })
+    .catch((err) => {
+      throw new Error(
+        err?.message === 'Failed to fetch'
+          ? 'Tidak dapat terhubung ke server API Klipin Music. Pastikan backend sedang berjalan.'
+          : err?.message || 'Koneksi jaringan ke server gagal.'
+      )
+    })
+    .then(handle)
 }
 
 export function processVideo(url, options, platform = '') {
@@ -339,6 +366,15 @@ export function getMusicJobs(query = '') {
 // Recompute word-level lyric timing + beat/downbeat grid for an old song.
 export function realignMusic(jobId) {
   return postJSON(`/music/align/${encodeURIComponent(jobId)}`, {})
+}
+
+// Studio Equalizer & Mastering: permanently render 8-band EQ + compressor + stereo width into song MP3 & WAV.
+export function equalizeMusicJob(jobId, payload) {
+  return postJSON(`/music/equalize/${encodeURIComponent(jobId)}`, payload)
+}
+
+export function getMusicEqPresets() {
+  return fetch(`${API}/music/eq-presets`, { headers: authHeaders() }).then(handle)
 }
 
 // Studio projects: versioned form + arrangement plan snapshots per song.

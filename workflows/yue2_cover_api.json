@@ -1,0 +1,98 @@
+{
+  "1": {
+    "inputs": {
+      "audio": "reference.mp3",
+      "upload": "audio"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "Load Reference Audio"
+    }
+  },
+  "2": {
+    "inputs": {
+      "audio": [
+        "1",
+        0
+      ],
+      "melody_only": true,
+      "model": "m-a-p/SheetSage2",
+      "precision": "bf16"
+    },
+    "class_type": "SheetSage2AudioToABC",
+    "_meta": {
+      "title": "Symbolic Melody Extraction (SheetSage2)"
+    }
+  },
+  "3": {
+    "inputs": {
+      "style": "contemporary pop, bright synth, energetic rhythm, clear vocals"
+    },
+    "class_type": "YuE2StylePrompt",
+    "_meta": {
+      "title": "YuE2 Acoustic Style Prompt"
+    }
+  },
+  "4": {
+    "inputs": {
+      "lyrics": "[Verse]\nLine one\n[Chorus]\nLine two"
+    },
+    "class_type": "YuE2LyricsPrompt",
+    "_meta": {
+      "title": "YuE2 Structured Lyrics"
+    }
+  },
+  "5": {
+    "inputs": {
+      "model": "m-a-p/YuE2-3B-INT8-ConvRot",
+      "cot": "melody",
+      "seed": 42,
+      "steps": 30,
+      "cfg_scale": 2.5,
+      "max_duration": 360,
+      "melody_abc": [
+        "2",
+        0
+      ],
+      "style": [
+        "3",
+        0
+      ],
+      "lyrics": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "YuE2Sampler",
+    "_meta": {
+      "title": "YuE2 Melody-Conditioned Generator"
+    }
+  },
+  "6": {
+    "inputs": {
+      "samples": [
+        "5",
+        0
+      ],
+      "vae": "YuE2-Tiled-VAE",
+      "tile_size": 256
+    },
+    "class_type": "YuE2VAEDecodeAudio",
+    "_meta": {
+      "title": "Tiled VAE Audio Decoder"
+    }
+  },
+  "7": {
+    "inputs": {
+      "filename_prefix": "klipin_yue2_cover",
+      "audio": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "SaveAudio",
+    "_meta": {
+      "title": "Save Rendered Cover Audio"
+    }
+  }
+}

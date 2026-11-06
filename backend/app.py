@@ -82,8 +82,9 @@ def _media_sig(path: str, exp: int) -> str:
 def _sign_media_url(url: str, ttl: int | None = None) -> str:
     """Append `?exp=<unix>&sig=<hmac>` to a /videos URL."""
     exp = int(time.time()) + (ttl if ttl is not None else MEDIA_TTL)
+    bare_path = url.split("?", 1)[0]
     sep = "&" if "?" in url else "?"
-    return f"{url}{sep}exp={exp}&sig={_media_sig(url, exp)}"
+    return f"{url}{sep}exp={exp}&sig={_media_sig(bare_path, exp)}"
 
 
 def _verify_media_sig(path: str, exp, sig: str) -> bool:
@@ -198,6 +199,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from fastapi.exceptions import RequestValidationError
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(request: Request, exc: RequestValidationError):
+    parts: list[str] = []
+    for err in exc.errors():
+        loc = ".".join(str(x) for x in (err.get("loc") or [])[1:])
+        msg = err.get("msg") or "Input tidak valid"
+        parts.append(f"{loc}: {msg}" if loc else msg)
+    detail_str = "; ".join(parts) if parts else "Parameter permintaan tidak valid."
+    return JSONResponse(
+        status_code=422,
+        content={"detail": f"Data permintaan belum sesuai: {detail_str}", "errors": exc.errors()},
+    )
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    import traceback
+    traceback.print_exc()
+    msg = str(exc).strip() or type(exc).__name__
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"Terjadi kendala pada server: {msg[:400]}",
+            "error_type": type(exc).__name__,
+        },
+    )
 
 
 @app.middleware("http")
@@ -1005,6 +1036,12 @@ class MusicGenerateRequest(BaseModel):
     exclude_styles: str = ""          # Suno-style "Exclude Styles" (tag yang dihindari)
     weirdness: int = 50               # creative slider 0-100 (Suno "Weirdness")
     style_influence: int = 50         # creative slider 0-100 (Suno "Style Influence")
+    eq_preset: str = ""               # optional Studio EQ preset (flat, reggae-dub, vocal-clarity, etc.)
+    eq_bands: list[float] = []        # optional 8-band gains [-12..+12 dB]
+    eq_preamp_db: float = 0.0
+    eq_compressor: float = 0.0
+    eq_stereo_width: float = 1.0
+    eq_reverb: float = 0.0
 
 
 class MusicLyricsRequest(BaseModel):
@@ -1121,14 +1158,26 @@ async def music_genres(probe: bool = False, _user: dict = Depends(require_user))
          "available": bool(engine.get("ace_step") or engine.get("ace_modal_enabled"))},
     ]
     cover_engines = [
-        {"id": "arrangement", "label": "Aransemen Baru + Vokal Asli (YouTube Cover Style)",
+        {"id": "voice", "label": "🎯 Persona Baru + Aransemen Baru (Lirik, Cengkok & Ketukan 100% Terkunci — Rekomendasi)",
          "faithful": True,
-         "available": bool(engine.get("ace_modal_enabled") or engine.get("mulacover_enabled") or engine.get("ace_step"))},
-        {"id": "mulacover", "label": "MuLaCover - melodi & chord asli (AI nyanyi ulang)",
+         "available": bool(engine.get("voice_modal_enabled") or os.environ.get("KLIPIN_VOICE_MODAL_ENABLED") == "1")},
+        {"id": "arrangement", "label": "🎛️ Vokal Asli + Aransemen Baru (Beat-Locked 4-Stem)",
+         "faithful": True,
+         "available": True},
+        {"id": "voice_pure", "label": "🎤 Persona Baru + Musik Asli (Pure Voice Swap)",
+         "faithful": True,
+         "available": bool(engine.get("voice_modal_enabled") or os.environ.get("KLIPIN_VOICE_MODAL_ENABLED") == "1")},
+        {"id": "yue2_comfy", "label": "✨ YuE2 + SheetSage2 (ComfyUI Headless — VRAM 6-8GB)",
+         "faithful": True,
+         "available": bool(os.environ.get("COMFYUI_URL") or os.environ.get("KLIPIN_YUE2_COMFY_ENABLED") == "1" or os.environ.get("KLIPIN_YUE2_MODAL_ENABLED") == "1")},
+        {"id": "yue2_native", "label": "⚡ YuE2 + SheetSage2 (Native Python SDK)",
+         "faithful": True,
+         "available": bool(os.environ.get("KLIPIN_YUE2_NATIVE_ENABLED") == "1" or os.environ.get("KLIPIN_YUE2_MODAL_ENABLED") == "1")},
+        {"id": "mulacover", "label": "✨ MuLaCover — Melodi & Harmoni Asli (Generative AI)",
          "faithful": True, "available": bool(engine.get("mulacover_enabled"))},
-        {"id": "diffrhythm", "label": "DiffRhythm - melodi baru, vokal penuh (Apache 2.0)",
+        {"id": "diffrhythm", "label": "DiffRhythm — Melodi baru, vokal penuh (Apache 2.0)",
          "faithful": False, "available": bool(engine.get("diffrhythm_modal_enabled"))},
-        {"id": "ace-step", "label": "ACE-Step - draft cepat, bukan faithful",
+        {"id": "ace-step", "label": "ACE-Step — Draft cepat, bukan faithful",
          "faithful": False,
          "available": bool(engine.get("ace_step") or engine.get("ace_modal_enabled"))},
     ]
@@ -1597,7 +1646,8 @@ async def music_personas(_user: dict = Depends(require_user)):
     from music import voice_persona_capability
     capability = await asyncio.to_thread(voice_persona_capability)
     personas = []
-    for row in db.list_music_personas(_user["google_sub"]):
+    user_id = _user.get("google_sub") or _user.get("id") or str(_user.get("email") or "")
+    for row in db.list_music_personas(user_id):
         row["has_voice_sample"] = bool(row.get("voice_ref_path"))
         row.pop("voice_ref_path", None)
         row["voice_conversion_ready"] = bool(row["has_voice_sample"] and capability["ready"])
@@ -1770,6 +1820,13 @@ class MusicRemixUrlRequest(BaseModel):
     restyle_strength: float = 0.6
     keep_original_vocal: bool = False  # True = keep original singer's vocal & only change arrangement
     voice_mode: str = "manual"  # "manual" = user picks voice; "auto" = Klipin picks
+    transcribe_only: bool = False  # review step: return ASR transcript & timed lines without queuing cover job
+    eq_preset: str = ""
+    eq_bands: list[float] = []
+    eq_preamp_db: float = 0.0
+    eq_compressor: float = 0.0
+    eq_stereo_width: float = 1.0
+    eq_reverb: float = 0.0
 
 
 def _split_long_lyric_line(text: str, limit: int = 120) -> list[str]:
@@ -1805,21 +1862,18 @@ def _split_long_lyric_line(text: str, limit: int = 120) -> list[str]:
 
 
 def _music_lyrics_from_manual(text: str) -> str:
-    """Lock a user-supplied lyric sheet exactly as typed.
+    """Lock a user-supplied lyric sheet exactly as typed while cleaning scrape artifacts.
 
     One line means one sung sentence/phrase, which is what keeps the cover's
-    vocal phrasing and timing tied to the original performance. Line breaks and
-    section markers are preserved; only blank lines are dropped.
+    vocal phrasing and timing tied to the original performance. Cleans out
+    scraped artifacts (Genius 'You might also like' blocks, embed tags) and
+    ensures proper section formatting.
     """
-    raw_lines = [ln.strip() for ln in str(text or "").splitlines()]
-    lines = [ln for ln in raw_lines if ln]
-    if not lines:
-        raise RuntimeError("Lirik manual kosong.")
-    has_marker = any(ln.startswith("[") and ln.endswith("]") for ln in lines)
-    body = "\n".join(lines)
-    if not has_marker:
-        body = "[Verse]\n" + body
-    return body[:6000].strip()
+    try:
+        from services.lyric_style_agent import normalize_lyrics
+    except ImportError:
+        from backend.services.lyric_style_agent import normalize_lyrics
+    return normalize_lyrics(text)[:6000].strip()
 
 
 def _music_lyrics_from_transcript(transcript: dict) -> str:
@@ -1937,12 +1991,23 @@ def _probe_audio_duration(path: Path) -> float:
 async def music_cover_upload(
     file: UploadFile = File(...),
     lyrics: str = Form(""),
+    prompt: str = Form(""),
     genre: str = Form("dangdut-koplo"),
     vocal_gender: str = Form("auto"),
+    persona_id: str = Form(""),
+    voice_pitch_shift: int = Form(0),
+    restyle_strength: float = Form(0.42),
+    keep_original_vocal: bool = Form(False),
     cover_engine: str = Form("mulacover"),
     seed: int = Form(0),
     take_count: int = Form(1),
     rights_confirmed: bool = Form(False),
+    eq_preset: str = Form(""),
+    eq_bands: str = Form(""),
+    eq_preamp_db: float = Form(0.0),
+    eq_compressor: float = Form(0.0),
+    eq_stereo_width: float = Form(1.0),
+    eq_reverb: float = Form(0.0),
     _user: dict = Depends(require_user),
 ):
     """Cover faithful dari lagu yang diunggah sendiri (file + lirik).
@@ -1952,7 +2017,8 @@ async def music_cover_upload(
     dijalankan lewat grup cover A/B dengan engine MuLaCover / ACE-Step / DiffRhythm.
     """
     from music import (GENRES, _ace_modal_enabled, _mulacover_modal_enabled,
-                       _diffrhythm_modal_enabled)
+                       _diffrhythm_modal_enabled, _voice_modal_enabled,
+                       _yue2_comfy_enabled, _yue2_native_enabled)
 
     if not rights_confirmed:
         raise HTTPException(
@@ -1965,14 +2031,19 @@ async def music_cover_upload(
     if engine in ("acestep", "ace"):
         engine = "ace-step"
     availability = {
-        "arrangement": _ace_modal_enabled() or _mulacover_modal_enabled(),
+        "yue2_comfy": _yue2_comfy_enabled(),
+        "yue2_native": _yue2_native_enabled(),
+        "yue2": _yue2_comfy_enabled() or _yue2_native_enabled(),
+        "voice": _voice_modal_enabled(),
+        "voice_pure": _voice_modal_enabled(),
+        "arrangement": True,
         "mulacover": _mulacover_modal_enabled(),
         "ace-step": _ace_modal_enabled(),
         "diffrhythm": _diffrhythm_modal_enabled(),
     }
     if engine not in availability:
         raise HTTPException(status_code=400,
-                            detail="Engine cover tidak dikenal (arrangement|mulacover|ace-step|diffrhythm).")
+                            detail="Engine cover tidak dikenal (yue2_comfy|yue2_native|voice|arrangement|mulacover|ace-step|diffrhythm).")
     if not availability[engine]:
         raise HTTPException(status_code=503,
                             detail=f"Engine '{engine}' belum aktif di server ini.")
@@ -1999,20 +2070,22 @@ async def music_cover_upload(
     duration = max(15.0, min(float(duration or 180.0), 600.0))
 
     text = (lyrics or "").strip()
+    timed_lines = []
     if text:
         if not text.lstrip().startswith("["):
             text = "[Verse]\n" + text
         lyrics_source = "user"
     else:
-        from transcribe import transcribe
+        from music import _transcribe_source_audio, _music_timed_lines_from_transcript
         try:
-            transcript = await asyncio.to_thread(transcribe, str(ref_path))
+            transcript = await asyncio.to_thread(_transcribe_source_audio, str(ref_path))
         except Exception as exc:  # noqa: BLE001 - friendly message to the UI
             raise HTTPException(
                 status_code=400,
                 detail=("Lirik tidak diberikan dan transkripsi otomatis gagal: "
                         f"{str(exc)[:300]}")) from exc
         text = _music_lyrics_from_transcript(transcript)
+        timed_lines = _music_timed_lines_from_transcript(transcript)
         lyrics_source = str(transcript.get("source") or "audio_asr")
 
     try:
@@ -2023,17 +2096,34 @@ async def music_cover_upload(
         base_seed = int(time.time()) % (2 ** 31 - 1)
 
     stem = Path(file.filename or "lagu").stem[:60] or "lagu"
+    custom_prompt = (prompt or "").strip() or f"faithful cover in {genre}"
+    try:
+        eff_strength = max(0.15, min(0.85, float(restyle_strength)))
+    except (TypeError, ValueError):
+        eff_strength = 0.42
     base_spec = {
-        "title": f"{stem} — cover {genre}", "prompt": f"faithful cover in {genre}",
-        "lyrics": text, "genre": genre, "language": "id", "language_override": True,
+        "title": f"{stem} — cover {genre}", "prompt": custom_prompt,
+        "cover_style_prompt": (prompt or "").strip(),
+        "lyrics": text, "lyrics_timed": timed_lines,
+        "genre": genre, "language": "id", "language_override": True,
         "vocal_gender": gender, "provider": engine, "cover_engine": engine,
         "duration": duration, "seed": base_seed, "full_song": True,
         "take_mode": "final", "instrumental": False, "bpm": 0, "music_key": "",
-        "persona_id": "", "style_tags": "", "parent_job_id": "",
-        "ref_audio_path": str(ref_path), "ref_strength": 0.6,
+        "persona_id": (persona_id or "").strip(), "style_tags": (prompt or "").strip(),
+        "parent_job_id": "",
+        "ref_audio_path": str(ref_path), "ref_strength": eff_strength,
+        "restyle_strength": eff_strength,
+        "voice_pitch_shift": max(-12, min(12, int(voice_pitch_shift or 0))),
+        "keep_original_vocal": bool(keep_original_vocal or engine == "arrangement"),
         "cover_mode": True, "_lyrics_locked": True,
         "lyrics_extraction_source": lyrics_source,
         "cover_upload_name": file.filename or "",
+        "eq_preset": (eq_preset or "").strip(),
+        "eq_bands": eq_bands,
+        "eq_preamp_db": eq_preamp_db,
+        "eq_compressor": eq_compressor,
+        "eq_stereo_width": eq_stereo_width,
+        "eq_reverb": eq_reverb,
     }
     grouped = _create_music_group(
         base_spec, _user["google_sub"],
@@ -2056,7 +2146,8 @@ async def music_remix_url(req: MusicRemixUrlRequest,
     """
     from video import download_audio_url, resolve_url_metadata
     from music import (GENRES, _mulacover_modal_enabled, _diffrhythm_modal_enabled,
-                       _ace_modal_enabled, is_safe_public_url, voice_persona_capability)
+                       _ace_modal_enabled, is_safe_public_url, voice_persona_capability,
+                       _transcribe_source_audio, _music_timed_lines_from_transcript)
 
     url = (req.url or "").strip()
     url_ok, url_err = is_safe_public_url(url)
@@ -2066,8 +2157,13 @@ async def music_remix_url(req: MusicRemixUrlRequest,
     try:
         from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
         _p = _urlparse(url)
-        if (_p.hostname or "").lower() in ("www.youtube.com", "youtube.com", "m.youtube.com") and _p.path == "/watch":
+        _host = (_p.hostname or "").lower()
+        if _host in ("www.youtube.com", "youtube.com", "m.youtube.com") and _p.path == "/watch":
             _v = (_parse_qs(_p.query).get("v") or [""])[0].strip()
+            if _v:
+                url = f"https://www.youtube.com/watch?v={_v}"
+        elif _host in ("youtu.be", "www.youtu.be"):
+            _v = _p.path.lstrip("/").strip()
             if _v:
                 url = f"https://www.youtube.com/watch?v={_v}"
     except Exception:
@@ -2090,9 +2186,16 @@ async def music_remix_url(req: MusicRemixUrlRequest,
     ace_enabled = _ace_modal_enabled()
     voice_enabled = os.environ.get("KLIPIN_VOICE_MODAL_ENABLED", "0").strip() == "1"
     arrangement_enabled = ace_enabled or mulacover_enabled or voice_enabled
+    from music import _yue2_comfy_enabled, _yue2_native_enabled
+    yue2_comfy_enabled = _yue2_comfy_enabled()
+    yue2_native_enabled = _yue2_native_enabled()
     engine_available = {
+        "yue2_comfy": yue2_comfy_enabled,
+        "yue2_native": yue2_native_enabled,
+        "yue2": yue2_comfy_enabled or yue2_native_enabled,
         "arrangement": arrangement_enabled,
         "voice": voice_enabled,
+        "voice_pure": voice_enabled,
         "diffrhythm": diffrhythm_enabled,
         "ace-step": ace_enabled,
         "mulacover": mulacover_enabled,
@@ -2101,8 +2204,8 @@ async def music_remix_url(req: MusicRemixUrlRequest,
     requested_engine = (req.cover_engine or "").strip().lower()
     if requested_engine and requested_engine not in engine_available:
         raise HTTPException(status_code=400, detail=(
-            "Engine cover tidak dikenal. Pilih salah satu: arrangement, voice, diffrhythm, "
-            "ace-step, mulacover, heartmula, atau kosongkan untuk otomatis."))
+            "Engine cover tidak dikenal. Pilih salah satu: yue2_comfy, yue2_native, yue2, "
+            "arrangement, voice, diffrhythm, ace-step, mulacover, heartmula, atau kosongkan untuk otomatis."))
     if requested_engine:
         cover_engine = requested_engine
         if not engine_available[cover_engine]:
@@ -2112,7 +2215,7 @@ async def music_remix_url(req: MusicRemixUrlRequest,
         # Auto only treats MuLaCover as faithful. DiffRhythm/HeartMuLa rewrite the
         # melody; ACE-Step is a fast draft (25 steps) and is the last resort.
         cover_engine = next(
-            (eng for eng in ("mulacover", "arrangement", "diffrhythm", "heartmula", "ace-step")
+            (eng for eng in ("yue2_comfy", "yue2_native", "mulacover", "voice", "arrangement", "diffrhythm", "heartmula", "ace-step")
              if engine_available[eng]), "")
     if not cover_engine:
         raise HTTPException(status_code=503, detail=(
@@ -2120,9 +2223,9 @@ async def music_remix_url(req: MusicRemixUrlRequest,
             "(KLIPIN_HEARTMULA_MODAL_ENABLED=1), DiffRhythm "
             "(KLIPIN_DIFFRHYTHM_MODAL_ENABLED=1), ACE-Step "
             "(KLIPIN_ACE_STEP_MODAL_ENABLED=1), Voice/Seed-VC "
-            "(KLIPIN_VOICE_MODAL_ENABLED=1), atau MuLaCover "
-            "(KLIPIN_MULACOVER_MODAL_ENABLED=1) terlebih dahulu."))
-    needs_ref = cover_engine in ("ace-step", "mulacover")
+            "(KLIPIN_VOICE_MODAL_ENABLED=1), YuE2 ComfyUI (COMFYUI_URL), "
+            "atau MuLaCover (KLIPIN_MULACOVER_MODAL_ENABLED=1) terlebih dahulu."))
+    needs_ref = cover_engine in ("ace-step", "mulacover", "yue2", "yue2_comfy", "yue2_native")
     needs_audio = needs_ref or cover_engine in ("voice", "arrangement")
     vocal_gender = (req.vocal_gender or "female").strip().lower()
     if vocal_gender not in ("auto", "male", "female", "duet"):
@@ -2197,25 +2300,32 @@ async def music_remix_url(req: MusicRemixUrlRequest,
             if result.returncode != 0 or not normalized.exists():
                 raise RuntimeError("Audio sumber gagal dinormalisasi.")
             manual = (req.lyrics or "").strip()
+            timed_lines = []
             if manual:
-                # A user-supplied sheet keeps the original phrasing: one line
-                # per sung sentence/phrase. Skip ASR so nothing re-wraps it.
+                # (a) Lirik manual diisi user -> kunci persis, lewati ASR sepenuhnya
                 lyrics = _music_lyrics_from_manual(manual)
                 lyrics_source = "user"
                 lyrics_segments = 0
             else:
+                # (b) Lirik dikosongkan -> transkripsi otomatis via Groq Whisper / Whisper lokal
                 try:
-                    transcript = transcribe(str(normalized))
+                    transcript = _transcribe_source_audio(str(normalized))
+                    # (c) Hasil ASR -> lirik terkunci, kata apa adanya dari audio
                     lyrics = _music_lyrics_from_transcript(transcript)
+                    timed_lines = _music_timed_lines_from_transcript(transcript)
                     lyrics_source = str(transcript.get("source") or "audio_asr")
                     lyrics_segments = len(transcript.get("segments") or [])
-                except Exception:
+                except Exception as asr_err:
+                    # (d) ASR gagal total -> gagal dengan jujur, kecuali engine vokal
                     if cover_engine in ("arrangement", "voice"):
                         lyrics = "[Verse]\n(Vokal asli sumber dipertahankan)"
                         lyrics_source = "source_vocal_stem"
                         lyrics_segments = 1
                     else:
-                        raise
+                        raise RuntimeError(
+                            f"Gagal mentranskripsi lirik lagu sumber: {asr_err}. "
+                            "Cover membutuhkan lirik asli dari lagu sumber (isi lirik manual atau pastikan vokal lagu sumber jelas)."
+                        ) from asr_err
             raw = normalized.read_bytes()
             if len(raw) > 15_000_000:
                 raise RuntimeError("Audio sumber terlalu besar setelah normalisasi (maks. 15 MB).")
@@ -2224,6 +2334,7 @@ async def music_remix_url(req: MusicRemixUrlRequest,
             return {"audio_b64": base64.b64encode(raw).decode("ascii") if needs_audio else "",
                     "title": str(info.get("title") or "YouTube remix"),
                     "duration": duration, "lyrics": lyrics,
+                    "timed_lines": timed_lines,
                     "lyrics_source": lyrics_source,
                     "lyrics_segments": lyrics_segments}
         finally:
@@ -2235,6 +2346,25 @@ async def music_remix_url(req: MusicRemixUrlRequest,
         raise HTTPException(status_code=400, detail=f"Gagal mengambil audio dari link: {str(exc)[:500]}")
 
     title = (ref["title"] or "YouTube remix")[:180]
+    source_duration = ref["duration"]
+    if req.transcribe_only:
+        if cover_engine == "mulacover" and ref.get("audio_b64"):
+            # While the user reviews lyrics, precompute the symbolic/vocal-lock
+            # MIDI on the GPU so the real render skips that step.
+            from music import prewarm_mulacover_symbolic
+            await asyncio.to_thread(prewarm_mulacover_symbolic, ref["audio_b64"])
+        return {
+            "transcribe_only": True,
+            "lyrics": ref["lyrics"],
+            "timed_lines": ref.get("timed_lines", []),
+            "lyrics_source": ref["lyrics_source"],
+            "lyrics_segments": ref["lyrics_segments"],
+            "remix_source_title": title,
+            "remix_source_url": url,
+            "duration": source_duration,
+            "genre": req.genre,
+            "cover_engine": cover_engine,
+        }
     prompt = (req.prompt or "").strip() or f"rearrange this song as {req.genre}"
     prompt = (
         f"{prompt}; preserve the extracted lyrics exactly, keep the original "
@@ -2252,6 +2382,7 @@ async def music_remix_url(req: MusicRemixUrlRequest,
     base_spec = {
         "title": f"{title} — {req.genre}", "prompt": prompt,
         "lyrics": ref["lyrics"],
+        "lyrics_timed": ref.get("timed_lines", []),
         "genre": req.genre, "language": "id", "language_override": True,
         "vocal_gender": vocal_gender, "provider": cover_engine,
         "duration": source_duration,
@@ -2270,6 +2401,12 @@ async def music_remix_url(req: MusicRemixUrlRequest,
         "lyrics_extraction_segments": ref["lyrics_segments"],
         "remix_source_url": url, "remix_source_title": title,
         "remix_source_duration": source_duration,
+        "eq_preset": (req.eq_preset or "").strip(),
+        "eq_bands": req.eq_bands,
+        "eq_preamp_db": req.eq_preamp_db,
+        "eq_compressor": req.eq_compressor,
+        "eq_stereo_width": req.eq_stereo_width,
+        "eq_reverb": req.eq_reverb,
     }
     if needs_ref:
         base_spec["ref_audio_b64"] = ref["audio_b64"]
@@ -2284,6 +2421,13 @@ async def music_remix_url(req: MusicRemixUrlRequest,
             "source_duration": source_duration, "lyrics_locked": True,
             "lyrics_source": ref["lyrics_source"], "cover_engine": cover_engine,
             "groove_reset": groove_reset, "draft_duration": source_duration}
+
+
+@app.post("/api/music/transcribe-url")
+async def music_transcribe_url(req: MusicRemixUrlRequest, _user: dict = Depends(require_user)):
+    """Extract and review ASR lyrics from a public URL before cover generation."""
+    req.transcribe_only = True
+    return await music_remix_url(req, _user=_user)
 
 
 class MusicShareRequest(BaseModel):
@@ -2616,6 +2760,83 @@ async def music_status(job_id: str, _user: dict = Depends(require_user)):
     if not job:
         raise HTTPException(status_code=404, detail="Music job not found")
     return _reconcile_finished_music_job(job)
+
+
+class MusicEqualizeRequest(BaseModel):
+    preset: str = "flat"
+    bands: list[float] = []
+    preamp_db: float = 0.0
+    compressor: float = 0.0
+    stereo_width: float = 1.0
+    reverb: float = 0.0
+    normalize_lufs: bool = True
+    reset: bool = False
+
+
+@app.get("/api/music/eq-presets")
+async def music_eq_presets(_user: dict = Depends(require_user)):
+    """Return available 8-band Studio Equalizer presets and band frequencies."""
+    from music import STUDIO_EQ_BANDS, STUDIO_EQ_PRESETS
+    return {
+        "frequencies": list(STUDIO_EQ_BANDS),
+        "presets": list(STUDIO_EQ_PRESETS.values()),
+    }
+
+
+@app.post("/api/music/equalize/{job_id}")
+@app.post("/api/music/jobs/{job_id}/equalize")
+async def music_equalize_job(job_id: str, req: MusicEqualizeRequest,
+                             _user: dict = Depends(require_user)):
+    """Render and permanently save 8-band Studio Equalizer & Mastering to a completed song."""
+    from music import apply_studio_eq
+
+    job = db.get_music_job(job_id, _user["google_sub"])
+    if not job:
+        raise HTTPException(status_code=404, detail="Lagu tidak ditemukan.")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Lagu belum selesai dirender.")
+
+    job_dir = Path(OUTPUT_DIR) / job_id
+    audio_name = Path(job.get("audio_path") or "song.mp3").name.split("?")[0] or "song.mp3"
+    audio = job_dir / audio_name
+    if not audio.exists():
+        for candidate in ("song.mp3", "song.m4a", "song.wav", "audio.mp3"):
+            if (job_dir / candidate).exists():
+                audio = job_dir / candidate
+                break
+    if not audio.exists():
+        raise HTTPException(status_code=404, detail="File audio lagu tidak ditemukan di server.")
+
+    try:
+        eq_result = await asyncio.to_thread(
+            apply_studio_eq,
+            audio,
+            req.model_dump(),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400,
+            detail=f"Gagal menerapkan Studio Equalizer: {str(exc)[:400]}",
+        ) from exc
+
+    metadata = dict(job.get("metadata") or {})
+    metadata["studio_eq"] = eq_result
+    metadata["mastered"] = True
+    try:
+        (job_dir / "metadata.json").write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+    updated = db.update_music_job(
+        job_id,
+        _user["google_sub"],
+        metadata=json.dumps(metadata, ensure_ascii=False),
+    )
+    return _reconcile_finished_music_job(updated or job)
 
 
 @app.post("/api/music/align/{job_id}")
