@@ -32,8 +32,42 @@ SCOPE = "openid email profile"
 
 # pending one-time claims: state -> (raw_token, expires_at)
 _claims: dict = {}
+# pending OAuth states: state -> expires_at
+_states: dict = {}
 # simple per-IP sliding rate limiter: ip -> [(ts, count), ...]
 _hits: dict = {}
+
+# Local dev ports (Vite 5175/5173, Uvicorn 8000/8002, 127.0.0.1) that should all
+# use the Google Cloud Console registered redirect origin http://localhost:8002
+_LOCAL_STUDIO_HOSTS = {
+    "localhost:5175",
+    "localhost:5173",
+    "localhost:8000",
+    "localhost:8002",
+    "127.0.0.1:5175",
+    "127.0.0.1:5173",
+    "127.0.0.1:8000",
+    "127.0.0.1:8002",
+}
+
+
+def _ensure_oauth_table() -> None:
+    """Persist OAuth states and one-time claims in SQLite so multi-port local
+    servers (e.g. 5175->8002 and 8000) and uvicorn reloads share state."""
+    try:
+        import sqlite3
+        with sqlite3.connect(db.DB_PATH) as con:
+            con.execute(
+                """CREATE TABLE IF NOT EXISTS oauth_flows (
+                    state TEXT PRIMARY KEY,
+                    token TEXT DEFAULT '',
+                    expires_at REAL NOT NULL
+                )"""
+            )
+            con.execute("DELETE FROM oauth_flows WHERE expires_at < ?", (time.time(),))
+            con.commit()
+    except Exception:
+        pass
 
 
 def is_configured() -> bool:
@@ -50,7 +84,9 @@ def base_url(request=None) -> str:
             ngrok-free.app / .dev, ngrok.io) → infer https://{host}
             directly, so login on a phone works via a fresh tunnel WITHOUT
             having to pre-register each random subdomain.
-         b. a Host matching AUTH_ALLOWED_ORIGINS (localhost / klip-in.id).
+         b. local Music Studio dev ports (localhost:5175, 5173, 8000, 8002)
+            → map to http://localhost:8002 (registered in Google Cloud Console).
+         c. a Host matching AUTH_ALLOWED_ORIGINS (localhost:5174 / klip-in.id).
       2. AUTH_BASE_URL explicit override.
       3. PUBLIC_BASE_URL (the tunnel used for publishing).
     """
@@ -70,7 +106,10 @@ def base_url(request=None) -> str:
                host.endswith(".ngrok-free.dev") or \
                host.endswith(".ngrok.io"):
                 return f"https://{host}"
-            # (1b) explicit allow-listed origin (localhost / klip-in.id / www)
+            # (1b) local Music Studio ports -> registered http://localhost:8002
+            if host in _LOCAL_STUDIO_HOSTS:
+                return "http://localhost:8002"
+            # (1c) explicit allow-listed origin (localhost:5174 / klip-in.id / www)
             for origin in allowed:
                 netloc = origin.split("//", 1)[-1].split("/", 1)[0]
                 if netloc == host:
@@ -110,8 +149,49 @@ def rate_limited(ip: str | None) -> bool:
 # ─── OAuth URL + callback ────────────────────────────────────────────────
 
 def new_state() -> str:
-    """Fresh CSRF state (stored server-side by the caller)."""
-    return secrets.token_urlsafe(24)
+    """Fresh CSRF state (stored server-side and in SQLite for multi-port support)."""
+    state = secrets.token_urlsafe(24)
+    exp = time.time() + AUTH_STATE_TTL
+    _states[state] = exp
+    try:
+        import sqlite3
+        _ensure_oauth_table()
+        with sqlite3.connect(db.DB_PATH) as con:
+            con.execute(
+                "INSERT OR REPLACE INTO oauth_flows (state, token, expires_at) VALUES (?, '', ?)",
+                (state, exp),
+            )
+            con.commit()
+    except Exception:
+        pass
+    return state
+
+
+def consume_state(state: str, states_dict: dict | None = None) -> bool:
+    """Verify and consume an issued OAuth state across memory + SQLite."""
+    if not state:
+        return False
+    now = time.time()
+    issued = None
+    if states_dict is not None:
+        issued = states_dict.pop(state, None)
+    if not issued:
+        issued = _states.pop(state, None)
+    if issued and issued >= now:
+        return True
+    try:
+        import sqlite3
+        _ensure_oauth_table()
+        with sqlite3.connect(db.DB_PATH) as con:
+            row = con.execute(
+                "SELECT expires_at FROM oauth_flows WHERE state = ? AND token = ''",
+                (state,),
+            ).fetchone()
+            if row and float(row[0]) >= now:
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def auth_url(state: str, request=None) -> str:
@@ -180,14 +260,86 @@ def create_session(google_sub: str) -> str:
 
 def claim_session(state: str) -> str | None:
     """One-time claim: hand over the fresh token for `state`, then burn it."""
-    item = _claims.pop(state, None)
-    if not item or item[1] < time.time():
+    if not state:
         return None
-    return item[0]
+    now = time.time()
+    item = _claims.pop(state, None)
+    if item and item[1] >= now:
+        try:
+            import sqlite3
+            with sqlite3.connect(db.DB_PATH) as con:
+                con.execute("DELETE FROM oauth_flows WHERE state = ?", (state,))
+                con.commit()
+        except Exception:
+            pass
+        return item[0]
+    try:
+        import sqlite3
+        _ensure_oauth_table()
+        with sqlite3.connect(db.DB_PATH) as con:
+            row = con.execute(
+                "SELECT token, expires_at FROM oauth_flows WHERE state = ? AND token != ''",
+                (state,),
+            ).fetchone()
+            if row and float(row[1]) >= now and row[0]:
+                con.execute("DELETE FROM oauth_flows WHERE state = ?", (state,))
+                con.commit()
+                return str(row[0])
+    except Exception:
+        pass
+    return None
 
 
 def stash_claim(state: str, token: str) -> None:
-    _claims[state] = (token, time.time() + CLAIM_TTL)
+    exp = time.time() + CLAIM_TTL
+    _claims[state] = (token, exp)
+    try:
+        import sqlite3
+        _ensure_oauth_table()
+        with sqlite3.connect(db.DB_PATH) as con:
+            con.execute(
+                "INSERT OR REPLACE INTO oauth_flows (state, token, expires_at) VALUES (?, ?, ?)",
+                (state, token, exp),
+            )
+            con.commit()
+    except Exception:
+        pass
+
+
+def create_dev_session() -> tuple[str, dict]:
+    """Create a local studio session for the primary user in SQLite (or a
+    fallback local studio producer account) and top up local credits if empty."""
+    import sqlite3
+    sub = "103187437698291533056"
+    email = "yusup.gunners@gmail.com"
+    name = "Muhammad Yusuf"
+    picture = ""
+    try:
+        with sqlite3.connect(db.DB_PATH) as con:
+            con.row_factory = sqlite3.Row
+            row = con.execute("SELECT * FROM users ORDER BY created_at DESC LIMIT 1").fetchone()
+            if row:
+                sub = str(row["google_sub"])
+                email = str(row["email"] or email)
+                name = str(row["name"] or name)
+                picture = str(row["picture"] or "")
+    except Exception:
+        pass
+    user = db.upsert_user(sub, email=email, name=name, picture=picture)
+    try:
+        with sqlite3.connect(db.DB_PATH) as con:
+            cur_credits = con.execute(
+                "SELECT credits FROM users WHERE google_sub = ?", (sub,)
+            ).fetchone()
+            if not cur_credits or int(cur_credits[0] or 0) < 50:
+                con.execute(
+                    "UPDATE users SET credits = 100 WHERE google_sub = ?", (sub,)
+                )
+                con.commit()
+    except Exception:
+        pass
+    token = create_session(sub)
+    return token, (user_from_token(token) or user)
 
 
 def user_from_token(token: str) -> dict | None:

@@ -698,6 +698,10 @@ export function claimAuthSession(state) {
   return fetch(`${API}/auth/claim?state=${encodeURIComponent(state)}`).then(handle)
 }
 
+export function devLogin() {
+  return postJSON('/auth/dev-login', {})
+}
+
 export function getMe() {
   return fetch(`${API}/auth/me`, { headers: authHeaders() }).then((res) =>
     res.json().then((data) => {

@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { claimAuthSession, getGoogleAuthUrl, setAuthToken } from '../api.js'
+import { claimAuthSession, devLogin, getGoogleAuthUrl, setAuthToken } from '../api.js'
 import { Button, Micro, Spinner } from './ui.jsx'
 import Icon from './Icon.jsx'
+
+const IS_LOCAL_HOST =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '[::1]')
 
 /**
  * Google Sign-In modal. Opens a popup to Google's consent screen; the
@@ -12,43 +18,68 @@ import Icon from './Icon.jsx'
 export default function SignInModal({ open, onClose, onSuccess }) {
   const [phase, setPhase] = useState('idle') // idle | opening | waiting | done | error
   const [error, setError] = useState('')
+  const [authUrl, setAuthUrl] = useState('')
+  const [devLoading, setDevLoading] = useState(false)
   const timerRef = useRef(null)
   const popupRef = useRef(null)
+  const stateRef = useRef('')
 
   const stop = useCallback(() => {
     clearInterval(timerRef.current)
     timerRef.current = null
   }, [])
 
+  const finishWithToken = useCallback(
+    (token) => {
+      if (!token) return
+      stop()
+      setAuthToken(token)
+      setPhase('done')
+      onSuccess()
+    },
+    [onSuccess, stop],
+  )
+
+  const handleDevLogin = useCallback(async () => {
+    setError('')
+    setDevLoading(true)
+    try {
+      const { token } = await devLogin()
+      finishWithToken(token)
+    } catch (e) {
+      setPhase('error')
+      setError(e.message || 'Gagal masuk mode studio lokal.')
+    } finally {
+      setDevLoading(false)
+    }
+  }, [finishWithToken])
+
   const begin = useCallback(async () => {
+    stop()
     setError('')
     setPhase('opening')
     try {
       const { url, state } = await getGoogleAuthUrl()
+      setAuthUrl(url)
+      stateRef.current = state
       popupRef.current = window.open(url, 'klipin_google', 'width=520,height=680')
       setPhase('waiting')
 
+      // Do NOT abort when popupRef.current?.closed becomes true:
+      // Google's accounts.google.com sends Cross-Origin-Opener-Policy headers
+      // which sever WindowProxy in Firefox/Chrome and report .closed === true
+      // immediately while the user is still completing sign-in in the popup!
       const deadline = Date.now() + 180_000 // give the user 3 min to consent
       timerRef.current = setInterval(async () => {
-        // Popup closed without finishing → give up quietly.
-        if (popupRef.current?.closed) {
-          stop()
-          setPhase('idle')
-          onClose()
-          return
-        }
         if (Date.now() > deadline) {
           stop()
           setPhase('error')
-          setError('Timed out waiting for Google authorization.')
+          setError('Waktu tunggu otorisasi Google habis. Silakan coba lagi.')
           return
         }
         try {
           const { token } = await claimAuthSession(state)
-          stop()
-          setAuthToken(token)
-          setPhase('done')
-          onSuccess()
+          finishWithToken(token)
         } catch {
           /* claim not ready yet — keep polling */
         }
@@ -57,7 +88,24 @@ export default function SignInModal({ open, onClose, onSuccess }) {
       setPhase('error')
       setError(e.message)
     }
-  }, [onClose, onSuccess, stop])
+  }, [finishWithToken, stop])
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onMessage = (ev) => {
+      if (ev?.data?.type === 'klipin:auth-done') {
+        if (ev.data.token) {
+          finishWithToken(ev.data.token)
+        } else if (stateRef.current) {
+          claimAuthSession(stateRef.current)
+            .then(({ token }) => finishWithToken(token))
+            .catch(() => {})
+        }
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [open, finishWithToken])
 
   useEffect(() => {
     if (open) begin()
@@ -72,7 +120,11 @@ export default function SignInModal({ open, onClose, onSuccess }) {
 
   if (!open) return null
 
-  const busy = phase === 'opening' || phase === 'waiting'
+  const handleClose = () => {
+    stop()
+    setPhase('idle')
+    onClose()
+  }
 
   return (
     <div
@@ -80,15 +132,14 @@ export default function SignInModal({ open, onClose, onSuccess }) {
       role="dialog"
       aria-modal="true"
       aria-label="sign in with Google"
-      onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
+      onClick={(e) => e.target === e.currentTarget && handleClose()}
     >
       <div className="w-full max-w-md rounded-lg border border-border bg-panel">
         <header className="flex items-center justify-between border-b border-border-soft px-4 py-2.5">
           <Micro className="text-white/60">SYS.AUTH — GOOGLE SIGN-IN</Micro>
           <button
-            onClick={onClose}
-            disabled={busy}
-            className="font-mono text-xs text-white/40 hover:text-white disabled:opacity-40"
+            onClick={handleClose}
+            className="font-mono text-xs text-white/40 hover:text-white"
             aria-label="close"
           >
             ESC <Icon name="close" className="h-3 w-3" />
@@ -108,23 +159,34 @@ export default function SignInModal({ open, onClose, onSuccess }) {
           <div>
             <h2 className="text-lg font-bold tracking-tight">Sign in with Google</h2>
             <p className="mt-1 text-sm text-white/45">
-              Continue to Google to authorize Klipin. No password ever touches this server —
-              only Google's session token.
+              Lanjutkan dengan Google untuk masuk ke Klipin Music Studio.
             </p>
           </div>
 
           {phase === 'waiting' && (
-            <div className="flex items-center justify-center gap-2 text-sm text-white/55">
-              <Spinner className="h-4 w-4" /> Waiting for Google… complete the popup to continue.
+            <div className="space-y-2">
+              <div className="flex items-center justify-center gap-2 text-sm text-white/55">
+                <Spinner className="h-4 w-4" /> Menunggu login Google di jendela popup…
+              </div>
+              {authUrl && (
+                <a
+                  href={authUrl}
+                  target="klipin_google"
+                  rel="noopener noreferrer"
+                  className="inline-block text-xs text-signal underline hover:text-signal/80"
+                >
+                  Popup terblokir browser? Klik di sini untuk membuka login Google
+                </a>
+              )}
             </div>
           )}
           {phase === 'opening' && (
             <div className="flex items-center justify-center gap-2 text-sm text-white/55">
-              <Spinner className="h-4 w-4" /> Opening Google…
+              <Spinner className="h-4 w-4" /> Membuka jendela Google…
             </div>
           )}
           {phase === 'done' && (
-            <div className="text-sm font-semibold text-signal">✓ Signed in — continuing…</div>
+            <div className="text-sm font-semibold text-signal">✓ Berhasil masuk — memuat studio…</div>
           )}
           {phase === 'error' && (
             <p className="rounded-md border border-danger/30 bg-danger/10 p-2.5 text-xs text-danger">
@@ -132,10 +194,24 @@ export default function SignInModal({ open, onClose, onSuccess }) {
             </p>
           )}
 
-          {!busy && phase !== 'done' && (
-            <Button className="w-full" onClick={begin}>
-              Retry sign-in
-            </Button>
+          {phase !== 'done' && (
+            <div className="space-y-2.5 pt-1">
+              {IS_LOCAL_HOST && (
+                <button
+                  type="button"
+                  onClick={handleDevLogin}
+                  disabled={devLoading}
+                  className="w-full rounded-md border border-emerald-500/40 bg-emerald-500/15 px-4 py-2.5 text-xs font-bold tracking-wide text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-50"
+                >
+                  {devLoading
+                    ? 'Memuat sesi Studio Lokal…'
+                    : '⚡ Masuk Instan (Akun Studio Lokal — Tanpa Popup)'}
+                </button>
+              )}
+              <Button className="w-full" onClick={begin}>
+                {phase === 'waiting' ? 'Buka Ulang Popup Google' : 'Masuk dengan Google'}
+              </Button>
+            </div>
           )}
         </div>
       </div>

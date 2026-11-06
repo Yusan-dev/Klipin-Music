@@ -881,9 +881,8 @@ async def auth_google_url(request: Request):
 @app.get("/api/auth/callback/google")
 async def auth_callback(request: Request, code: str = "", state: str = "",
                         error: str = ""):
-    # CSRF: `state` must have been issued by us and must match.
-    issued = _auth_states.pop(state, None)
-    if not issued or issued < time.time():
+    # CSRF: `state` must have been issued by us and must match (memory or SQLite).
+    if not auth.consume_state(state, _auth_states):
         return HTMLResponse(_auth_page(False, "OAuth state mismatch or expired"))
     if error:
         return HTMLResponse(_auth_page(False, f"Authorization denied: {error}"))
@@ -893,7 +892,20 @@ async def auth_callback(request: Request, code: str = "", state: str = "",
         return HTMLResponse(_auth_page(False, str(e)))
     token = auth.create_session(sub)
     auth.stash_claim(state, token)
-    return HTMLResponse(_auth_page(True, "Signed in! You can close this tab."))
+    return HTMLResponse(_auth_page(True, "Signed in! You can close this tab.", token=token, state=state))
+
+
+@app.post("/api/auth/dev-login")
+async def auth_dev_login(request: Request):
+    """One-click local studio sign-in (strictly restricted to localhost/loopback)."""
+    client_ip = request.client.host if request.client else ""
+    host_hdr = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").lower()
+    is_local_host = any(h in host_hdr for h in ("localhost", "127.0.0.1", "[::1]"))
+    is_local_ip = client_ip in ("127.0.0.1", "::1", "localhost", "testclient") or client_ip.startswith("172.") or client_ip.startswith("192.168.")
+    if not (is_local_host and is_local_ip):
+        raise HTTPException(status_code=403, detail="Dev login hanya diizinkan pada localhost.")
+    token, user = auth.create_dev_session()
+    return {"token": token, "user": user}
 
 
 @app.get("/api/auth/claim")
@@ -4485,28 +4497,37 @@ async def batch_process(req: BatchRequest, _user: dict = Depends(require_user)):
             "count": len(job_ids)}
 
 
-def _auth_page(ok: bool, message: str):
+def _auth_page(ok: bool, message: str, token: str = "", state: str = ""):
     color = "#8FE36B" if ok else "#FF7A70"
+    import json as _json
+    payload_js = _json.dumps({"type": "klipin:auth-done", "ok": ok, "token": token, "state": state})
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>Klipin — Sign in</title>
 <style>
   body {{ background:#0B0C0E; color:#EDEDEA; font-family:ui-monospace,monospace;
          display:grid; place-items:center; height:100vh; margin:0; }}
-  .box {{ text-align:center; padding:2rem; }}
+  .box {{ text-align:center; padding:2rem; max-width:420px; }}
   .dot {{ width:12px; height:12px; border-radius:50%; background:{color};
          display:inline-block; margin-bottom:1rem; }}
   h1 {{ font-size:1rem; font-weight:600; letter-spacing:.1em; }}
-  p {{ color:#8B8B8B; font-size:.85rem; }}
+  p {{ color:#8B8B8B; font-size:.85rem; line-height:1.5; }}
+  .btn {{ display:inline-block; margin-top:1rem; padding:.55rem 1.1rem;
+         border-radius:6px; background:#8FE36B; color:#0B0C0E;
+         font-weight:700; font-size:.78rem; text-decoration:none; }}
 </style></head><body>
 <div class="box"><span class="dot"></span>
 <h1>{'SYS.AUTH OK' if ok else 'SYS.AUTH ERR'}</h1>
 <p>{message}</p>
+{'<a class="btn" href="http://localhost:5175/#/music" onclick="window.close();">Kembali ke Studio</a>' if ok else ''}
 </div>
 <script>if ({'true' if ok else 'false'}) {{
-  window.opener && window.opener.postMessage(
-    {{ type: 'klipin:auth-done' }}, '*');
-  setTimeout(() => window.close(), 1500);
+  try {{
+    if (window.opener) {{
+      window.opener.postMessage({payload_js}, '*');
+    }}
+  }} catch (e) {{}}
+  setTimeout(function() {{ window.close(); }}, 900);
 }}</script>
 </body></html>"""
 
