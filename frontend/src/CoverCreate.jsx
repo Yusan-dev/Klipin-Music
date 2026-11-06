@@ -482,23 +482,24 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
                 <audio
                   ref={previewAudioRef}
                   src={`${resolveMediaAsset(result.audio_path)}${String(result.audio_path || '').includes('?') ? '&' : '?'}v=${mediaNonce}`}
-                  crossOrigin="anonymous"
                   controls
                   preload="metadata"
                   className="h-8 w-full"
                 />
-                <a href={resolveMediaAsset(result.audio_path)} download className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#f59e0b] hover:underline">
-                  <Icon name="download" className="h-3.5 w-3.5" aria-hidden /> {L.download}
-                </a>
-                <StudioEqualizer
-                  audioRef={previewAudioRef}
-                  jobId={result.job_id}
-                  genre={genre}
-                  initialEq={result.metadata?.studio_eq || eqConfig}
-                  onChange={setEqConfig}
-                  onApplyServerEq={handleServerEq}
-                  compact
-                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <a href={resolveMediaAsset(result.audio_path)} download className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#f59e0b] hover:underline">
+                    <Icon name="download" className="h-3.5 w-3.5" aria-hidden /> {L.download}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.hash = `#/studio/${result.job_id}`
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-[#10b981]/50 bg-[#10b981]/15 px-2.5 py-1 text-[11px] font-semibold text-[#6ee7b7] transition hover:bg-[#10b981]/25"
+                  >
+                    🎚️ Buka di Studio Equalizer
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -680,26 +681,28 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
                   <audio
                     ref={previewAudioRef}
                     src={`${resolveMediaAsset(result.audio_path)}${String(result.audio_path || '').includes('?') ? '&' : '?'}v=${mediaNonce}`}
-                    crossOrigin="anonymous"
                     controls
                     preload="metadata"
                     className="w-full"
                   />
-                  <a
-                    href={resolveMediaAsset(result.audio_path)}
-                    download
-                    className="inline-flex items-center gap-2 text-xs text-cyan-soft hover:text-cyan"
-                  >
-                    <Icon name="download" className="h-4 w-4" aria-hidden /> {L.download}
-                  </a>
-                  <StudioEqualizer
-                    audioRef={previewAudioRef}
-                    jobId={result.job_id}
-                    genre={genre}
-                    initialEq={result.metadata?.studio_eq || eqConfig}
-                    onChange={setEqConfig}
-                    onApplyServerEq={handleServerEq}
-                  />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <a
+                      href={resolveMediaAsset(result.audio_path)}
+                      download
+                      className="inline-flex items-center gap-2 text-xs text-cyan-soft hover:text-cyan"
+                    >
+                      <Icon name="download" className="h-4 w-4" aria-hidden /> {L.download}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.location.hash = `#/studio/${result.job_id}`
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[#10b981]/50 bg-[#10b981]/15 px-3 py-1.5 text-xs font-semibold text-[#6ee7b7] transition hover:bg-[#10b981]/25"
+                    >
+                      🎚️ Buka di Studio Equalizer
+                    </button>
+                  </div>
                 </div>
               )}
 

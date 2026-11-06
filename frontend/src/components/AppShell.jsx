@@ -42,7 +42,7 @@ export default function AppShell({ route, navigate, onNewClip, user, authChecked
     else navigate(path)
   }
 
-  const isMusicStudio = route?.name === 'music'
+  const isMusicStudio = route?.name === 'music' || route?.name === 'studio'
   const effectiveCollapsed = isMusicStudio ? true : collapsed
 
   return (

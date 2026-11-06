@@ -349,6 +349,7 @@ export function extendMusic(jobId, payload) {
 export function fetchMusicStems(jobId) {
   return postJSON(`/music/stems/${jobId}`, {})
 }
+export const splitMusicStems = fetchMusicStems
 
 export function getMusicStatus(jobId) {
   return fetch(`${API}/music/status/${jobId}?_=${Date.now()}`, {
@@ -362,6 +363,7 @@ export function getMusicJobs(query = '') {
   const q = query ? `?q=${encodeURIComponent(query)}` : ''
   return fetch(`${API}/music/jobs${q}`, { headers: authHeaders() }).then(handle)
 }
+export const listMusicJobs = getMusicJobs
 
 // Recompute word-level lyric timing + beat/downbeat grid for an old song.
 export function realignMusic(jobId) {

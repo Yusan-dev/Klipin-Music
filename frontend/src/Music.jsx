@@ -1907,11 +1907,18 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         <span className="text-[15px] font-semibold tracking-tight">Klipin Music</span>
         <nav className="ml-2 flex items-center gap-0.5" aria-label="Bagian studio musik">
           {[
-            { id: 'create', label: 'Create' },
-            { id: 'cover', label: 'Cover' },
-            { id: 'history', label: `Library${historyList.length ? ` · ${historyList.length}` : ''}` },
+            { id: 'create', label: 'Create', action: () => setStudioTab('create') },
+            { id: 'cover', label: 'Cover', action: () => setStudioTab('cover') },
+            {
+              id: 'studio',
+              label: '🎚️ Studio EQ',
+              action: () => {
+                window.location.hash = job?.job_id ? `#/studio/${job.job_id}` : '#/studio'
+              },
+            },
+            { id: 'history', label: `Library${historyList.length ? ` · ${historyList.length}` : ''}`, action: () => setStudioTab('history') },
           ].map((tab) => (
-            <button key={tab.id} type="button" onClick={() => setStudioTab(tab.id)}
+            <button key={tab.id} type="button" onClick={tab.action}
               aria-pressed={studioTab === tab.id}
               className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition ${
                 studioTab === tab.id ? 'bg-[#1f1f26] text-[#f4f4f6]' : 'text-[#8e8e99] hover:text-[#f4f4f6]'}`}>
@@ -2000,7 +2007,33 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 text={missing.map((item) => `• ${item}`).join('\n')} />
             )}
             {requestError && (
-              <Notice tone="err" title="Permintaan ditolak" text={requestError} />
+              <Notice
+                tone="err"
+                title={
+                  requestError.toLowerCase().includes('diputar') || requestError.toLowerCase().includes('audio')
+                    ? 'Kendala Pemutaran Audio'
+                    : 'Peringatan Studio'
+                }
+                text={requestError}
+                action={
+                  job?.job_id
+                    ? {
+                        label: 'Muat Ulang Lagu',
+                        onClick: () => {
+                          setRequestError('')
+                          getMusicStatus(job.job_id)
+                            .then((fresh) => {
+                              if (fresh?.job_id) {
+                                setJob(fresh)
+                                setMediaNonce((n) => n + 1)
+                              }
+                            })
+                            .catch(() => {})
+                        },
+                      }
+                    : undefined
+                }
+              />
             )}
             {simpleMode && studioTab === 'create' && (
               <p className="text-[12px] leading-5 text-[#8e8e99]">
@@ -3418,13 +3451,14 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                       className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
                       Simpan persona
                     </button>
-                    <button type="button" onClick={() => setShowStudioEq((v) => !v)}
-                      className={`rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
-                        showStudioEq
-                          ? 'border-[#10b981]/60 bg-[#10b981]/15 text-[#34d399]'
-                          : 'border-[#26262e] bg-[#1c1c22] text-[#a1a1aa] hover:text-[#f4f4f6]'
-                      }`}>
-                      🎚️ Studio EQ
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.location.hash = `#/studio/${job.job_id}`
+                      }}
+                      className="rounded-md border border-[#10b981]/50 bg-[#10b981]/15 px-2.5 py-1 text-[10px] font-semibold text-[#6ee7b7] transition hover:bg-[#10b981]/25"
+                    >
+                      🎚️ Buka di Studio EQ
                     </button>
                   </>
                 )}
@@ -3434,7 +3468,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
 
               {job?.status === 'completed' ? (
                 <div className="mt-3 space-y-2.5 border-t border-[#26262e] pt-3">
-                  <audio ref={audioRef} src={audioUrl || undefined} crossOrigin="anonymous" preload="metadata"
+                  <audio ref={audioRef} src={audioUrl || undefined} preload="metadata"
                     onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
                     onEnded={() => setPlaying(false)} onEmptied={() => setPlaying(false)}
                     onError={onAudioError}
@@ -3461,16 +3495,6 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                     value={Math.min(currentTime, songDuration || job?.duration || duration)}
                     onChange={(e) => seekTo(Number(e.target.value))}
                     aria-label="Seek" className="w-full accent-[#f59e0b]" />
-                  {showStudioEq && (
-                    <StudioEqualizer
-                      audioRef={audioRef}
-                      jobId={job.job_id}
-                      genre={job.genre || genre}
-                      initialEq={job.metadata?.studio_eq}
-                      onApplyServerEq={handleServerEq}
-                      compact
-                    />
-                  )}
                 </div>
               ) : (
                 <div className="mt-3 border-t border-[#26262e] pt-3">
@@ -3555,14 +3579,12 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             <div className="hidden items-center gap-1.5 sm:flex">
               <button
                 type="button"
-                onClick={() => setShowStudioEq((v) => !v)}
-                className={`rounded-full border px-3 py-1 text-[10px] font-bold transition ${
-                  showStudioEq
-                    ? 'border-[#10b981]/60 bg-[#10b981]/20 text-[#6ee7b7]'
-                    : 'border-white/15 bg-white/5 text-white/80 hover:border-cyan/50'
-                }`}
+                onClick={() => {
+                  window.location.hash = `#/studio/${job.job_id}`
+                }}
+                className="rounded-full border border-[#10b981]/50 bg-[#10b981]/15 px-3 py-1 text-[10px] font-bold text-[#6ee7b7] transition hover:bg-[#10b981]/25"
               >
-                🎚️ Studio EQ
+                🎚️ Buka di Studio EQ
               </button>
               <a href={audioUrl} download={`${job.title || 'klipin-music'}.mp3`}
                 className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] font-bold text-white/80 hover:border-cyan/50">

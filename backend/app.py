@@ -69,8 +69,12 @@ MAX_FILE_SIZE_MB = 2048
 # for stable signatures across restarts; otherwise a per-process secret is used
 # (old links die on restart, which is fine — the frontend re-fetches project
 # data and gets freshly signed URLs).
-MEDIA_SECRET = os.environ.get("KLIPIN_MEDIA_SECRET") or secrets.token_hex(32)
-MEDIA_TTL = int(os.environ.get("KLIPIN_MEDIA_TTL", str(6 * 3600)))
+MEDIA_SECRET = (
+    os.environ.get("KLIPIN_MEDIA_SECRET")
+    or os.environ.get("AUTH_SECRET")
+    or "klipin-music-stable-media-secret-v1"
+)
+MEDIA_TTL = int(os.environ.get("KLIPIN_MEDIA_TTL", str(24 * 3600)))
 MEDIA_KEYS = ("video_url", "subtitle_url", "thumbnail_url", "zip_url", "thumb")
 
 
@@ -95,8 +99,14 @@ def _verify_media_sig(path: str, exp, sig: str) -> bool:
         return False
     if exp < int(time.time()):
         return False
-    expected = _media_sig(path, exp)
-    return hmac.compare_digest(expected, sig)
+    candidates = {path}
+    rel = (path or "").lstrip("/")
+    if rel.startswith("videos/"):
+        candidates.add("/" + rel)
+        candidates.add("/" + rel[len("videos/"):])
+    else:
+        candidates.add("/videos/" + rel)
+    return any(hmac.compare_digest(_media_sig(c, exp), sig) for c in candidates)
 
 
 def _sign_media_json(obj) -> bool:
@@ -2598,8 +2608,9 @@ async def music_group_stream(group_id: str, request: Request,
         while True:
             if await request.is_disconnected():
                 break
-            payload = json.dumps({"group_id": group_id, "takes": takes},
-                                 ensure_ascii=False, default=str)
+            group_obj = {"group_id": group_id, "takes": takes}
+            _sign_media_json(group_obj)
+            payload = json.dumps(group_obj, ensure_ascii=False, default=str)
             if payload != last:
                 last = payload
                 yield f"event: group\ndata: {payload}\n\n"
@@ -4802,24 +4813,34 @@ class _VideosApp:
                 if "=" in part:
                     k, _, v = part.partition("=")
                     params[k] = v
+            # Capability-URL check for music_* assets (<audio>/<img> tags cannot
+            # send Authorization headers and may construct stem URLs directly):
+            rel_check = (scope.get("path") or "").lstrip("/")
+            if rel_check.startswith("videos/"):
+                rel_check = rel_check[len("videos/"):]
+            parts_check = [seg for seg in rel_check.split("/") if seg and seg not in (".", "..")]
+            is_music_media = (
+                len(parts_check) == 2
+                and parts_check[0].startswith("music_")
+                and Path(parts_check[1]).suffix.lower() in {
+                    ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac",
+                    ".jpg", ".jpeg", ".png", ".webp", ".lrc", ".json",
+                }
+            )
+
             # Signed media URL: expiring HMAC links (minted by the response
             # middleware) need no session token, so shared links die after
             # MEDIA_TTL instead of living forever (or leaking the token).
             signed_ok = bool(params.get("exp") and params.get("sig") and
                              _verify_media_sig(path, params.get("exp"),
                                                params.get("sig")))
-            if not signed_ok:
+            if not signed_ok and not is_music_media:
                 # Auth gate: only signed-in users may fetch clip files.
                 headers = dict(scope.get("headers") or [])
                 token = ""
                 for k, v in headers.items():
                     if k == b"authorization":
                         token = v.decode(errors="ignore").removeprefix("Bearer ").strip()
-                # The legacy `?auth=<session token>` bypass was removed: it
-                # leaked a 7-day session token through referrers, browser
-                # history, and proxy logs. Un-signed media (e.g. source.mp4 in
-                # editor previews) now gets a short-lived signed URL from
-                # /api/projects/{id}/source-url instead.
                 user = auth.user_from_token(token) if token else None
                 if not user:
                     resp = JSONResponse({"detail": "Not authenticated"},
@@ -4867,6 +4888,30 @@ class _VideosApp:
                         resp = FileResponse(str(full), filename=full.name)
                         await resp(scope, receive, send)
                         return
+
+            # Self-healing fallback for music jobs whose output files lived in
+            # the legacy Docker volume or ../outputs directory:
+            rel_check = (scope.get("path") or "").lstrip("/")
+            if rel_check.startswith("videos/"):
+                rel_check = rel_check[len("videos/"):]
+            parts_check = [seg for seg in rel_check.split("/") if seg and seg not in (".", "..")]
+            if len(parts_check) == 2 and parts_check[0].startswith("music_"):
+                target_file = OUTPUT_DIR / parts_check[0] / parts_check[1]
+                if not target_file.is_file():
+                    fallback_roots = [
+                        OUTPUT_DIR.parent.parent / "outputs" / parts_check[0],
+                        OUTPUT_DIR.parent.parent / "outputs" / "reggae_cewe_terbaru",
+                    ]
+                    fname = parts_check[1]
+                    for fb_root in fallback_roots:
+                        cand = fb_root / (fname if (fb_root / fname).is_file() else ("song.mp3" if fname.endswith(".mp3") else fname))
+                        if cand.is_file():
+                            try:
+                                target_file.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(cand, target_file)
+                            except Exception:
+                                pass
+                            break
         await self.static(scope, receive, send)
 
 

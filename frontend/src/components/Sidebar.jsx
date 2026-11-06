@@ -10,6 +10,7 @@ function menuLabels() {
   const en = {
     grp_workspace: 'Workspace', grp_explore: 'Explore', grp_system: 'System',
     home: 'Dashboard', clip: 'Create Clip', music: 'Music', cover: 'Cover Create', music_create: 'Create',
+    studio: 'Studio EQ',
     library: 'Library', ideas: 'Ideas',
     favorites: 'Favorites', features: 'Features', pricing: 'Pricing',
     billing: 'Billing', settings: 'Settings',
@@ -19,6 +20,7 @@ function menuLabels() {
   const id = {
     grp_workspace: 'Workspace', grp_explore: 'Jelajah', grp_system: 'Sistem',
     home: 'Dashboard', clip: 'Buat Klip', music: 'Music', cover: 'Buat Cover', music_create: 'Buat Lagu',
+    studio: 'Studio EQ',
     library: 'Library', ideas: 'Ideas',
     favorites: 'Favorit', features: 'Fitur', pricing: 'Harga',
     billing: 'Tagihan', settings: 'Pengaturan',
@@ -46,6 +48,7 @@ function SidebarBody({ route, collapsed, onNavigate, onToggle }) {
       items: [
         { key: 'music', route: 'music', label: L.music_create, path: '#/music', icon: 'music' },
         { key: 'cover', route: 'music', label: L.cover, path: '#/cover', icon: 'features' },
+        { key: 'studio', route: 'studio', label: L.studio, path: '#/studio', icon: 'library' },
       ],
     },
     {
@@ -68,6 +71,7 @@ function SidebarBody({ route, collapsed, onNavigate, onToggle }) {
         { key: 'home', route: 'home', label: L.home, path: '#/', icon: 'dashboard' },
         { key: 'clip', route: 'clip', label: L.clip, path: '#/clip', icon: 'plus' },
         { key: 'music', route: 'music', label: L.music, path: '#/music', icon: 'music' },
+        { key: 'studio', route: 'studio', label: L.studio, path: '#/studio', icon: 'library' },
         { key: 'library', route: 'library', label: L.library, path: '#/library', icon: 'library' },
         { key: 'ideas', route: 'ideas', label: L.ideas, path: '#/ideas', icon: 'ideas' },
         { key: 'favorites', route: 'favorites', label: L.favorites, path: '#/favorites', icon: 'favorites' },

@@ -23,7 +23,7 @@ services:
     volumes:
       - ./backend:/app
       - ${MODAL_CONFIG_PATH:-C:/Users/xpass/.modal.toml}:/app/.modal.toml:ro
-      - klipin_music_output:/app/output
+      - ./backend/output:/app/output
     restart: unless-stopped
 
   music-web:

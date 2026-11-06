@@ -11,6 +11,7 @@ import Ideas from './Ideas.jsx'
 import Favorites from './Favorites.jsx'
 import Settings from './Settings.jsx'
 import Music from './Music.jsx'
+import StudioWorkstation from './StudioWorkstation.jsx'
 import SignInModal from './components/SignInModal.jsx'
 import Toasts from './components/Toasts.jsx'
 import { resumePendingRetries } from './criteriaStore.js'
@@ -221,6 +222,15 @@ export default function App() {
       )}
       {route.name === 'music' && (
         <Music user={user} authChecked={authChecked} onSignIn={() => setSignInOpen(true)} />
+      )}
+      {route.name === 'studio' && (
+        <StudioWorkstation
+          user={user}
+          authChecked={authChecked}
+          onSignIn={() => setSignInOpen(true)}
+          initialJobId={route.jobId}
+          navigate={navigate}
+        />
       )}
       </Boundary>
       <SignInModal

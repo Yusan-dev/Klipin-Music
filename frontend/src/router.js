@@ -17,17 +17,19 @@ export const IS_MUSIC_STANDALONE = (
   && String(import.meta.env.VITE_APP_MODE || '').toLowerCase() === 'music'
 )
 
-const MUSIC_ALLOWED = new Set(['music', 'cover', 'pricing', 'billing', 'settings'])
+const MUSIC_ALLOWED = new Set(['music', 'cover', 'studio', 'history', 'pricing', 'billing', 'settings'])
 
 export function parseHash(hash = window.location.hash) {
   const raw = hash.replace(/^#\/?/, '')
+  if (raw === 'studio') return { name: 'studio', jobId: null }
+  if (raw.startsWith('studio/')) return { name: 'studio', jobId: raw.slice('studio/'.length) }
   // Klipin Music standalone: no video/clipper routes at all. Anything that is
   // not a music page (dashboard, clip, library, ideas, favorites, features)
   // lands on the Music Studio.
   if (IS_MUSIC_STANDALONE) {
     const seg = raw.split(/[?/]/)[0]
     if (!MUSIC_ALLOWED.has(seg)) return { name: 'music' }
-    if (seg === 'cover') return { name: 'music' }
+    if (seg === 'cover' || seg === 'history') return { name: 'music' }
     return { name: seg }
   }
   if (raw === '') return { name: 'home' }
@@ -40,12 +42,13 @@ export function parseHash(hash = window.location.hash) {
   if (raw === 'pricing') return { name: 'pricing' }
   if (raw === 'billing') return { name: 'billing' }
   if (raw === 'settings') return { name: 'settings' }
-  if (raw === 'music') return { name: 'music' }
+  if (raw === 'music' || raw === 'history') return { name: 'music' }
   if (raw === 'cover') return { name: 'music' }
   return { name: 'home' }
 }
 
 export function toPath(name, jobId) {
+  if (name === 'studio') return jobId ? `#/studio/${jobId}` : '#/studio'
   if (IS_MUSIC_STANDALONE && !MUSIC_ALLOWED.has(name)) return '#/music'
   if (name === 'home') return '#/'
   if (name === 'clip') return jobId ? `#/clip/${jobId}` : '#/clip'
