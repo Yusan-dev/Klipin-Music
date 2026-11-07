@@ -1352,6 +1352,87 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     }
   }
 
+  const retryJob = async () => {
+    const effTitle = title.trim() || (job?.title || '').trim()
+    const effPrompt = prompt.trim() || (job?.prompt || '').trim()
+    const effLyrics = lyrics.trim() || (job?.lyrics || '').trim()
+    const effGenre = job?.genre || genre
+    const effGender = job?.vocal_gender || effectiveGender
+    const effDuration = Math.min(180, Math.max(15, Number(job?.duration || duration) || 120))
+    if (effTitle && !title.trim()) setTitle(effTitle)
+    if (effPrompt && !prompt.trim()) setPrompt(effPrompt)
+    if (effLyrics && !lyrics.trim()) setLyrics(effLyrics)
+    if (!user) { onSignIn(); return }
+    if (working) return
+    if (!effTitle || (effPrompt.length < 8 && effLyrics.length < 20)) {
+      return create()
+    }
+    setRequestError('')
+    setJob(null)
+    setTakes([])
+    setGroupId('')
+    setStemsInfo('')
+    setBusy(true)
+    setElapsed(0)
+    startedAt.current = Date.now()
+    try {
+      const next = await generateMusic({
+        title: effTitle,
+        prompt: effPrompt,
+        lyrics: instrumental ? '' : effLyrics,
+        genre: effGenre,
+        language: job?.language || language,
+        language_secondary: bilingual ? languageSecondary : '',
+        language_mix: bilingual ? languageMix : 'none',
+        language_override: languageOverride,
+        vocal_gender: effGender,
+        vocal_style: vocalStyle,
+        provider: 'heartmula',
+        duration: effDuration,
+        auto_duration: autoDuration,
+        full_song: true,
+        take_count: 1,
+        take_mode: 'final',
+        seed: Math.floor(Math.random() * 2000000000) + 1,
+        style_tags: styleTags.trim(),
+        negative_tags: negativeTags.trim(),
+        exclude_styles: negativeTags.trim(),
+        weirdness: Number(weirdness),
+        style_influence: Number(styleInfluence),
+        topk: Number(topk) || 250,
+        lora_id: loraId.trim(),
+        instrumental,
+        bpm: Number(bpm) || 0,
+        music_key: musicKey.trim(),
+        persona_id: personaId,
+        eq_preset: preEqConfig.preset,
+        eq_bands: preEqConfig.bands,
+        eq_preamp_db: preEqConfig.preamp_db,
+        eq_compressor: preEqConfig.compressor,
+        eq_stereo_width: preEqConfig.stereo_width,
+        eq_reverb: preEqConfig.reverb,
+      })
+      if (next?.cost_estimate) setCostEstimate(next.cost_estimate)
+      if (next?.language) setLanguage(next.language)
+      setGroupId(next.group_id || '')
+      const initial = (next.jobs || []).map((t) => ({
+        ...t, title: effTitle, genre: effGenre, vocal_gender: effGender,
+        metadata: { stage: 'final-render', lyrics_timeline: [] },
+      }))
+      setTakes(initial)
+      setJob({
+        ...(initial[0] || next),
+        title: effTitle,
+        genre: effGenre,
+        vocal_gender: effGender,
+        metadata: initial[0]?.metadata || { lyrics_timeline: [] },
+      })
+    } catch (e) {
+      setBusy(false)
+      setRequestError(e.message)
+    }
+  }
+
   // Baris nyanyi (tanpa header [Section]) vs target durasi — panduan presisi.
   const { lyricSungCount, lyricTarget } = useMemo(() => {
     const sung = lyrics.split('\n').filter((ln) => {
@@ -3472,7 +3553,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               {jobError && (
                 <div className="mt-3">
                   <Notice tone="err" title="Job gagal" text={jobError}
-                    action={{ label: 'Coba lagi', onClick: create }} />
+                    action={{ label: 'Coba lagi', onClick: retryJob }} />
                 </div>
               )}
             </div>

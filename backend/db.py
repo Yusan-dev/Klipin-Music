@@ -1439,6 +1439,12 @@ def create_music_job(job: dict) -> dict:
     values = [job.get(k, "" if k not in ("seed", "duration") else None)
               for k in fields]
     with _lock, _connect() as conn:
+        if job.get("group_cache_key"):
+            conn.execute(
+                "UPDATE music_jobs SET group_cache_key = '' "
+                "WHERE user_id = ? AND group_cache_key = ? AND status = 'failed'",
+                (job.get("user_id", ""), job.get("group_cache_key", "")),
+            )
         cur = conn.execute(
             f"INSERT INTO music_jobs ({','.join(fields)}) "
             f"VALUES ({','.join('?' for _ in fields)}) "
@@ -1457,8 +1463,10 @@ def create_music_job(job: dict) -> dict:
 
 def update_music_job(job_id: str, user_id: str = "", **changes) -> dict | None:
     allowed = {"status", "provider", "audio_path", "lyrics_path", "cover_path",
-               "cover_source", "metadata", "lyrics",
+               "cover_source", "metadata", "lyrics", "group_cache_key",
                "error", "title", "updated_at", "duration"}
+    if changes.get("status") == "failed":
+        changes.setdefault("group_cache_key", "")
     changes = {k: v for k, v in changes.items() if k in allowed}
     if not changes:
         return get_music_job(job_id, user_id)
@@ -1893,6 +1901,8 @@ def find_music_by_cache(user_id: str, cache_key: str,
     args = [user_id, cache_key]
     if completed_only:
         clause += " AND status = 'completed'"
+    else:
+        clause += " AND status != 'failed'"
     with _lock, _connect() as conn:
         row = conn.execute(
             f"SELECT * FROM music_jobs WHERE {clause} "
