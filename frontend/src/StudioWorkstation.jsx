@@ -3,6 +3,7 @@ import {
   equalizeMusicJob,
   getMusicStatus,
   listMusicJobs,
+  resolveDownloadAsset,
   resolveMediaAsset,
   splitMusicStems,
 } from './api.js'
@@ -386,7 +387,7 @@ export default function StudioWorkstation({
           </button>
           {activeAudioUrl && (
             <a
-              href={activeAudioUrl}
+              href={localFile ? activeAudioUrl : resolveDownloadAsset(activeStem?.path || activeAudioUrl, `${activeTitle || 'klipin-master'}.mp3`)}
               download={`${activeTitle || 'klipin-master'}.mp3`}
               className="hidden items-center gap-1 rounded-lg border border-[#10b981]/40 bg-[#10b981]/15 px-3 py-1.5 text-[11px] font-semibold text-[#6ee7b7] transition hover:bg-[#10b981]/25 sm:inline-flex"
             >

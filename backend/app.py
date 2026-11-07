@@ -4926,6 +4926,31 @@ class _VideosApp:
                                         status_code=401)
                     await resp(scope, receive, send)
                     return
+            # Self-healing fallback for music jobs whose output files lived in
+            # the legacy Docker volume or ../outputs directory (run BEFORE
+            # handling ?download=1 so downloads also benefit from auto-restore):
+            rel_check = (scope.get("path") or "").lstrip("/")
+            if rel_check.startswith("videos/"):
+                rel_check = rel_check[len("videos/"):]
+            parts_check = [seg for seg in rel_check.split("/") if seg and seg not in (".", "..")]
+            if len(parts_check) == 2 and parts_check[0].startswith("music_"):
+                target_file = OUTPUT_DIR / parts_check[0] / parts_check[1]
+                if not target_file.is_file():
+                    fallback_roots = [
+                        OUTPUT_DIR.parent.parent / "outputs" / parts_check[0],
+                        OUTPUT_DIR.parent.parent / "outputs" / "reggae_cewe_terbaru",
+                    ]
+                    fname = parts_check[1]
+                    for fb_root in fallback_roots:
+                        cand = fb_root / (fname if (fb_root / fname).is_file() else ("song.mp3" if fname.endswith(".mp3") else fname))
+                        if cand.is_file():
+                            try:
+                                target_file.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(cand, target_file)
+                            except Exception:
+                                pass
+                            break
+
             if "download" in query:
                 rel = (scope.get("path") or "").lstrip("/")
                 root = (scope.get("root_path") or "").lstrip("/")
@@ -4964,33 +4989,27 @@ class _VideosApp:
                                     full, res, f"{stem}_{res}{suffix}",
                                     scope, receive, send)
                                 return
-                        resp = FileResponse(str(full), filename=full.name)
+                        dl_name = full.name
+                        raw_fn = params.get("filename", "")
+                        if raw_fn:
+                            try:
+                                import re as _re
+                                import urllib.parse as _up
+                                decoded_fn = _up.unquote(raw_fn)
+                                safe_fn = _re.sub(r'[\\/:*?"<>|\r\n]+', '_', decoded_fn).strip(" ._")
+                                if safe_fn:
+                                    if full.suffix and not safe_fn.lower().endswith(full.suffix.lower()):
+                                        safe_fn = f"{safe_fn}{full.suffix}"
+                                    dl_name = safe_fn[:180]
+                            except Exception:
+                                dl_name = full.name
+                        resp = FileResponse(
+                            str(full),
+                            filename=dl_name,
+                            content_disposition_type="attachment",
+                        )
                         await resp(scope, receive, send)
                         return
-
-            # Self-healing fallback for music jobs whose output files lived in
-            # the legacy Docker volume or ../outputs directory:
-            rel_check = (scope.get("path") or "").lstrip("/")
-            if rel_check.startswith("videos/"):
-                rel_check = rel_check[len("videos/"):]
-            parts_check = [seg for seg in rel_check.split("/") if seg and seg not in (".", "..")]
-            if len(parts_check) == 2 and parts_check[0].startswith("music_"):
-                target_file = OUTPUT_DIR / parts_check[0] / parts_check[1]
-                if not target_file.is_file():
-                    fallback_roots = [
-                        OUTPUT_DIR.parent.parent / "outputs" / parts_check[0],
-                        OUTPUT_DIR.parent.parent / "outputs" / "reggae_cewe_terbaru",
-                    ]
-                    fname = parts_check[1]
-                    for fb_root in fallback_roots:
-                        cand = fb_root / (fname if (fb_root / fname).is_file() else ("song.mp3" if fname.endswith(".mp3") else fname))
-                        if cand.is_file():
-                            try:
-                                target_file.parent.mkdir(parents=True, exist_ok=True)
-                                shutil.copy2(cand, target_file)
-                            except Exception:
-                                pass
-                            break
         await self.static(scope, receive, send)
 
 

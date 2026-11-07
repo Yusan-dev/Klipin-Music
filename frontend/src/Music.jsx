@@ -36,6 +36,7 @@ import {
   planMusicSong,
   realignMusic,
   refreshMusicCover,
+  resolveDownloadAsset,
   resolveMediaAsset,
   restoreMusicProjectRevision,
   shareMusic,
@@ -3556,11 +3557,24 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                               </span>
                             )}
                           </div>
-                          {meta && (
-                            <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase ${meta.className}`}>
-                              {meta.label}
-                            </span>
-                          )}
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {entry.status === 'completed' && entry.audio_path && (
+                              <a
+                                href={resolveDownloadAsset(entry.audio_path, `${entry.title || entry.job_id || 'klipin-music'}.mp3`)}
+                                download={`${entry.title || entry.job_id || 'klipin-music'}.mp3`}
+                                onClick={(e) => e.stopPropagation()}
+                                title="Unduh MP3"
+                                className="inline-flex items-center gap-1 rounded border border-[#26262e] bg-[#141418] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[#f59e0b] transition hover:border-[#f59e0b]/50 hover:bg-[#f59e0b]/15"
+                              >
+                                <Icon name="download" className="h-3 w-3" /> Unduh
+                              </a>
+                            )}
+                            {meta && (
+                              <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase ${meta.className}`}>
+                                {meta.label}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <span className="mt-0.5 block truncate font-mono text-[10px] text-[#71717a]">
                           {label} · {lang} · {formatClock(entry.metadata?.duration || entry.duration || 0)}
@@ -3681,19 +3695,19 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                   {coverBusy ? 'Mencari…' : 'Ganti cover'}
                 </button>
                 {job?.audio_path && (
-                  <a href={audioUrl} download={`${job.title || 'klipin-music'}.mp3`}
+                  <a href={resolveDownloadAsset(job.audio_path, `${job.title || 'klipin-music'}.mp3`)} download={`${job.title || 'klipin-music'}.mp3`}
                     className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6]">
                     Unduh MP3
                   </a>
                 )}
                 {job?.lyrics_path && (
-                  <a href={resolveMediaAsset(job.lyrics_path)} download="lyrics.lrc"
+                  <a href={resolveDownloadAsset(job.lyrics_path, `${job.title || 'lyrics'}.lrc`)} download={`${job.title || 'lyrics'}.lrc`}
                     className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6]">
                     .LRC
                   </a>
                 )}
                 {wavUrl && (
-                  <a href={wavUrl} download="song.wav"
+                  <a href={resolveDownloadAsset(job?.metadata?.wav_path || `/videos/${job.job_id}/song.wav`, `${job.title || 'klipin-music'}.wav`)} download={`${job.title || 'klipin-music'}.wav`}
                     className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6]">
                     WAV
                   </a>
@@ -3852,12 +3866,12 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               >
                 🎚️ Buka di Studio EQ
               </button>
-              <a href={audioUrl} download={`${job.title || 'klipin-music'}.mp3`}
+              <a href={resolveDownloadAsset(job.audio_path, `${job.title || 'klipin-music'}.mp3`)} download={`${job.title || 'klipin-music'}.mp3`}
                 className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] font-bold text-white/80 hover:border-cyan/50">
                 ⬇ MP3
               </a>
               {wavUrl && (
-                <a href={wavUrl} download="song.wav"
+                <a href={resolveDownloadAsset(job?.metadata?.wav_path || `/videos/${job.job_id}/song.wav`, `${job.title || 'klipin-music'}.wav`)} download={`${job.title || 'klipin-music'}.wav`}
                   className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-[10px] font-bold text-cyan-soft hover:border-cyan">
                   ⬇ WAV -14 LUFS
                 </a>

@@ -8,6 +8,8 @@ export const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '') + '/a
  * when the frontend is served from a different origin (Docker).
  */
 export function resolveAsset(path = '') {
+  if (!path) return ''
+  if (/^(https?:|blob:|data:)/i.test(path)) return path
   const base = import.meta.env.VITE_API_URL || ''
   // Media URLs come from API payloads already signed by the backend
   // (?exp=…&sig=…), so no session token is ever embedded in a URL — a shared
@@ -25,6 +27,22 @@ export function resolveAsset(path = '') {
  */
 export function resolveMediaAsset(path = '') {
   return resolveAsset(path)
+}
+
+/**
+ * Resolve a media asset URL for forced browser download (`?download=1`).
+ * Because the frontend and backend run on different origins/ports in Docker,
+ * browsers ignore the HTML `<a download>` attribute unless the server returns
+ * `Content-Disposition: attachment; filename="..."`. Appending `download=1`
+ * (and optional `filename`) instructs `_VideosApp` in `backend/app.py` to
+ * serve the file as an attachment instead of playing it in a tab.
+ */
+export function resolveDownloadAsset(path = '', filename = '') {
+  const url = resolveMediaAsset(path)
+  if (!url || /^(blob:|data:)/i.test(url)) return url
+  const sep = url.includes('?') ? '&' : '?'
+  const fnParam = filename ? `&filename=${encodeURIComponent(filename)}` : ''
+  return `${url}${sep}download=1${fnParam}`
 }
 
 /**

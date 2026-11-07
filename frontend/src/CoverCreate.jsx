@@ -8,6 +8,7 @@ import {
   getMusicGenres,
   getMusicGroup,
   getMusicPersonas,
+  resolveDownloadAsset,
   resolveMediaAsset,
   streamMusicGroup,
 } from './api.js'
@@ -581,7 +582,11 @@ export default function CoverCreate({
                   className="h-8 w-full"
                 />
                 <div className="flex flex-wrap items-center gap-2">
-                  <a href={resolveMediaAsset(result.audio_path)} download className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#f59e0b] hover:underline">
+                  <a
+                    href={resolveDownloadAsset(result.audio_path, `${result.title || 'klipin-cover'}.mp3`)}
+                    download={`${result.title || 'klipin-cover'}.mp3`}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#f59e0b] hover:underline"
+                  >
                     <Icon name="download" className="h-3.5 w-3.5" aria-hidden /> {L.download}
                   </a>
                   <button
@@ -848,8 +853,8 @@ export default function CoverCreate({
                   />
                   <div className="flex flex-wrap items-center gap-3">
                     <a
-                      href={resolveMediaAsset(result.audio_path)}
-                      download
+                      href={resolveDownloadAsset(result.audio_path, `${result.title || 'klipin-cover'}.mp3`)}
+                      download={`${result.title || 'klipin-cover'}.mp3`}
                       className="inline-flex items-center gap-2 text-xs text-cyan-soft hover:text-cyan"
                     >
                       <Icon name="download" className="h-4 w-4" aria-hidden /> {L.download}
