@@ -287,3 +287,43 @@ def test_standalone_music_service_exposes_only_music_and_shared_routes():
     )
     assert proc.returncode == 0, proc.stderr
     assert "STANDALONE_OK" in proc.stdout
+
+
+def test_unlimited_female_and_male_personas_and_renaming(tmp_path, monkeypatch):
+    import db
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "test_personas.db")
+    db.init()
+
+    user_id = "user_unlimited_persona_test"
+    # Create 15 female personas and 15 male personas (30 total > old 6 limit)
+    for i in range(15):
+        f_p = db.create_music_designed_persona(
+            user_id, f"Cewek {i+1}", "female", "female vocal, warm rich vocal tone", "warmth=40"
+        )
+        assert f_p["vocal_gender"] == "female"
+        assert f_p["name"] == f"Cewek {i+1}"
+
+        m_p = db.create_music_voice_persona(
+            user_id, f"Cowok {i+1}", "male", f"persona_m_{i}.voice.fernet", 1700000000.0
+        )
+        assert m_p["vocal_gender"] == "male"
+        assert m_p["name"] == f"Cowok {i+1}"
+
+    all_personas = db.list_music_personas(user_id)
+    assert len(all_personas) == 30
+    females = [p for p in all_personas if p["vocal_gender"] == "female"]
+    males = [p for p in all_personas if p["vocal_gender"] == "male"]
+    assert len(females) == 15
+    assert len(males) == 15
+
+    # Test renaming and changing vocal_gender
+    target_id = females[0]["persona_id"]
+    updated = db.update_music_persona(target_id, user_id, name="Rina Pop Jawa Spesial", vocal_gender="female")
+    assert updated["name"] == "Rina Pop Jawa Spesial"
+    assert updated["vocal_gender"] == "female"
+
+    switched = db.update_music_persona(target_id, user_id, name="Budi Reggae", vocal_gender="male")
+    assert switched["name"] == "Budi Reggae"
+    assert switched["vocal_gender"] == "male"
+

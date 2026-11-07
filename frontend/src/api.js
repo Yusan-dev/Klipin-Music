@@ -483,8 +483,16 @@ export function uploadMusicVoicePersona({ name, vocalGender, consent, file }) {
 }
 
 export function deleteMusicPersona(personaId) {
-  return fetch(`${API}/music/personas/${personaId}`, {
+  return fetch(`${API}/music/personas/${encodeURIComponent(personaId)}`, {
     method: 'DELETE', headers: authHeaders(),
+  }).then(handle)
+}
+
+export function updateMusicPersona(personaId, payload) {
+  return fetch(`${API}/music/personas/${encodeURIComponent(personaId)}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload || {}),
   }).then(handle)
 }
 

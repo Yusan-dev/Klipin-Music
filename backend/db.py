@@ -1800,6 +1800,32 @@ def list_music_personas(user_id: str) -> list:
     return [dict(r) for r in rows]
 
 
+def update_music_persona(persona_id: str, user_id: str, name: str | None = None,
+                         vocal_gender: str | None = None) -> dict | None:
+    """Update a persona's display name and/or vocal gender category (female/male/auto)."""
+    existing = get_music_persona(persona_id, user_id)
+    if not existing:
+        return None
+    updates: dict[str, object] = {}
+    if name is not None:
+        clean_name = str(name).strip()[:80]
+        if clean_name:
+            updates["name"] = clean_name
+    if vocal_gender is not None:
+        g = str(vocal_gender).strip().lower()
+        if g in ("female", "male", "auto"):
+            updates["vocal_gender"] = g
+    if not updates:
+        return existing
+    with _lock, _connect() as conn:
+        set_clause = ", ".join(f"{col} = ?" for col in updates)
+        conn.execute(
+            f"UPDATE music_personas SET {set_clause} WHERE persona_id = ? AND user_id = ?",
+            (*updates.values(), persona_id, user_id),
+        )
+    return get_music_persona(persona_id, user_id)
+
+
 def delete_music_persona(persona_id: str, user_id: str) -> bool:
     with _lock, _connect() as conn:
         conn.execute("UPDATE music_voice_previews SET status='deleted',sample_name='' "

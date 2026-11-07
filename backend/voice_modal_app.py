@@ -286,9 +286,10 @@ def separate_stems(audio_b64: str, duration: float,
 def convert_stems(audio_b64: str, reference_b64: str = "", duration: float = 180.0,
                   semi_tone_shift: int = 0, auto_f0: bool = False,
                   voice_engine: str = "rvc", voice_persona: str = "female") -> dict:
-    """Separate 4 stems with Demucs + convert vocals with RVC v2 (RMVPE) or Seed-VC on L4 GPU."""
+    """Separate 4 stems with Demucs + convert vocals with Seed-VC (for user reference) or RVC v2 (RMVPE) on L4 GPU."""
     started = time.monotonic()
-    use_rvc = str(voice_engine or "rvc").lower() == "rvc" or not reference_b64
+    eng = str(voice_engine or "rvc").lower()
+    use_rvc = (eng == "rvc_only") or (eng == "rvc" and not bool(reference_b64))
     method_name = "rvc-v2-rmvpe" if use_rvc else "seed-vc-4stems"
 
     with tempfile.TemporaryDirectory(prefix="persona-stems-") as folder:
@@ -383,9 +384,10 @@ def convert_vocal_variants(vocal_b64: str, variants: list, voice_persona: str = 
 def convert_song(audio_b64: str, reference_b64: str = "", duration: float = 180.0,
                  semi_tone_shift: int = 0, auto_f0: bool = False,
                  voice_engine: str = "rvc", voice_persona: str = "female") -> dict:
-    """Preserve the generated melody and backing; replace the vocal identity via RVC v2 or Seed-VC."""
+    """Preserve the generated melody and backing; replace the vocal identity via Seed-VC (for user reference) or RVC v2."""
     started = time.monotonic()
-    use_rvc = str(voice_engine or "rvc").lower() == "rvc" or not reference_b64
+    eng = str(voice_engine or "rvc").lower()
+    use_rvc = (eng == "rvc_only") or (eng == "rvc" and not bool(reference_b64))
     method_name = "rvc-v2-rmvpe" if use_rvc else "seed-vc-vocal-stem"
 
     with tempfile.TemporaryDirectory(prefix="persona-convert-") as folder:

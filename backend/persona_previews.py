@@ -100,7 +100,7 @@ def public(row):
 def recent(user_id):
     with db._lock, db._connect() as conn:
         rows = conn.execute("SELECT * FROM music_voice_previews WHERE user_id=? AND status!='deleted' "
-                            "ORDER BY created_at DESC LIMIT 6", (user_id,)).fetchall()
+                            "ORDER BY created_at DESC LIMIT 100", (user_id,)).fetchall()
     return [public(dict(row)) for row in rows]
 
 
@@ -139,8 +139,9 @@ def begin(user_id, raw):
             raise ValueError("Satu preview masih diproses. Tunggu hingga selesai.")
         daily = conn.execute("SELECT COUNT(*) FROM music_voice_previews WHERE user_id=? AND created_at>?",
                              (user_id, now - 86400)).fetchone()[0]
-        if daily >= 6:
-            raise ValueError("Batas 6 preview baru per 24 jam tercapai. Preview yang sudah ada tetap bisa diputar.")
+        daily_limit = int(os.environ.get("KLIPIN_VOICE_DAILY_PREVIEW_LIMIT", "100"))
+        if daily >= daily_limit:
+            raise ValueError(f"Batas {daily_limit} preview baru per 24 jam tercapai. Preview yang sudah ada tetap bisa diputar.")
         conn.execute("INSERT INTO music_voice_previews (preview_id,user_id,request_key,spec,created_at,updated_at) "
                      "VALUES (?,?,?,?,?,?)", (preview_id, user_id, key, serialized, now, now))
     try:
@@ -211,10 +212,11 @@ def save(preview_id, user_id, name):
     # Validate the exact audio still exists before committing its identity.
     audio(preview_id, user_id)
     spec = json.loads(row["spec"])
+    clean_name = (name.strip() or "Penyanyi saya")[:80]
     with db._lock, db._connect() as conn:
-        conn.execute("INSERT OR IGNORE INTO music_personas "
+        conn.execute("INSERT OR REPLACE INTO music_personas "
                      "(persona_id,user_id,name,vocal_gender,style_tags,notes,voice_ref_path,persona_type,created_at) "
-                     "VALUES (?,?,?,?,?,?,?,?,?)", (preview_id, user_id, (name.strip() or "Penyanyi saya")[:80],
+                     "VALUES (?,?,?,?,?,?,?,?,?)", (preview_id, user_id, clean_name,
                      spec["vocal_gender"], tags_for_design(spec)[:300], row["spec"],
                      row["sample_name"], "synthetic", time.time()))
         conn.execute("UPDATE music_voice_previews SET saved_persona_id=? WHERE preview_id=? AND user_id=?",
@@ -227,7 +229,7 @@ def convert_song(src: Path, reference: Path, output: Path, duration: float,
     result = _function("convert_song").remote(
         base64.b64encode(src.read_bytes()).decode("ascii"),
         base64.b64encode(reference.read_bytes()).decode("ascii"), duration,
-        int(semi_tone_shift), bool(auto_f0))
+        int(semi_tone_shift), bool(auto_f0), "seed-vc")
     data = base64.b64decode(result["audio_b64"], validate=True)
     if len(data) < 1024:
         raise RuntimeError("Hasil konversi suara kosong.")

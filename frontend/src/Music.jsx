@@ -41,6 +41,7 @@ import {
   shareMusic,
   streamMusicGroup,
   updateMusicLyricsDraft,
+  updateMusicPersona,
   uploadMusicVoicePersona,
 } from './api.js'
 
@@ -328,8 +329,13 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   // Fitur Suno-parity: persona, instrumental, BPM/key, share, feed, biaya.
   const [personas, setPersonas] = useState([])
   const [personaId, setPersonaId] = useState('')
+  const [personaGenderFilter, setPersonaGenderFilter] = useState('all')
+  const [personaEditOpen, setPersonaEditOpen] = useState(false)
+  const [personaEditName, setPersonaEditName] = useState('')
+  const [personaEditGender, setPersonaEditGender] = useState('female')
+  const [personaRenameBusy, setPersonaRenameBusy] = useState(false)
   const [voiceName, setVoiceName] = useState('')
-  const [voiceGender, setVoiceGender] = useState('auto')
+  const [voiceGender, setVoiceGender] = useState('female')
   const [voiceFile, setVoiceFile] = useState(null)
   const [voiceConsent, setVoiceConsent] = useState(false)
   const [voiceBusy, setVoiceBusy] = useState(false)
@@ -380,8 +386,25 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const [coverBust, setCoverBust] = useState(0)
 
   const audioRef = useRef(null)
-  const identityPersona = personas.find(p => p.persona_id === personaId && p.has_voice_sample)
-  const effectiveGender = identityPersona?.vocal_gender || vocalGender
+  const selectedPersonaObj = personas.find((p) => p.persona_id === personaId) || null
+  const identityPersona = selectedPersonaObj && (selectedPersonaObj.has_voice_sample || selectedPersonaObj.vocal_gender === 'female' || selectedPersonaObj.vocal_gender === 'male')
+    ? selectedPersonaObj
+    : null
+  const effectiveGender = (identityPersona?.vocal_gender && identityPersona.vocal_gender !== 'auto')
+    ? identityPersona.vocal_gender
+    : vocalGender
+  const femalePersonas = useMemo(
+    () => personas.filter((p) => String(p.vocal_gender || '').toLowerCase() === 'female'),
+    [personas],
+  )
+  const malePersonas = useMemo(
+    () => personas.filter((p) => String(p.vocal_gender || '').toLowerCase() === 'male'),
+    [personas],
+  )
+  const otherPersonas = useMemo(
+    () => personas.filter((p) => !['female', 'male'].includes(String(p.vocal_gender || '').toLowerCase())),
+    [personas],
+  )
   const voiceRecorderRef = useRef(null)
   const voiceStreamRef = useRef(null)
   const voiceChunksRef = useRef([])
@@ -1252,11 +1275,6 @@ export default function Music({ user, authChecked = false, onSignIn }) {
       return
     }
     setRequestError('')
-    const selectedPersona = personas.find((persona) => persona.persona_id === personaId)
-    if (selectedPersona?.has_voice_sample && !selectedPersona.voice_conversion_ready) {
-      setRequestError(voiceCapability?.message || 'Persona suara belum siap di server. Lagu belum dibuat dan kredit tidak terpakai.')
-      return
-    }
     setJob(null)
     setTakes([])
     setGroupId('')
@@ -1691,10 +1709,14 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     if (!voiceFile || !voiceConsent || voiceBusy) return
     setVoiceBusy(true)
     setRequestError('')
+    setPersonaFeedback('')
     try {
+      const defaultVoiceName = voiceGender === 'male' ? 'Suara Cowok Saya' : 'Suara Cewek Saya'
       const res = await uploadMusicVoicePersona({
-        name: voiceName.trim() || 'Suara saya', vocalGender: voiceGender,
-        consent: voiceConsent, file: voiceFile,
+        name: voiceName.trim() || defaultVoiceName,
+        vocalGender: voiceGender === 'male' ? 'male' : 'female',
+        consent: voiceConsent,
+        file: voiceFile,
       })
       if (res?.persona) {
         setPersonas((prev) => [res.persona, ...prev])
@@ -1706,12 +1728,34 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         setVoicePreviewUrl((oldUrl) => { if (oldUrl) URL.revokeObjectURL(oldUrl); return '' })
         const fileInput = document.getElementById('music-voice-sample')
         if (fileInput) fileInput.value = ''
-        if (!res.voice_conversion?.ready) setRequestError(`${res.voice_conversion?.message || 'Konversi suara belum tersedia.'} Persona tersimpan, tetapi lagu tidak akan dibuat sampai layanan siap.`)
+        setPersonaFeedback(`✓ Persona "${res.persona.name}" (${res.persona.vocal_gender === 'male' ? '👨 Cowok' : '👩 Cewek'}) berhasil disimpan dan dipilih!`)
       }
     } catch (e) {
       setRequestError(`Simpan rekaman gagal: ${e.message}`)
     } finally {
       setVoiceBusy(false)
+    }
+  }
+
+  const renameSelectedPersona = async () => {
+    if (!user) { onSignIn(); return }
+    if (!personaId || personaRenameBusy) return
+    setPersonaRenameBusy(true)
+    setRequestError('')
+    try {
+      const res = await updateMusicPersona(personaId, {
+        name: personaEditName.trim(),
+        vocal_gender: personaEditGender,
+      })
+      if (res?.persona) {
+        setPersonas((prev) => prev.map((p) => (p.persona_id === personaId ? res.persona : p)))
+        setPersonaEditOpen(false)
+        setPersonaFeedback(`✓ Persona diperbarui menjadi "${res.persona.name}" (${res.persona.vocal_gender === 'male' ? '👨 Suara Cowok' : '👩 Suara Cewek'}).`)
+      }
+    } catch (e) {
+      setRequestError(`Gagal mengubah persona: ${e.message}`)
+    } finally {
+      setPersonaRenameBusy(false)
     }
   }
 
@@ -1922,6 +1966,308 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const fieldCls = 'w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-3 py-2 text-[13px] text-[#f4f4f6] outline-none transition placeholder:text-[#5c5c66] focus:border-[#52525b] disabled:cursor-not-allowed disabled:opacity-50'
   const labelCls = 'mb-1.5 block text-[11px] font-medium text-[#a1a1aa]'
 
+  const renderPersonaStudioPanel = ({ compact = false } = {}) => {
+    const showFemale = personaGenderFilter === 'all' || personaGenderFilter === 'female'
+    const showMale = personaGenderFilter === 'all' || personaGenderFilter === 'male'
+    const showOther = personaGenderFilter === 'all' && otherPersonas.length > 0
+    return (
+      <div className="space-y-3 rounded-xl border border-[#2c2c35] bg-[#141419] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span className="block text-xs font-bold uppercase tracking-widest text-white/80">
+              🎤 Persona Suara ({personas.length} Tersimpan · ∞ Tanpa Batas)
+            </span>
+            <span className="text-[11px] text-white/45">
+              Dipisahkan Suara Cewek &amp; Cowok · Bisa upload/rekam suara asli atau buat karakter sendiri
+            </span>
+          </div>
+          <div className="inline-flex rounded-lg border border-white/10 bg-black/30 p-0.5 text-[10px] font-semibold">
+            {[
+              { id: 'all', label: `Semua (${personas.length})` },
+              { id: 'female', label: `👩 Cewek (${femalePersonas.length})` },
+              { id: 'male', label: `👨 Cowok (${malePersonas.length})` },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setPersonaGenderFilter(tab.id)}
+                className={`rounded-md px-2 py-1 transition ${
+                  personaGenderFilter === tab.id
+                    ? 'bg-[#2a2a35] text-white'
+                    : 'text-white/55 hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <select
+            value={personaId}
+            onChange={(e) => {
+              const nextId = e.target.value
+              setPersonaId(nextId)
+              setPersonaListenId('')
+              setPersonaEditOpen(false)
+              const found = personas.find((p) => p.persona_id === nextId)
+              if (found?.vocal_gender === 'female' || found?.vocal_gender === 'male') {
+                setVocalGender(found.vocal_gender)
+                setRemixGender(found.vocal_gender)
+              }
+            }}
+            className="w-full rounded-lg border border-white/15 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan"
+          >
+            <option value="">Tanpa persona — pakai pengaturan vokal default</option>
+            {showFemale && femalePersonas.length > 0 && (
+              <optgroup label={`👩 Persona Suara Cewek (${femalePersonas.length})`}>
+                {femalePersonas.map((p) => (
+                  <option key={p.persona_id} value={p.persona_id}>
+                    👩 {p.has_voice_sample ? '🎙️ ' : '🎨 '}{p.name} ({p.has_voice_sample ? 'Rekaman Suara' : 'Karakter Vokal'})
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {showMale && malePersonas.length > 0 && (
+              <optgroup label={`👨 Persona Suara Cowok (${malePersonas.length})`}>
+                {malePersonas.map((p) => (
+                  <option key={p.persona_id} value={p.persona_id}>
+                    👨 {p.has_voice_sample ? '🎙️ ' : '🎨 '}{p.name} ({p.has_voice_sample ? 'Rekaman Suara' : 'Karakter Vokal'})
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {showOther && (
+              <optgroup label={`🎭 Persona Lainnya (${otherPersonas.length})`}>
+                {otherPersonas.map((p) => (
+                  <option key={p.persona_id} value={p.persona_id}>
+                    {p.has_voice_sample ? '🎙️ ' : '🎨 '}{p.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+
+          {selectedPersonaObj && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/80">
+                {selectedPersonaObj.vocal_gender === 'male' ? '👨 Suara Cowok' : '👩 Suara Cewek'} · <b>{selectedPersonaObj.name}</b>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setPersonaEditName(selectedPersonaObj.name || '')
+                  setPersonaEditGender(selectedPersonaObj.vocal_gender === 'male' ? 'male' : 'female')
+                  setPersonaEditOpen((v) => !v)
+                }}
+                className="rounded-md border border-cyan/40 bg-cyan/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-soft hover:border-cyan"
+              >
+                ✏️ Ganti Nama / Gender
+              </button>
+              {selectedPersonaObj.has_voice_sample && (
+                <button
+                  type="button"
+                  onClick={() => setPersonaListenId(personaListenId === personaId ? '' : personaId)}
+                  className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300"
+                >
+                  {personaListenId === personaId ? '⏹ Tutup Audio' : '▶ Dengarkan Suara'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => removePersona(personaId)}
+                className="ml-auto font-mono text-[10px] text-danger/80 hover:text-danger"
+              >
+                🗑 Hapus
+              </button>
+            </div>
+          )}
+
+          {personaEditOpen && selectedPersonaObj && (
+            <div className="mt-2.5 space-y-2 rounded-lg border border-cyan/30 bg-black/30 p-2.5">
+              <div className="text-[11px] font-semibold text-cyan-soft">Ubah Nama &amp; Kategori Persona</div>
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                <input
+                  value={personaEditName}
+                  onChange={(e) => setPersonaEditName(e.target.value)}
+                  placeholder="Nama persona baru…"
+                  className="rounded-lg border border-white/15 bg-navy-3 px-2.5 py-1.5 text-xs text-white outline-none focus:border-cyan"
+                />
+                <select
+                  value={personaEditGender}
+                  onChange={(e) => setPersonaEditGender(e.target.value)}
+                  className="rounded-lg border border-white/15 bg-navy-3 px-2.5 py-1.5 text-xs text-white outline-none"
+                >
+                  <option value="female">👩 Suara Cewek</option>
+                  <option value="male">👨 Suara Cowok</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={renameSelectedPersona}
+                  disabled={personaRenameBusy || !personaEditName.trim()}
+                  className="rounded-lg bg-cyan/20 px-3 py-1.5 text-xs font-bold text-cyan-soft transition hover:bg-cyan/30 disabled:opacity-40"
+                >
+                  {personaRenameBusy ? 'Menyimpan…' : 'Simpan'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Cara membuat persona">
+          <button
+            type="button"
+            onClick={() => setPersonaMode('choose')}
+            className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+              personaMode === 'choose' ? 'border-cyan/50 bg-cyan/10 text-cyan-soft' : 'border-white/10 bg-white/5 text-white/60 hover:text-white'
+            }`}
+          >
+            📋 Pilih Persona
+          </button>
+          <button
+            type="button"
+            onClick={() => setPersonaMode(personaMode === 'record' ? 'choose' : 'record')}
+            className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+              personaMode === 'record' ? 'border-magenta/50 bg-magenta/15 text-white' : 'border-white/10 bg-white/5 text-white/60 hover:text-white'
+            }`}
+          >
+            🎙️ + Upload / Rekam Suara Sendiri
+          </button>
+          <button
+            type="button"
+            onClick={() => setPersonaMode(personaMode === 'design' ? 'choose' : 'design')}
+            className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+              personaMode === 'design' ? 'border-cyan/50 bg-cyan/15 text-white' : 'border-white/10 bg-white/5 text-white/60 hover:text-white'
+            }`}
+          >
+            🎨 + Buat Karakter Suara Sendiri
+          </button>
+        </div>
+
+        {personaFeedback && <p role="status" className="text-[11px] leading-5 text-signal">{personaFeedback}</p>}
+        {personaListenId && <PrivateVoicePlayer id={personaListenId} savedPersona />}
+
+        {personaMode === 'record' && (
+          <section className="rounded-xl border border-magenta/25 bg-magenta/5 p-3.5">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-widest text-white/80">
+                🎙️ Buat Persona dari Upload / Rekaman Suara Asli
+              </span>
+              <span className="rounded bg-magenta/20 px-1.5 py-0.5 font-mono text-[10px] text-white/80">∞ Unlimited</span>
+            </div>
+            <p className="mb-3 text-[11px] leading-5 text-white/55">
+              Beri nama personamu, pilih kategori <b>👩 Suara Cewek</b> atau <b>👨 Suara Cowok</b>, lalu rekam atau unggah sampel vokal. Kamu bisa menyimpan persona suara sebanyak mungkin tanpa batas.
+            </p>
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              <label className="block text-[11px] text-white/70">
+                Nama Persona Suara
+                <input
+                  value={voiceName}
+                  onChange={(e) => setVoiceName(e.target.value)}
+                  placeholder={voiceGender === 'male' ? 'Contoh: Suara Budi (Cowok)' : 'Contoh: Suara Rina (Cewek)'}
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-navy-3 px-3 py-2 text-xs text-white outline-none focus:border-magenta"
+                />
+              </label>
+              <div className="text-[11px] text-white/70">
+                <span>Kategori Suara (Cewek / Cowok)</span>
+                <div className="mt-1 grid grid-cols-2 gap-1.5">
+                  {[
+                    { id: 'female', label: '👩 Suara Cewek' },
+                    { id: 'male', label: '👨 Suara Cowok' },
+                  ].map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => setVoiceGender(g.id)}
+                      className={`rounded-lg border px-2.5 py-2 text-xs font-bold transition ${
+                        voiceGender === g.id
+                          ? g.id === 'female'
+                            ? 'border-magenta/60 bg-magenta/20 text-white'
+                            : 'border-cyan/60 bg-cyan/20 text-white'
+                          : 'border-white/10 bg-navy-3 text-white/60 hover:text-white'
+                      }`}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={toggleVoiceRecording}
+                className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                  voiceRecording ? 'border-danger/50 bg-danger/10 text-danger' : 'border-magenta/40 bg-magenta/10 text-white'
+                }`}
+              >
+                {voiceRecording ? `■ Berhenti merekam · ${voiceRecordingSeconds} dtk` : '● Rekam dengan mikrofon'}
+              </button>
+              {voiceRecording && (
+                <span aria-live="polite" className="text-[11px] text-white/55">
+                  Maks. 30 detik. Nyanyikan atau ucapkan kalimat di ruangan tenang.
+                </span>
+              )}
+            </div>
+            <input
+              id="music-voice-sample"
+              type="file"
+              accept="audio/*"
+              onChange={(e) => {
+                setVoiceFile(e.target.files?.[0] || null)
+                setVoicePreviewUrl((oldUrl) => {
+                  if (oldUrl) URL.revokeObjectURL(oldUrl)
+                  return ''
+                })
+              }}
+              className="mt-3 block w-full text-xs text-white/60 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-white"
+            />
+            {voicePreviewUrl && (
+              <audio controls src={voicePreviewUrl} className="mt-3 h-9 max-w-full" aria-label="Pratinjau rekaman persona" />
+            )}
+            <label className="mt-3 flex items-start gap-2 text-[11px] leading-5 text-white/55">
+              <input
+                type="checkbox"
+                checked={voiceConsent}
+                onChange={(e) => setVoiceConsent(e.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                Saya memiliki hak/izin atas suara ini dan menyetujui pemrosesan rekaman untuk vokal lagu.
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={saveVoicePersona}
+              disabled={!voiceFile || !voiceConsent || voiceBusy || voiceRecording}
+              className="mt-3 rounded-lg border border-magenta/50 bg-magenta/20 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-magenta/30 disabled:opacity-40"
+            >
+              {voiceBusy ? 'Menyimpan rekaman…' : `💾 Simpan Persona ${voiceGender === 'male' ? 'Cowok' : 'Cewek'} Ini`}
+            </button>
+          </section>
+        )}
+
+        {personaMode === 'design' && (
+          <VoiceDesigner
+            key={user?.google_sub || user?.email || 'guest'}
+            user={user}
+            onSignIn={onSignIn}
+            onSaved={(persona) => {
+              setPersonas((prev) => [persona, ...prev.filter((p) => p.persona_id !== persona.persona_id)])
+              setPersonaId(persona.persona_id)
+              if (persona.vocal_gender === 'female' || persona.vocal_gender === 'male') {
+                setVocalGender(persona.vocal_gender)
+                setRemixGender(persona.vocal_gender)
+              }
+              setPersonaFeedback(`✓ Persona "${persona.name}" (${persona.vocal_gender === 'male' ? '👨 Suara Cowok' : '👩 Suara Cewek'}) aktif dan siap dipakai!`)
+            }}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-[calc(100vh-57px)] bg-[#0e0e11] pb-24 text-[#f4f4f6]">
       {/* Studio toolbar — one flat row, no nested cards */}
@@ -2076,7 +2422,17 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 </div>
 
                 {coverSourceTab === 'upload' ? (
-                  <CoverCreate user={user} authChecked={authChecked} onSignIn={onSignIn} embedded />
+                  <div className="space-y-3.5">
+                    {renderPersonaStudioPanel({ compact: true })}
+                    <CoverCreate
+                      user={user}
+                      authChecked={authChecked}
+                      onSignIn={onSignIn}
+                      embedded
+                      personaId={personaId}
+                      selectedPersona={selectedPersonaObj}
+                    />
+                  </div>
                 ) : (
                   <div className="space-y-3.5">
                     <div>
@@ -2109,6 +2465,8 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                       </p>
                     </div>
 
+                    {renderPersonaStudioPanel({ compact: true })}
+
                     <div className="grid grid-cols-2 gap-2.5">
                       <div>
                         <label className={labelCls}>Genre</label>
@@ -2129,7 +2487,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                       </div>
                     </div>
                     {identityPersona && (
-                      <p className="-mt-1.5 text-[11px] text-[#71717a]">Persona “{identityPersona.name}” aktif — suara mengikuti persona.</p>
+                      <p className="-mt-1.5 text-[11px] text-[#71717a]">Persona “{identityPersona.name}” ({identityPersona.vocal_gender === 'male' ? '👨 Cowok' : '👩 Cewek'}) aktif — suara mengikuti persona.</p>
                     )}
 
                     <div>
@@ -2549,7 +2907,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               </label>
             </Group>
 
-            {!simpleMode && (<Group title="3 · Persona & Bahasa" subtitle="Persona vokal, dual language, override bahasa">
+            <Group title="3 · Persona Suara (Cewek / Cowok) & Bahasa" subtitle="Pilih / buat persona suara sendiri (upload / desain tak terbatas), dual language" defaultOpen>
             <label className="flex items-start gap-2 rounded-lg border border-white/10 bg-black/20 p-3 text-[11px] leading-5 text-white/55">
               <input type="checkbox" checked={languageOverride}
                 onChange={(e) => setLanguageOverride(e.target.checked)}
@@ -2606,105 +2964,22 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               )}
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            {renderPersonaStudioPanel({ compact: false })}
+
+            <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-white/55">
-                  Persona <span className="font-mono normal-case text-white/30">(suara virtual / rekaman / gaya)</span>
-                </span>
-                <select value={personaId} onChange={(e) => { setPersonaId(e.target.value); setPersonaListenId('') }}
-                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none">
-                  <option value="">Tanpa persona — suara default</option>
-                  {personas.map((p) => (
-                    <option key={p.persona_id} value={p.persona_id}>
-                      {p.has_voice_sample ? '🎙️ ' : p.persona_type === 'designed' ? '🎨 ' : ''}{p.name} · {p.genre || (p.vocal_gender || 'persona')}
-                    </option>
-                  ))}
-                </select>
-                {personaId && (
-                  <button type="button" onClick={() => removePersona(personaId)}
-                    className="mt-1 font-mono text-[10px] text-danger/80 hover:text-danger">
-                    hapus persona ini
-                  </button>
-                )}
-                {personas.find(p => p.persona_id === personaId)?.has_voice_sample && <button type="button"
-                  onClick={() => setPersonaListenId(personaListenId === personaId ? '' : personaId)} className="mt-2 block text-xs text-cyan-soft">
-                  {personaListenId === personaId ? 'Tutup contoh suara' : '▶ Dengarkan persona terpilih'}
-                </button>}
+                <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-white/55">BPM</span>
+                <input type="number" min={0} max={220} value={bpm || ''}
+                  onChange={(e) => setBpm(Number(e.target.value) || 0)} placeholder="auto"
+                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none" />
               </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-white/55">BPM</span>
-                  <input type="number" min={0} max={220} value={bpm || ''}
-                    onChange={(e) => setBpm(Number(e.target.value) || 0)} placeholder="auto"
-                    className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none" />
-                </label>
-                <label className="block">
-                  <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-white/55">Key</span>
-                  <input value={musicKey} onChange={(e) => setMusicKey(e.target.value)} placeholder="auto"
-                    className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none" />
-                </label>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Cara membuat persona">
-              <button type="button" onClick={() => setPersonaMode('choose')}
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${personaMode === 'choose' ? 'border-cyan/50 bg-cyan/10 text-cyan-soft' : 'border-white/10 bg-white/5 text-white/60'}`}>
-                Gunakan pilihan
-              </button>
-              <button type="button" onClick={() => setPersonaMode(personaMode === 'record' ? 'choose' : 'record')}
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${personaMode === 'record' ? 'border-magenta/50 bg-magenta/10 text-white' : 'border-white/10 bg-white/5 text-white/60'}`}>
-                🎙️ Rekam / unggah suara
-              </button>
-              <button type="button" onClick={() => setPersonaMode(personaMode === 'design' ? 'choose' : 'design')}
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${personaMode === 'design' ? 'border-magenta/50 bg-magenta/10 text-white' : 'border-white/10 bg-white/5 text-white/60'}`}>
-                🎨 Desain karakter
-              </button>
-            </div>
-            {personaFeedback && <p role="status" className="text-[11px] leading-5 text-signal">{personaFeedback}</p>}
-            {personaListenId && <PrivateVoicePlayer id={personaListenId} savedPersona />}
-
-            {personaMode === 'record' && <section className="rounded-xl border border-magenta/20 bg-magenta/5 p-4">
-              <div className="mb-2 text-xs font-bold uppercase tracking-widest text-white/70">Persona dari rekaman</div>
-              <p className="mb-3 text-[11px] leading-5 text-white/50">Rekam langsung atau unggah suara 3–30 detik yang bersih, tanpa musik latar. Rekaman dienkripsi dan hanya tersedia di akun ini. Konversi ini memakai model voice-conversion saat worker tersedia; bukan sekadar EQ.</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input value={voiceName} onChange={(e) => setVoiceName(e.target.value)} placeholder="Nama persona (opsional)"
-                  className="rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none" />
-                <select value={voiceGender} onChange={(e) => setVoiceGender(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
-                  <option value="auto">Gender: otomatis</option><option value="male">Pria</option><option value="female">Wanita</option>
-                </select>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <button type="button" onClick={toggleVoiceRecording}
-                  className={`rounded-lg border px-3 py-2 text-xs font-bold ${voiceRecording ? 'border-danger/50 bg-danger/10 text-danger' : 'border-magenta/40 bg-magenta/10 text-white'}`}>
-                  {voiceRecording ? `■ Berhenti merekam · ${voiceRecordingSeconds} dtk` : '● Rekam dengan mikrofon'}
-                </button>
-                {voiceRecording && <span aria-live="polite" className="text-[11px] text-white/55">Maks. 30 detik. Bicara atau nyanyikan nada sederhana di ruangan tenang.</span>}
-              </div>
-              <input id="music-voice-sample" type="file" accept="audio/*" onChange={(e) => {
-                setVoiceFile(e.target.files?.[0] || null)
-                setVoicePreviewUrl((oldUrl) => { if (oldUrl) URL.revokeObjectURL(oldUrl); return '' })
-              }}
-                className="mt-3 block w-full text-xs text-white/60 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-white" />
-              {voicePreviewUrl && <audio controls src={voicePreviewUrl} className="mt-3 h-9 max-w-full" aria-label="Pratinjau rekaman persona" />}
-              <label className="mt-3 flex items-start gap-2 text-[11px] leading-5 text-white/55">
-                <input type="checkbox" checked={voiceConsent} onChange={(e) => setVoiceConsent(e.target.checked)} className="mt-1" />
-                Saya memiliki hak/izin atas suara ini dan menyetujui pemrosesan rekaman untuk konversi vokal lagu. Saya dapat menghapus persona kapan saja.
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-white/55">Key</span>
+                <input value={musicKey} onChange={(e) => setMusicKey(e.target.value)} placeholder="auto"
+                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none" />
               </label>
-              <button type="button" onClick={saveVoicePersona} disabled={!voiceFile || !voiceConsent || voiceBusy || voiceRecording}
-                className="mt-3 rounded-lg border border-magenta/40 bg-magenta/10 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
-                {voiceBusy ? 'Menyimpan rekaman…' : 'Simpan persona suara'}
-              </button>
-              {voiceCapability && !voiceCapability.ready && <p className="mt-2 text-[11px] text-warn">Belum aktif: {voiceCapability.message} Job lagu dengan persona akan dihentikan sebelum memakai kredit.</p>}
-            </section>}
-
-            {personaMode === 'design' && <VoiceDesigner key={user?.google_sub || user?.email || 'guest'}
-              user={user} onSignIn={onSignIn} onSaved={(persona) => {
-                setPersonas(prev => [persona, ...prev.filter(p => p.persona_id !== persona.persona_id)])
-                setPersonaId(persona.persona_id)
-                setPersonaFeedback('Persona suara dipilih untuk lagu berikutnya.')
-              }} />}
-            </Group>)}
+            </div>
+            </Group>
 
             {!simpleMode && (<Group title="4 · Lirik" subtitle="Tulis, generate, atau edit per bagian" defaultOpen={Boolean(lyrics.trim())}>
             <div className="block">

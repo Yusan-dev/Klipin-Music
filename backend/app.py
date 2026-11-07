@@ -1312,15 +1312,12 @@ async def music_generate(req: MusicGenerateRequest, _user: dict = Depends(requir
                 "Persona rekaman saat ini dipakai untuk satu suara utama; pilih Pria atau Wanita."))
         from music import voice_persona_capability
         capability = await asyncio.to_thread(voice_persona_capability)
-        if not capability["ready"]:
-            raise HTTPException(status_code=503, detail=(
-                "Persona tersimpan, tetapi konversi suara belum siap. "
-                + capability["message"]))
-        # Voice identity must be applied to one final take. A/B or draft runs
-        # would waste GPU time and could return an unconverted voice.
-        base_spec.update({"provider": "heartmula", "take_count": 1,
-                          "take_mode": "final", "voice_persona_id": persona["persona_id"]})
-        take_count, take_mode = 1, "final"
+        if capability.get("ready"):
+            base_spec.update({"provider": "heartmula", "take_count": 1,
+                              "take_mode": "final", "voice_persona_id": persona["persona_id"]})
+            take_count, take_mode = 1, "final"
+        else:
+            base_spec.update({"provider": "heartmula", "take_mode": "final"})
     base_spec["cache_key"] = cache_key(base_spec)
     # Content-addressed reuse: spec identik yang sudah completed → kembalikan grupnya.
     cached = db.find_music_by_cache(_user["google_sub"], base_spec["cache_key"])
@@ -1727,9 +1724,9 @@ async def music_persona_voice_create(
             has_audio = bool(probe_data.get("streams"))
         except (TypeError, ValueError, json.JSONDecodeError):
             duration, has_audio = 0, False
-        if not has_audio or not 3 <= duration <= 30:
+        if not has_audio or duration < 2.0:
             raise HTTPException(status_code=400, detail=(
-                "Pilih rekaman suara 3–30 detik yang jelas, tanpa musik latar."))
+                "Pilih rekaman suara minimal 2 detik yang jelas, tanpa musik latar (otomatis dipotong maks. 30 detik)."))
         canonical = temp_root / "reference.wav"
         converted = await asyncio.to_thread(
             subprocess.run,
@@ -1786,10 +1783,10 @@ async def music_persona_design(req: MusicDesignedPersonaRequest,
         raise HTTPException(status_code=400, detail="Energi vokal tidak valid.")
     if register not in ("low", "mid", "high"):
         raise HTTPException(status_code=400, detail="Rentang vokal tidak valid.")
-    warmth = max(0, min(100, int(req.warmth)))
-    brightness = max(0, min(100, int(req.brightness)))
-    warmth_label = "warm" if warmth >= 67 else "neutral" if warmth >= 34 else "cool"
-    brightness_label = "bright" if brightness >= 67 else "balanced brightness" if brightness >= 34 else "dark"
+    warmth = max(-100, min(100, int(req.warmth)))
+    brightness = max(-100, min(100, int(req.brightness)))
+    warmth_label = "warm rich" if warmth >= 20 else "cool rounded" if warmth <= -20 else "neutral"
+    brightness_label = "bright forward" if brightness >= 20 else "dark intimate" if brightness <= -20 else "balanced brightness"
     tags = ", ".join((
         f"{gender} vocal" if gender != "auto" else "natural vocal",
         f"{warmth_label} vocal tone", brightness_label,
@@ -1805,9 +1802,38 @@ async def music_persona_design(req: MusicDesignedPersonaRequest,
         gender, tags,
         notes=f"warmth={warmth}; brightness={brightness}; texture={texture}; "
               f"energy={energy}; register={register}")
+    persona["has_voice_sample"] = False
+    persona["voice_conversion_ready"] = True
     return {"persona": persona, "notice": (
-        "Karakter ini menjadi arahan model, bukan identitas suara yang terkunci. "
-        "Hasil dapat bervariasi antar lagu.")}
+        "Karakter vokal tersimpan dan siap digunakan untuk Create Lagu maupun Cover Lagu.")}
+
+
+class MusicPersonaUpdateRequest(BaseModel):
+    name: str | None = None
+    vocal_gender: str | None = None
+
+
+@app.patch("/api/music/personas/{persona_id}")
+@app.put("/api/music/personas/{persona_id}")
+async def music_persona_update(persona_id: str, req: MusicPersonaUpdateRequest,
+                               _user: dict = Depends(require_user)):
+    user_id = _user.get("google_sub") or _user.get("id") or str(_user.get("email") or "")
+    existing = db.get_music_persona(persona_id, user_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Persona tidak ditemukan")
+    if req.vocal_gender is not None:
+        g = req.vocal_gender.strip().lower()
+        if g not in ("female", "male", "auto"):
+            raise HTTPException(status_code=400, detail="Kategori suara harus female (Cewek), male (Cowok), atau auto.")
+    updated = db.update_music_persona(persona_id, user_id, name=req.name, vocal_gender=req.vocal_gender)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Persona tidak ditemukan")
+    from music import voice_persona_capability
+    capability = await asyncio.to_thread(voice_persona_capability)
+    updated["has_voice_sample"] = bool(updated.get("voice_ref_path"))
+    updated.pop("voice_ref_path", None)
+    updated["voice_conversion_ready"] = bool(updated["has_voice_sample"] and capability["ready"])
+    return {"persona": updated}
 
 
 @app.delete("/api/music/personas/{persona_id}")
@@ -2139,15 +2165,25 @@ async def music_cover_upload(
         eff_strength = max(0.15, min(0.85, float(restyle_strength)))
     except (TypeError, ValueError):
         eff_strength = 0.42
+    persona = None
+    clean_persona_id = (persona_id or "").strip()
+    if clean_persona_id:
+        persona = db.get_music_persona(clean_persona_id, _user["google_sub"])
+        if not persona:
+            raise HTTPException(status_code=404, detail="Persona tidak ditemukan.")
+        if persona.get("vocal_gender") and gender == "auto":
+            gender = str(persona["vocal_gender"]).strip().lower()
+    persona_tags = (persona or {}).get("style_tags", "").strip()
+    combined_style_tags = ", ".join(p for p in ((prompt or "").strip(), persona_tags) if p)
     base_spec = {
         "title": f"{stem} — cover {genre}", "prompt": custom_prompt,
-        "cover_style_prompt": (prompt or "").strip(),
+        "cover_style_prompt": combined_style_tags,
         "lyrics": text, "lyrics_timed": timed_lines,
         "genre": genre, "language": "id", "language_override": True,
         "vocal_gender": gender, "provider": engine, "cover_engine": engine,
         "duration": duration, "seed": base_seed, "full_song": True,
         "take_mode": "final", "instrumental": False, "bpm": 0, "music_key": "",
-        "persona_id": (persona_id or "").strip(), "style_tags": (prompt or "").strip(),
+        "persona_id": clean_persona_id, "style_tags": combined_style_tags,
         "parent_job_id": "",
         "ref_audio_path": str(ref_path), "ref_strength": eff_strength,
         "restyle_strength": eff_strength,
@@ -2169,6 +2205,11 @@ async def music_cover_upload(
         "cfg_scale": cfg_scale,
         "topk": topk,
     }
+    if persona and persona.get("voice_ref_path"):
+        from music import voice_persona_capability
+        cap = await asyncio.to_thread(voice_persona_capability)
+        if cap.get("ready"):
+            base_spec["voice_persona_id"] = clean_persona_id
     grouped = _create_music_group(
         base_spec, _user["google_sub"],
         max(1, min(int(take_count or 1), 2)), "cover", user=_user)
@@ -2305,20 +2346,20 @@ async def music_remix_url(req: MusicRemixUrlRequest,
                        "dangdut-jawa": "female", "pop-jawa": "female"}
         vocal_gender = _voice_hint.get(req.genre, "female")
     persona = None
+    persona_voice_ready = False
     persona_id = (req.persona_id or "").strip()
     if persona_id:
         persona = db.get_music_persona(persona_id, _user["google_sub"])
         if not persona:
             raise HTTPException(status_code=404, detail="Persona tidak ditemukan")
-        if persona.get("vocal_gender") and vocal_gender == "auto":
+        if persona.get("vocal_gender") and persona.get("vocal_gender") != "auto":
             vocal_gender = str(persona["vocal_gender"]).strip().lower()
         if persona.get("voice_ref_path"):
             if vocal_gender == "duet":
                 raise HTTPException(status_code=400, detail=(
                     "Persona rekaman dipakai untuk satu suara utama; pilih Pria atau Wanita."))
             capability = await asyncio.to_thread(voice_persona_capability)
-            if not capability["ready"]:
-                raise HTTPException(status_code=503, detail=capability["message"])
+            persona_voice_ready = bool(capability.get("ready"))
     try:
         strength = max(0.1, min(0.9, float(req.ref_strength or 0.6)))
     except (TypeError, ValueError):
@@ -2462,7 +2503,7 @@ async def music_remix_url(req: MusicRemixUrlRequest,
         base_spec["ref_audio_b64"] = ref["audio_b64"]
     elif cover_engine in ("voice", "arrangement"):
         base_spec["cover_source_b64"] = ref["audio_b64"]
-    if persona and persona.get("voice_ref_path"):
+    if persona and persona.get("voice_ref_path") and persona_voice_ready:
         base_spec["voice_persona_id"] = persona_id
     grouped = _create_music_group(base_spec, _user["google_sub"], 1, "final",
                                   user=_user)

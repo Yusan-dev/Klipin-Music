@@ -7,6 +7,7 @@ import {
   equalizeMusicJob,
   getMusicGenres,
   getMusicGroup,
+  getMusicPersonas,
   resolveMediaAsset,
   streamMusicGroup,
 } from './api.js'
@@ -84,14 +85,36 @@ const preferredTake = (items = []) => (
     || items[0]
 )
 
-export default function CoverCreate({ user, authChecked = false, onSignIn, embedded = false }) {
+export default function CoverCreate({
+  user,
+  authChecked = false,
+  onSignIn,
+  embedded = false,
+  personaId: parentPersonaId = '',
+  selectedPersona: parentSelectedPersona = null,
+}) {
   const L = labels()
   const [genres, setGenres] = useState([])
   const [coverEngines, setCoverEngines] = useState([])
+  const [personas, setPersonas] = useState([])
+  const [localPersonaId, setLocalPersonaId] = useState('')
   const [file, setFile] = useState(null)
   const [genre, setGenre] = useState('dangdut-koplo')
   const [voice, setVoice] = useState('auto')
   const [vocalStyle, setVocalStyle] = useState('auto')
+  const activePersonaId = embedded ? parentPersonaId : localPersonaId
+  const activePersona = useMemo(
+    () => (embedded ? parentSelectedPersona : personas.find((p) => p.persona_id === localPersonaId) || null),
+    [embedded, parentSelectedPersona, personas, localPersonaId],
+  )
+  const femalePersonas = useMemo(
+    () => personas.filter((p) => String(p.vocal_gender || '').toLowerCase() === 'female'),
+    [personas],
+  )
+  const malePersonas = useMemo(
+    () => personas.filter((p) => String(p.vocal_gender || '').toLowerCase() === 'male'),
+    [personas],
+  )
   const [engine] = useState('yue2_comfy')
   const [restyleStrength, setRestyleStrength] = useState(0.55)
   const [weirdness, setWeirdness] = useState(45)
@@ -138,6 +161,19 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
       .catch(() => {})
     return () => { live = false }
   }, [])
+
+  useEffect(() => {
+    if (!user || embedded) return
+    getMusicPersonas()
+      .then((d) => setPersonas(d.personas || []))
+      .catch(() => {})
+  }, [user, embedded])
+
+  useEffect(() => {
+    if (activePersona?.vocal_gender === 'female' || activePersona?.vocal_gender === 'male') {
+      setVoice(activePersona.vocal_gender)
+    }
+  }, [activePersona])
 
   useEffect(() => {
     if (!groupId) return undefined
@@ -236,10 +272,14 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
     setGroupTakes([])
     setStartedAt(Date.now())
     try {
+      const effectiveVoice = (activePersona?.vocal_gender === 'female' || activePersona?.vocal_gender === 'male')
+        ? activePersona.vocal_gender
+        : voice
       const fd = new FormData()
       fd.append('file', file)
       fd.append('genre', genre)
-      fd.append('vocal_gender', voice)
+      fd.append('vocal_gender', effectiveVoice)
+      if (activePersonaId) fd.append('persona_id', activePersonaId)
       fd.append('vocal_style', vocalStyle)
       fd.append('cover_engine', 'yue2_comfy')
       fd.append('restyle_strength', String(restyleStrength))
@@ -608,7 +648,7 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
               </button>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <Field label={L.genre}>
                 <Select value={genre} onChange={(e) => setGenre(e.target.value)}>
                   {genres.map((g) => (
@@ -616,8 +656,41 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
                   ))}
                 </Select>
               </Field>
+              <Field label="Persona Suara (👩 Cewek / 👨 Cowok)">
+                <Select
+                  value={localPersonaId}
+                  onChange={(e) => {
+                    const nextId = e.target.value
+                    setLocalPersonaId(nextId)
+                    const found = personas.find((p) => p.persona_id === nextId)
+                    if (found?.vocal_gender === 'female' || found?.vocal_gender === 'male') {
+                      setVoice(found.vocal_gender)
+                    }
+                  }}
+                >
+                  <option value="">Tanpa persona — suara default</option>
+                  {femalePersonas.length > 0 && (
+                    <optgroup label={`👩 Suara Cewek (${femalePersonas.length})`}>
+                      {femalePersonas.map((p) => (
+                        <option key={p.persona_id} value={p.persona_id}>
+                          👩 {p.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {malePersonas.length > 0 && (
+                    <optgroup label={`👨 Suara Cowok (${malePersonas.length})`}>
+                      {malePersonas.map((p) => (
+                        <option key={p.persona_id} value={p.persona_id}>
+                          👨 {p.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </Select>
+              </Field>
               <Field label={L.voice}>
-                <Select value={voice} onChange={(e) => setVoice(e.target.value)}>
+                <Select value={voice} disabled={Boolean(activePersona)} onChange={(e) => setVoice(e.target.value)}>
                   {VOICE_OPTIONS.map((v) => (
                     <option key={v.id} value={v.id}>{v.label}</option>
                   ))}
