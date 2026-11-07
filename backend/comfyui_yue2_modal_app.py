@@ -99,8 +99,27 @@ def _ensure_models() -> None:
         os.symlink(str(sheetsage_enc), str(dst_enc))
 
 
-def _start_comfyui_server() -> subprocess.Popen:
-    """Launch headless ComfyUI background process with log capture."""
+_COMFY_PROC: subprocess.Popen | None = None
+
+
+def _ensure_comfyui_server() -> subprocess.Popen:
+    """Ensure headless ComfyUI background process is running and warm inside the container."""
+    global _COMFY_PROC
+    if _COMFY_PROC is not None and _COMFY_PROC.poll() is None:
+        try:
+            req = Request("http://127.0.0.1:8188/system_stats", headers={"User-Agent": "Klipin/1.0"})
+            with urlopen(req, timeout=2.0) as resp:
+                if resp.status == 200:
+                    print("Reusing warm ComfyUI server in container (0s startup)!")
+                    return _COMFY_PROC
+        except Exception:
+            pass
+        try:
+            _COMFY_PROC.terminate()
+        except Exception:
+            pass
+        _COMFY_PROC = None
+
     log_path = Path("/tmp/comfyui.log")
     log_fp = log_path.open("w", encoding="utf-8", buffering=1)
     cmd = [
@@ -112,7 +131,7 @@ def _start_comfyui_server() -> subprocess.Popen:
         "--preview-method", "none",
     ]
     proc = subprocess.Popen(cmd, stdout=log_fp, stderr=subprocess.STDOUT)
-    
+
     # Wait for server to be responsive
     for sec in range(120):
         if proc.poll() is not None:
@@ -123,10 +142,11 @@ def _start_comfyui_server() -> subprocess.Popen:
             with urlopen(req, timeout=1.0) as resp:
                 if resp.status == 200:
                     print(f"ComfyUI server started successfully in {sec+1}s!")
+                    _COMFY_PROC = proc
                     return proc
         except Exception:
             time.sleep(1.0)
-            
+
     proc.terminate()
     log_content = log_path.read_text(encoding="utf-8", errors="replace")[-2000:]
     raise RuntimeError(f"ComfyUI server failed to respond within 120 seconds. Log:\n{log_content}")
@@ -138,7 +158,8 @@ def _start_comfyui_server() -> subprocess.Popen:
     cpu=8,
     memory=24576,
     timeout=2400,
-    scaledown_window=180,
+    min_containers=0,
+    scaledown_window=60,
     volumes={"/models": models},
 )
 def generate_yue2_cover(
@@ -147,6 +168,9 @@ def generate_yue2_cover(
     style: str,
     duration_sec: int = 180,
     seed: int = 42,
+    cfg_scale: float | None = None,
+    temperature: float | None = None,
+    steps: int | None = None,
 ) -> dict:
     """Run full SheetSage2 + YuE2 ComfyUI cover workflow and return base64 audio."""
     _ensure_models()
@@ -163,152 +187,155 @@ def generate_yue2_cover(
     ref_audio_filename = f"reference_{int(time.time())}.mp3"
     (input_dir / ref_audio_filename).write_bytes(raw_audio)
 
-    server_proc = _start_comfyui_server()
-    try:
-        # Build ComfyUI API Prompt format
-        prompt_api = {
-            "10": {
-                "inputs": {
-                    "filename_prefix": f"YuE2_cover_{int(time.time())}",
-                    "audio": ["9", 0],
-                },
-                "class_type": "SaveAudio",
-            },
-            "45": {
-                "inputs": {
-                    "audio": ref_audio_filename,
-                },
-                "class_type": "LoadAudio",
-            },
-            "43": {
-                "inputs": {
-                    "audio_encoder_name": "sheetsage2_bf16.safetensors",
-                },
-                "class_type": "AudioEncoderLoader",
-            },
-            "41": {
-                "inputs": {
-                    "audio_encoder": ["43", 0],
-                    "audio": ["45", 0],
-                    "mode": "melody",
-                },
-                "class_type": "SheetSage2AudioToABC",
-            },
-            "15": {
-                "inputs": {
-                    "ckpt_name": "yue2_3b_int8_convrot.safetensors",
-                },
-                "class_type": "CheckpointLoaderSimple",
-            },
-            "25": {
-                "inputs": {
-                    "clip": ["15", 1],
-                    "style": style,
-                    "lyrics": lyrics,
-                    "abc": ["41", 0],
-                    "seed": seed,
-                    "max_duration": float(duration_sec),
-                },
-                "class_type": "YuE2GenerateMusic",
-            },
-            "18": {
-                "inputs": {
-                    "conditioning": ["25", 0],
-                },
-                "class_type": "ConditioningZeroOut",
-            },
-            "5": {
-                "inputs": {
-                    "seconds": ["25", 1],
-                },
-                "class_type": "EmptyYuE2LatentAudio",
-            },
-            "8": {
-                "inputs": {
-                    "model": ["15", 0],
-                    "positive": ["25", 0],
-                    "negative": ["18", 0],
-                    "latent_image": ["5", 0],
-                    "seed": seed,
-                    "steps": 32,
-                    "cfg": 1.0,
-                    "sampler_name": "dpm_2",
-                    "scheduler": "sgm_uniform",
-                    "denoise": 1.0,
-                },
-                "class_type": "KSampler",
-            },
-            "9": {
-                "inputs": {
-                    "samples": ["8", 0],
-                    "vae": ["15", 2],
-                },
-                "class_type": "VAEDecodeAudio",
-            },
-        }
+    _ensure_comfyui_server()
+    eff_cfg = max(0.8, min(4.0, float(cfg_scale))) if cfg_scale is not None else 1.0
+    eff_steps = max(16, min(64, int(steps))) if steps is not None else 32
+    eff_denoise = max(0.6, min(1.0, float(temperature))) if temperature is not None else 1.0
 
-        # Queue prompt via ComfyUI REST API
-        queue_payload = json.dumps({"prompt": prompt_api, "client_id": "modal_yue2"}).encode("utf-8")
-        req = Request(
-            "http://127.0.0.1:8188/prompt",
-            data=queue_payload,
-            headers={"Content-Type": "application/json", "User-Agent": "Klipin/1.0"},
-            method="POST",
-        )
-        with urlopen(req, timeout=30.0) as resp:
-            queue_res = json.loads(resp.read().decode("utf-8"))
-            prompt_id = queue_res.get("prompt_id")
+    # Build ComfyUI API Prompt format
+    prompt_api = {
+        "10": {
+            "inputs": {
+                "filename_prefix": f"YuE2_cover_{int(time.time())}",
+                "audio": ["9", 0],
+            },
+            "class_type": "SaveAudio",
+        },
+        "45": {
+            "inputs": {
+                "audio": ref_audio_filename,
+            },
+            "class_type": "LoadAudio",
+        },
+        "43": {
+            "inputs": {
+                "audio_encoder_name": "sheetsage2_bf16.safetensors",
+            },
+            "class_type": "AudioEncoderLoader",
+        },
+        "41": {
+            "inputs": {
+                "audio_encoder": ["43", 0],
+                "audio": ["45", 0],
+                "mode": "melody",
+            },
+            "class_type": "SheetSage2AudioToABC",
+        },
+        "15": {
+            "inputs": {
+                "ckpt_name": "yue2_3b_int8_convrot.safetensors",
+            },
+            "class_type": "CheckpointLoaderSimple",
+        },
+        "25": {
+            "inputs": {
+                "clip": ["15", 1],
+                "style": style,
+                "lyrics": lyrics,
+                "abc": ["41", 0],
+                "seed": seed,
+                "max_duration": float(duration_sec),
+            },
+            "class_type": "YuE2GenerateMusic",
+        },
+        "18": {
+            "inputs": {
+                "conditioning": ["25", 0],
+            },
+            "class_type": "ConditioningZeroOut",
+        },
+        "5": {
+            "inputs": {
+                "seconds": ["25", 1],
+            },
+            "class_type": "EmptyYuE2LatentAudio",
+        },
+        "8": {
+            "inputs": {
+                "model": ["15", 0],
+                "positive": ["25", 0],
+                "negative": ["18", 0],
+                "latent_image": ["5", 0],
+                "seed": seed,
+                "steps": eff_steps,
+                "cfg": eff_cfg,
+                "sampler_name": "dpm_2",
+                "scheduler": "sgm_uniform",
+                "denoise": eff_denoise,
+            },
+            "class_type": "KSampler",
+        },
+        "9": {
+            "inputs": {
+                "samples": ["8", 0],
+                "vae": ["15", 2],
+            },
+            "class_type": "VAEDecodeAudio",
+        },
+    }
 
-        if not prompt_id:
-            raise RuntimeError(f"Gagal mengantrekan workflow ke ComfyUI: {queue_res}")
+    # Queue prompt via ComfyUI REST API
+    queue_payload = json.dumps({"prompt": prompt_api, "client_id": "modal_yue2"}).encode("utf-8")
+    req = Request(
+        "http://127.0.0.1:8188/prompt",
+        data=queue_payload,
+        headers={"Content-Type": "application/json", "User-Agent": "Klipin/1.0"},
+        method="POST",
+    )
+    with urlopen(req, timeout=30.0) as resp:
+        queue_res = json.loads(resp.read().decode("utf-8"))
+        prompt_id = queue_res.get("prompt_id")
 
-        # Poll history until complete
-        completed = False
-        rendered_filename = None
-        for _ in range(600):  # Wait up to 20 minutes
-            time.sleep(2.0)
-            hist_req = Request(f"http://127.0.0.1:8188/history/{prompt_id}", headers={"User-Agent": "Klipin/1.0"})
-            try:
-                with urlopen(hist_req, timeout=5.0) as resp:
-                    history = json.loads(resp.read().decode("utf-8"))
-                    if prompt_id in history:
-                        item = history[prompt_id]
-                        status = item.get("status", {})
-                        if status.get("completed", False):
-                            completed = True
-                            outputs = item.get("outputs", {})
-                            for _, node_out in outputs.items():
-                                if "audio" in node_out:
-                                    rendered_filename = node_out["audio"][0].get("filename")
-                                    break
-                            break
-                        if status.get("status_str") == "error":
-                            raise RuntimeError(f"ComfyUI execution error: {status.get('messages')}")
-            except Exception:
-                continue
+    if not prompt_id:
+        raise RuntimeError(f"Gagal mengantrekan workflow ke ComfyUI: {queue_res}")
 
-        if not completed:
-            raise TimeoutError("ComfyUI workflow rendering timed out.")
+    # Poll history until complete
+    completed = False
+    rendered_filename = None
+    for _ in range(600):  # Wait up to 20 minutes
+        time.sleep(2.0)
+        hist_req = Request(f"http://127.0.0.1:8188/history/{prompt_id}", headers={"User-Agent": "Klipin/1.0"})
+        try:
+            with urlopen(hist_req, timeout=5.0) as resp:
+                history = json.loads(resp.read().decode("utf-8"))
+                if prompt_id in history:
+                    item = history[prompt_id]
+                    status = item.get("status", {})
+                    if status.get("completed", False):
+                        completed = True
+                        outputs = item.get("outputs", {})
+                        for _, node_out in outputs.items():
+                            if "audio" in node_out:
+                                rendered_filename = node_out["audio"][0].get("filename")
+                                break
+                        break
+                    if status.get("status_str") == "error":
+                        raise RuntimeError(f"ComfyUI execution error: {status.get('messages')}")
+        except Exception:
+            continue
 
-        # Locate output file
-        out_file = output_dir / (rendered_filename or "")
-        if not out_file.exists():
-            # Fallback scan newest file in output_dir
-            files = list(output_dir.glob("*.flac")) + list(output_dir.glob("*.mp3")) + list(output_dir.glob("*.wav"))
-            if files:
-                out_file = max(files, key=lambda f: f.stat().st_mtime)
+    if not completed:
+        raise TimeoutError("ComfyUI workflow rendering timed out.")
 
-        if not out_file or not out_file.exists():
-            raise FileNotFoundError("Audio output hasil render ComfyUI tidak ditemukan.")
+    # Locate output file
+    out_file = output_dir / (rendered_filename or "")
+    if not out_file.exists():
+        # Fallback scan newest file in output_dir
+        files = list(output_dir.glob("*.flac")) + list(output_dir.glob("*.mp3")) + list(output_dir.glob("*.wav"))
+        if files:
+            out_file = max(files, key=lambda f: f.stat().st_mtime)
 
-        audio_bytes = out_file.read_bytes()
-        return {
-            "audio_b64": base64.b64encode(audio_bytes).decode("ascii"),
-            "format": out_file.suffix.lstrip("."),
-            "model": "m-a-p/YuE2-3B",
-            "audio_encoder": "sheetsage2_bf16",
-            "provider": "comfyui-yue2-modal",
-            "duration": float(duration_sec),
-        }
-    finally:
-        server_proc.terminate()
+    if not out_file or not out_file.exists():
+        raise FileNotFoundError("Audio output hasil render ComfyUI tidak ditemukan.")
+
+    audio_bytes = out_file.read_bytes()
+    return {
+        "audio_b64": base64.b64encode(audio_bytes).decode("ascii"),
+        "format": out_file.suffix.lstrip("."),
+        "model": "m-a-p/YuE2-3B",
+        "audio_encoder": "sheetsage2_bf16",
+        "provider": "comfyui-yue2-modal",
+        "duration": float(duration_sec),
+        "cfg_scale": eff_cfg,
+        "steps": eff_steps,
+    }

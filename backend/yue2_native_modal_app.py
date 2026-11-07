@@ -59,7 +59,8 @@ image = (
     cpu=8,
     memory=24576,
     timeout=2400,
-    scaledown_window=180,
+    min_containers=0,
+    scaledown_window=60,
     volumes={"/models": models},
 )
 def generate_native_cover(
@@ -68,9 +69,16 @@ def generate_native_cover(
     style: str,
     duration_sec: int = 180,
     seed: int = 42,
+    cfg_scale: float | None = None,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    repetition_penalty: float | None = None,
 ) -> dict:
-    """End-to-end Cover: Audio -> SheetSage2 (ABC melody) -> YuE2 (Reggae Cover Audio)."""
+    """End-to-end Cover: Audio -> SheetSage2 (ABC melody) -> YuE2 (Cover Audio)."""
     import gc
+    import hashlib
+    import inspect
+    import json
     import torch
 
     hf_cache_dir = MODELS_ROOT / "hf_cache"
@@ -125,162 +133,198 @@ def generate_native_cover(
     from transformers import AutoModel
 
     work = Path(tempfile.mkdtemp(prefix="klipin-yue2-cover-"))
+    raw_ref_bytes = base64.b64decode(ref_audio_b64)
     ref_path = work / "reference.mp3"
-    ref_path.write_bytes(base64.b64decode(ref_audio_b64))
+    ref_path.write_bytes(raw_ref_bytes)
 
-    print("=" * 60)
-    print("STEP 0: Isolasi Vokal Murni (GPU HDemucs) untuk Kunci Irama Vokal & Cengkok")
-    print("=" * 60)
-    t_demucs = time.time()
-    sheetsage_input_path = ref_path
+    abc_cache_dir = MODELS_ROOT / "abc_cache"
+    abc_cache_dir.mkdir(parents=True, exist_ok=True)
+    audio_sha1 = hashlib.sha1(raw_ref_bytes).hexdigest()[:20]
+    abc_cache_file = abc_cache_dir / f"{audio_sha1}.json"
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    melody_abc = ""
     first_vocal_sec = 0.0
     voiced_pct = 0.0
-    try:
-        import math
-        import numpy as np
-        import soundfile as sf
-        from torchaudio.pipelines import HDEMUCS_HIGH_MUSDB_PLUS
 
-        os.environ.setdefault("TORCH_HOME", str(MODELS_ROOT / "torch_cache"))
-        proc = subprocess.run(
-            ["ffmpeg", "-v", "error", "-i", str(ref_path), "-ac", "2", "-ar", "44100", "-f", "f32le", "-"],
-            capture_output=True,
-            timeout=180,
-        )
-        if proc.returncode == 0 and len(proc.stdout) >= 44100 * 8:
-            stereo = np.frombuffer(proc.stdout, dtype=np.float32).reshape(-1, 2).T.copy()
-            sr = 44100
-            total_samples = stereo.shape[-1]
+    if abc_cache_file.is_file():
+        try:
+            cached = json.loads(abc_cache_file.read_text(encoding="utf-8"))
+            melody_abc = str(cached.get("melody_abc") or "")
+            first_vocal_sec = float(cached.get("first_vocal_sec") or 0.0)
+            voiced_pct = float(cached.get("voiced_pct") or 0.0)
+            if len(melody_abc) >= 16:
+                print(
+                    f"⚡ Cache ABC SheetSage2 ditemukan ({audio_sha1}, {len(melody_abc)} chars) — "
+                    "melewati HDemucs & SheetSage2 (0.0s)!"
+                )
+        except Exception:
+            melody_abc = ""
 
-            bundle = HDEMUCS_HIGH_MUSDB_PLUS
-            device_d = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-            demucs_model = bundle.get_model().to(device_d).eval()
-            sources_list = list(getattr(demucs_model, "sources", ("drums", "bass", "other", "vocals")))
-            vocal_idx = sources_list.index("vocals")
-            drums_idx = sources_list.index("drums")
-            bass_idx = sources_list.index("bass")
+    if not melody_abc:
+        print("=" * 60)
+        print("STEP 0: Isolasi Vokal Murni (GPU HDemucs) untuk Kunci Irama Vokal & Cengkok")
+        print("=" * 60)
+        t_demucs = time.time()
+        sheetsage_input_path = ref_path
+        try:
+            import math
+            import numpy as np
+            import soundfile as sf
+            from torchaudio.pipelines import HDEMUCS_HIGH_MUSDB_PLUS
 
-            wav_t = torch.from_numpy(stereo)
-            ref_mean = wav_t.mean(dim=0)
-            ref_std = float(ref_mean.std().item()) + 1e-8
-            wav_norm = (wav_t - ref_mean.mean()) / ref_std
+            os.environ.setdefault("TORCH_HOME", str(MODELS_ROOT / "torch_cache"))
+            proc = subprocess.run(
+                ["ffmpeg", "-v", "error", "-i", str(ref_path), "-ac", "2", "-ar", "44100", "-f", "f32le", "-"],
+                capture_output=True,
+                timeout=180,
+            )
+            if proc.returncode == 0 and len(proc.stdout) >= 44100 * 8:
+                stereo = np.frombuffer(proc.stdout, dtype=np.float32).reshape(-1, 2).T.copy()
+                sr = 44100
+                total_samples = stereo.shape[-1]
 
-            chunk_samples = sr * 10
-            overlap_samples = sr * 1
-            stride = chunk_samples - overlap_samples
-            vocal_accum = np.zeros(total_samples, dtype=np.float32)
-            rhythm_accum = np.zeros(total_samples, dtype=np.float32)
-            weight_accum = np.zeros(total_samples, dtype=np.float32)
-            fade_ramp = np.linspace(0.0, 1.0, overlap_samples, dtype=np.float32)
+                bundle = HDEMUCS_HIGH_MUSDB_PLUS
+                device_d = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+                demucs_model = bundle.get_model().to(device_d).eval()
+                sources_list = list(getattr(demucs_model, "sources", ("drums", "bass", "other", "vocals")))
+                vocal_idx = sources_list.index("vocals")
+                drums_idx = sources_list.index("drums")
+                bass_idx = sources_list.index("bass")
 
-            with torch.inference_mode():
-                for start in range(0, total_samples, stride):
-                    end = min(total_samples, start + chunk_samples)
-                    seg = wav_norm[:, start:end]
-                    seg_len = seg.shape[-1]
-                    if seg_len < chunk_samples:
-                        seg = torch.nn.functional.pad(seg, (0, chunk_samples - seg_len))
-                    out = demucs_model(seg.unsqueeze(0).to(device_d))[0]
-                    v_mono = (out[vocal_idx].mean(dim=0).cpu().numpy()[:seg_len]) * ref_std
-                    r_mono = ((out[drums_idx] + out[bass_idx]).mean(dim=0).cpu().numpy()[:seg_len]) * ref_std
-                    w = np.ones(seg_len, dtype=np.float32)
-                    if start > 0 and seg_len >= overlap_samples:
-                        w[:overlap_samples] *= fade_ramp
-                    if end < total_samples and seg_len >= overlap_samples:
-                        w[-overlap_samples:] *= fade_ramp[::-1]
-                    vocal_accum[start:end] += v_mono * w
-                    rhythm_accum[start:end] += r_mono * w
-                    weight_accum[start:end] += w
+                wav_t = torch.from_numpy(stereo)
+                ref_mean = wav_t.mean(dim=0)
+                ref_std = float(ref_mean.std().item()) + 1e-8
+                wav_norm = (wav_t - ref_mean.mean()) / ref_std
 
-            del demucs_model
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+                chunk_samples = sr * 10
+                overlap_samples = sr * 1
+                stride = chunk_samples - overlap_samples
+                vocal_accum = np.zeros(total_samples, dtype=np.float32)
+                rhythm_accum = np.zeros(total_samples, dtype=np.float32)
+                weight_accum = np.zeros(total_samples, dtype=np.float32)
+                fade_ramp = np.linspace(0.0, 1.0, overlap_samples, dtype=np.float32)
 
-            vocals = (vocal_accum / np.maximum(weight_accum, 1e-6)).astype(np.float32)
-            rhythm = (rhythm_accum / np.maximum(weight_accum, 1e-6)).astype(np.float32)
+                with torch.inference_mode():
+                    for start in range(0, total_samples, stride):
+                        end = min(total_samples, start + chunk_samples)
+                        seg = wav_norm[:, start:end]
+                        seg_len = seg.shape[-1]
+                        if seg_len < chunk_samples:
+                            seg = torch.nn.functional.pad(seg, (0, chunk_samples - seg_len))
+                        out = demucs_model(seg.unsqueeze(0).to(device_d))[0]
+                        v_mono = (out[vocal_idx].mean(dim=0).cpu().numpy()[:seg_len]) * ref_std
+                        r_mono = ((out[drums_idx] + out[bass_idx]).mean(dim=0).cpu().numpy()[:seg_len]) * ref_std
+                        w = np.ones(seg_len, dtype=np.float32)
+                        if start > 0 and seg_len >= overlap_samples:
+                            w[:overlap_samples] *= fade_ramp
+                        if end < total_samples and seg_len >= overlap_samples:
+                            w[-overlap_samples:] *= fade_ramp[::-1]
+                        vocal_accum[start:end] += v_mono * w
+                        rhythm_accum[start:end] += r_mono * w
+                        weight_accum[start:end] += w
 
-            # FFT bandpass (130-3400 Hz) on vocals for clean activity gating,
-            # and lowpass (< 125 Hz) on rhythm so SheetSage2 tracks beats without melody bleed
-            n_fft = int(2 ** math.ceil(math.log2(max(2048, len(vocals)))))
-            v_spec = np.fft.rfft(vocals, n=n_fft)
-            r_spec = np.fft.rfft(rhythm, n=n_fft)
-            freqs = np.fft.rfftfreq(n_fft, d=1.0 / sr)
-            bp_mask = ((freqs >= 130.0) & (freqs <= 3400.0)).astype(np.float32)
-            lp_mask = ((freqs >= 35.0) & (freqs <= 125.0)).astype(np.float32)
-            vocals_bp = np.fft.irfft(v_spec * bp_mask, n=n_fft)[: len(vocals)].astype(np.float32)
-            rhythm_lp = np.fft.irfft(r_spec * lp_mask, n=n_fft)[: len(rhythm)].astype(np.float32)
+                del demucs_model
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
-            # 80ms frame gate to remove instrumental intro/interlude/guitar fills completely
-            frame_len = int(0.080 * sr)
-            n_frames = max(1, len(vocals_bp) // frame_len)
-            frame_rms = np.zeros(n_frames, dtype=np.float32)
-            for idx_f in range(n_frames):
-                seg_f = vocals_bp[idx_f * frame_len : (idx_f + 1) * frame_len]
-                frame_rms[idx_f] = float(np.sqrt(np.mean(seg_f ** 2) + 1e-12))
-            nz_rms = frame_rms[frame_rms > 1e-5]
-            if len(nz_rms) >= 8:
-                p95 = float(np.percentile(nz_rms, 95))
-                active_f = frame_rms >= (p95 * 0.095)
-                for idx_f in range(1, n_frames - 1):
-                    if active_f[idx_f] and not active_f[idx_f - 1] and not active_f[idx_f + 1] and frame_rms[idx_f] < p95 * 0.18:
-                        active_f[idx_f] = False
-                for idx_f in range(1, n_frames - 1):
-                    if not active_f[idx_f] and active_f[idx_f - 1] and active_f[idx_f + 1] and frame_rms[idx_f] >= p95 * 0.045:
-                        active_f[idx_f] = True
+                vocals = (vocal_accum / np.maximum(weight_accum, 1e-6)).astype(np.float32)
+                rhythm = (rhythm_accum / np.maximum(weight_accum, 1e-6)).astype(np.float32)
 
-                act_idx = np.flatnonzero(active_f)
-                if len(act_idx) >= 8:
-                    first_vocal_sec = round(float(act_idx[0]) * 0.080, 2)
-                    voiced_pct = round(100.0 * float(np.mean(active_f)), 1)
-                    sample_gain = np.zeros(len(vocals), dtype=np.float32)
-                    for idx_f in act_idx:
-                        i0 = max(0, int((idx_f - 0.2) * frame_len))
-                        i1 = min(len(vocals), int((idx_f + 1.2) * frame_len))
-                        sample_gain[i0:i1] = 1.0
-                    win_len = max(1, int(0.012 * sr))
-                    sample_gain = np.convolve(sample_gain, np.ones(win_len, dtype=np.float32) / win_len, mode="same")
-                    # Combine gated lead vocal with subtle sub-125Hz beat pulse for SheetSage2
-                    guided_audio = (vocals * sample_gain + 0.07 * rhythm_lp).astype(np.float32)
-                    sheetsage_wav = work / "sheetsage_vocal_locked.wav"
-                    sf.write(str(sheetsage_wav), guided_audio, sr)
-                    sheetsage_input_path = sheetsage_wav
-                    print(
-                        f"Vocal stem isolated in {time.time() - t_demucs:.1f}s "
-                        f"(first_vocal_sec={first_vocal_sec}s, voiced_pct={voiced_pct}%)"
-                    )
-    except Exception as demucs_exc:
-        print(f"Vocal isolation note (fallback to full ref): {demucs_exc}")
+                # FFT bandpass (130-3400 Hz) on vocals for clean activity gating,
+                # and lowpass (< 125 Hz) on rhythm so SheetSage2 tracks beats without melody bleed
+                n_fft = int(2 ** math.ceil(math.log2(max(2048, len(vocals)))))
+                v_spec = np.fft.rfft(vocals, n=n_fft)
+                r_spec = np.fft.rfft(rhythm, n=n_fft)
+                freqs = np.fft.rfftfreq(n_fft, d=1.0 / sr)
+                bp_mask = ((freqs >= 130.0) & (freqs <= 3400.0)).astype(np.float32)
+                lp_mask = ((freqs >= 35.0) & (freqs <= 125.0)).astype(np.float32)
+                vocals_bp = np.fft.irfft(v_spec * bp_mask, n=n_fft)[: len(vocals)].astype(np.float32)
+                rhythm_lp = np.fft.irfft(r_spec * lp_mask, n=n_fft)[: len(rhythm)].astype(np.float32)
+
+                # 80ms frame gate to remove instrumental intro/interlude/guitar fills completely
+                frame_len = int(0.080 * sr)
+                n_frames = max(1, len(vocals_bp) // frame_len)
+                frame_rms = np.zeros(n_frames, dtype=np.float32)
+                for idx_f in range(n_frames):
+                    seg_f = vocals_bp[idx_f * frame_len : (idx_f + 1) * frame_len]
+                    frame_rms[idx_f] = float(np.sqrt(np.mean(seg_f ** 2) + 1e-12))
+                nz_rms = frame_rms[frame_rms > 1e-5]
+                if len(nz_rms) >= 8:
+                    p95 = float(np.percentile(nz_rms, 95))
+                    active_f = frame_rms >= (p95 * 0.095)
+                    for idx_f in range(1, n_frames - 1):
+                        if active_f[idx_f] and not active_f[idx_f - 1] and not active_f[idx_f + 1] and frame_rms[idx_f] < p95 * 0.18:
+                            active_f[idx_f] = False
+                    for idx_f in range(1, n_frames - 1):
+                        if not active_f[idx_f] and active_f[idx_f - 1] and active_f[idx_f + 1] and frame_rms[idx_f] >= p95 * 0.045:
+                            active_f[idx_f] = True
+
+                    act_idx = np.flatnonzero(active_f)
+                    if len(act_idx) >= 8:
+                        first_vocal_sec = round(float(act_idx[0]) * 0.080, 2)
+                        voiced_pct = round(100.0 * float(np.mean(active_f)), 1)
+                        sample_gain = np.zeros(len(vocals), dtype=np.float32)
+                        for idx_f in act_idx:
+                            i0 = max(0, int((idx_f - 0.2) * frame_len))
+                            i1 = min(len(vocals), int((idx_f + 1.2) * frame_len))
+                            sample_gain[i0:i1] = 1.0
+                        win_len = max(1, int(0.012 * sr))
+                        sample_gain = np.convolve(sample_gain, np.ones(win_len, dtype=np.float32) / win_len, mode="same")
+                        # Combine gated lead vocal with subtle sub-125Hz beat pulse for SheetSage2
+                        guided_audio = (vocals * sample_gain + 0.07 * rhythm_lp).astype(np.float32)
+                        sheetsage_wav = work / "sheetsage_vocal_locked.wav"
+                        sf.write(str(sheetsage_wav), guided_audio, sr)
+                        sheetsage_input_path = sheetsage_wav
+                        print(
+                            f"Vocal stem isolated in {time.time() - t_demucs:.1f}s "
+                            f"(first_vocal_sec={first_vocal_sec}s, voiced_pct={voiced_pct}%)"
+                        )
+        except Exception as demucs_exc:
+            print(f"Vocal isolation note (fallback to full ref): {demucs_exc}")
+
+        print("=" * 60)
+        print("STEP 1: Ekstraksi Melodi Sumber dengan SheetSage2 (m-a-p/SheetSage2)")
+        print("=" * 60)
+        t0 = time.time()
+
+        transcriber = AutoModel.from_pretrained(
+            "m-a-p/SheetSage2",
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+        ).to(device)
+
+        res_transcribe = transcriber.transcribe(str(sheetsage_input_path), melody_only=True)
+        melody_abc = res_transcribe.get("abc") if isinstance(res_transcribe, dict) else str(res_transcribe)
+        (work / "score.abc").write_text(melody_abc, encoding="utf-8")
+        print(f"Melodi ABC terekstraksi ({len(melody_abc)} chars) dalam {time.time() - t0:.1f}s")
+        print(f"Cuplikan ABC:\n{melody_abc[:250]}...")
+
+        try:
+            abc_cache_file.write_text(
+                json.dumps({
+                    "melody_abc": melody_abc,
+                    "first_vocal_sec": first_vocal_sec,
+                    "voiced_pct": voiced_pct,
+                }, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            models.commit()
+        except Exception:
+            pass
+
+        # VRAM Cleanup after SheetSage2
+        del transcriber
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     if first_vocal_sec >= 6.0:
         first_ln = next((ln.strip() for ln in str(lyrics or "").splitlines() if ln.strip()), "")
         if not first_ln.lower().startswith("[intro"):
             lyrics = f"[Intro]\n\n{lyrics}" if first_ln.startswith("[") else f"[Intro]\n\n[Verse]\n{lyrics}"
             print(f"Prepended [Intro] tag for {first_vocal_sec}s instrumental intro.")
-
-    print("=" * 60)
-    print("STEP 1: Ekstraksi Melodi Sumber dengan SheetSage2 (m-a-p/SheetSage2)")
-    print("=" * 60)
-    t0 = time.time()
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    transcriber = AutoModel.from_pretrained(
-        "m-a-p/SheetSage2",
-        trust_remote_code=True,
-        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-    ).to(device)
-
-    res_transcribe = transcriber.transcribe(str(sheetsage_input_path), melody_only=True)
-    melody_abc = res_transcribe.get("abc") if isinstance(res_transcribe, dict) else str(res_transcribe)
-    (work / "score.abc").write_text(melody_abc, encoding="utf-8")
-    print(f"Melodi ABC terekstraksi ({len(melody_abc)} chars) dalam {time.time() - t0:.1f}s")
-    print(f"Cuplikan ABC:\n{melody_abc[:250]}...")
-
-    # VRAM Cleanup after SheetSage2
-    del transcriber
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
 
     print("=" * 60)
     print("STEP 2: Generasi Audio Cover YuE2 dengan Kondisi Melodi ABC")
@@ -300,13 +344,28 @@ def generate_native_cover(
         model_source,
         device=device,
     ) as pipe:
-        cover_result = pipe(
-            style=style,
-            lyrics=lyrics,
-            abc=melody_abc,
-            cot="melody",
-            seed=seed,
-        )
+        call_kwargs = {
+            "style": style,
+            "lyrics": lyrics,
+            "abc": melody_abc,
+            "cot": "melody",
+            "seed": seed,
+        }
+        try:
+            sig_params = inspect.signature(pipe.__call__).parameters
+            has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig_params.values())
+            for k, v in (
+                ("temperature", temperature),
+                ("cfg_scale", cfg_scale),
+                ("guidance_scale", cfg_scale),
+                ("top_p", top_p),
+                ("repetition_penalty", repetition_penalty),
+            ):
+                if v is not None and (has_var_kw or k in sig_params):
+                    call_kwargs[k] = v
+        except Exception:
+            pass
+        cover_result = pipe(**call_kwargs)
         cover_result.save_artifacts(str(out_dir))
 
     print(f"Generasi YuE2 selesai dalam {time.time() - t1:.1f}s")

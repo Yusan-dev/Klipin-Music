@@ -1058,6 +1058,10 @@ class MusicGenerateRequest(BaseModel):
     exclude_styles: str = ""          # Suno-style "Exclude Styles" (tag yang dihindari)
     weirdness: int = 50               # creative slider 0-100 (Suno "Weirdness")
     style_influence: int = 50         # creative slider 0-100 (Suno "Style Influence")
+    vocal_style: str = ""             # optional vocal delivery style (warm-smooth, soulful-raspy, etc.)
+    temperature: float | None = None  # optional explicit sampling temperature (0.5-1.4)
+    cfg_scale: float | None = None    # optional explicit CFG scale (1.0-4.5)
+    topk: int | None = None           # optional explicit Top-K (20-500)
     eq_preset: str = ""               # optional Studio EQ preset (flat, reggae-dub, vocal-clarity, etc.)
     eq_bands: list[float] = []        # optional 8-band gains [-12..+12 dB]
     eq_preamp_db: float = 0.0
@@ -1445,8 +1449,8 @@ def _create_music_group(base_spec: dict, user_id: str,
             requested_cover_provider = str(base_spec.get("provider") or "").lower()
             provider = (requested_cover_provider
                         if requested_cover_provider in (
-                            "ace-step", "mulacover", "arrangement", "voice", "diffrhythm")
-                        else "ace-step")
+                            "yue2_comfy", "yue2_native", "yue2", "ace-step", "mulacover", "arrangement", "voice", "diffrhythm")
+                        else "yue2_comfy")
             mode = "cover"
         # Take 0 = draft cepat (ACE-Step), take 1 = final nyawa (HeartMuLa).
         elif take_mode == "both":
@@ -1849,6 +1853,12 @@ class MusicRemixUrlRequest(BaseModel):
     eq_compressor: float = 0.0
     eq_stereo_width: float = 1.0
     eq_reverb: float = 0.0
+    vocal_style: str = ""
+    weirdness: int = 50
+    style_influence: int = 50
+    temperature: float | None = None
+    cfg_scale: float | None = None
+    topk: int | None = None
 
 
 def _split_long_lyric_line(text: str, limit: int = 120) -> list[str]:
@@ -2020,10 +2030,16 @@ async def music_cover_upload(
     voice_pitch_shift: int = Form(0),
     restyle_strength: float = Form(0.42),
     keep_original_vocal: bool = Form(False),
-    cover_engine: str = Form("mulacover"),
+    cover_engine: str = Form("yue2_comfy"),
     seed: int = Form(0),
     take_count: int = Form(1),
     rights_confirmed: bool = Form(False),
+    vocal_style: str = Form(""),
+    weirdness: int = Form(50),
+    style_influence: int = Form(50),
+    temperature: float | None = Form(None),
+    cfg_scale: float | None = Form(None),
+    topk: int | None = Form(None),
     eq_preset: str = Form(""),
     eq_bands: str = Form(""),
     eq_preamp_db: float = Form(0.0),
@@ -2146,6 +2162,12 @@ async def music_cover_upload(
         "eq_compressor": eq_compressor,
         "eq_stereo_width": eq_stereo_width,
         "eq_reverb": eq_reverb,
+        "vocal_style": (vocal_style or "").strip(),
+        "weirdness": int(weirdness if weirdness is not None else 50),
+        "style_influence": int(style_influence if style_influence is not None else 50),
+        "temperature": temperature,
+        "cfg_scale": cfg_scale,
+        "topk": topk,
     }
     grouped = _create_music_group(
         base_spec, _user["google_sub"],
@@ -2429,6 +2451,12 @@ async def music_remix_url(req: MusicRemixUrlRequest,
         "eq_compressor": req.eq_compressor,
         "eq_stereo_width": req.eq_stereo_width,
         "eq_reverb": req.eq_reverb,
+        "vocal_style": (req.vocal_style or "").strip(),
+        "weirdness": int(req.weirdness if req.weirdness is not None else 50),
+        "style_influence": int(req.style_influence if req.style_influence is not None else 50),
+        "temperature": req.temperature,
+        "cfg_scale": req.cfg_scale,
+        "topk": req.topk,
     }
     if needs_ref:
         base_spec["ref_audio_b64"] = ref["audio_b64"]

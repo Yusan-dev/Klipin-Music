@@ -24,15 +24,14 @@ const VOICE_OPTIONS = [
   { id: 'duet', label: 'Duet (pria + wanita)' },
 ]
 
-const ENGINES = [
-  { id: 'yue2_comfy', label: '✨ YuE2 + SheetSage2 (ComfyUI Headless — VRAM 6-8GB)' },
-  { id: 'yue2_native', label: '⚡ YuE2 + SheetSage2 (Native Python SDK — VRAM 16-24GB)' },
-  { id: 'voice', label: '🎯 Persona Baru + Aransemen Baru (Lirik & Ketukan Terkunci — Rekomendasi)' },
-  { id: 'arrangement', label: '🎛️ Vokal Asli + Aransemen Baru (Beat-Locked 4-Stem)' },
-  { id: 'voice_pure', label: '🎤 Persona Baru + Musik Asli (Pure Voice Swap)' },
-  { id: 'mulacover', label: '✨ MuLaCover L4 — Melodi & Harmoni Asli (Generative AI)' },
-  { id: 'diffrhythm', label: 'DiffRhythm — Lagu ulang penuh Apache 2.0 (Melodi baru)' },
-  { id: 'ace-step', label: 'ACE-Step — Draft cepat, kualitas terbatas' },
+const VOCAL_STYLE_OPTIONS = [
+  { id: 'auto', label: 'Otomatis (Sesuai Genre)' },
+  { id: 'warm-smooth', label: 'Warm & Smooth Studio' },
+  { id: 'laidback-chill', label: 'Laid-Back Island Chill (Reggae/Akustik)' },
+  { id: 'soulful-raspy', label: 'Soulful & Slight Rasp' },
+  { id: 'emotional-ballad', label: 'Emotional Expressive Ballad' },
+  { id: 'bright-pop', label: 'Bright Radio Pop' },
+  { id: 'traditional-cengkok', label: 'Cengkok Nusantara (Jawa/Sunda/Koplo)' },
 ]
 
 const ACCEPT = '.mp3,.wav,.m4a,.aac,.flac,.ogg,.opus,audio/*'
@@ -41,7 +40,7 @@ function labels() {
   const en = {
     eyebrow: 'COVER CREATE — FAITHFUL SONG COVER',
     title: 'Ubah lagu jadi cover, melodi aslinya tetap.',
-    sub: 'Unggah lagu, pilih gaya, dan pilih siapa yang menyanyi. MuLaCover mempertahankan melodi serta progresi chord aslinya; lirik boleh kamu tempel atau biarkan Klipin menuliskannya lewat ASR.',
+    sub: 'Unggah lagu, pilih gaya, dan atur parameter aransemen. YuE2 + SheetSage2 Headless mengunci notasi melodi vokal & lirik lagu aslinya dengan presisi tinggi.',
     source: 'Lagu sumber', drop: 'Klik untuk memilih file audio', dropHint: 'MP3, WAV, M4A, FLAC — maks. 15 MB',
     genre: 'Gaya / genre', voice: 'Persona vokal', engine: 'Engine cover',
     lyrics: 'Lirik (opsional)', lyricsHint: 'Kosongkan untuk menuliskan lirik otomatis dari audio (ASR).',
@@ -57,7 +56,7 @@ function labels() {
   const id = {
     eyebrow: 'COVER CREATE — COVER LAGU SETIA',
     title: 'Ubah lagu jadi cover, melodi aslinya tetap.',
-    sub: 'Unggah lagu, pilih gaya, lalu pilih siapa yang menyanyi. MuLaCover mempertahankan melodi dan progresi chord aslinya; lirik boleh kamu tempel sendiri atau biarkan Klipin menuliskannya lewat ASR.',
+    sub: 'Unggah lagu, pilih gaya, lalu atur parameter aransemen. YuE2 + SheetSage2 Headless mengunci notasi melodi vokal & lirik lagu aslinya dengan presisi tinggi.',
     source: 'Lagu sumber', drop: 'Klik untuk memilih file audio', dropHint: 'MP3, WAV, M4A, FLAC — maks. 15 MB',
     genre: 'Gaya / genre', voice: 'Persona vokal', engine: 'Engine cover',
     lyrics: 'Lirik (opsional)', lyricsHint: 'Kosongkan untuk menuliskan lirik otomatis dari audio (ASR).',
@@ -92,7 +91,11 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
   const [file, setFile] = useState(null)
   const [genre, setGenre] = useState('dangdut-koplo')
   const [voice, setVoice] = useState('auto')
-  const [engine, setEngine] = useState('yue2_comfy')
+  const [vocalStyle, setVocalStyle] = useState('auto')
+  const [engine] = useState('yue2_comfy')
+  const [restyleStrength, setRestyleStrength] = useState(0.55)
+  const [weirdness, setWeirdness] = useState(45)
+  const [styleInfluence, setStyleInfluence] = useState(70)
   const [lyrics, setLyrics] = useState('')
   const [stylePrompt, setStylePrompt] = useState('')
   const [seed, setSeed] = useState('')
@@ -131,10 +134,6 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
         else if (list[0]) setGenre(list[0].id)
         const engines = Array.isArray(data.cover_engines) ? data.cover_engines : []
         setCoverEngines(engines)
-        const available = engines.filter((e) => e.available).map((e) => e.id)
-        setEngine((current) => (
-          available.length && !available.includes(current) ? available[0] : current
-        ))
       })
       .catch(() => {})
     return () => { live = false }
@@ -241,7 +240,11 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
       fd.append('file', file)
       fd.append('genre', genre)
       fd.append('vocal_gender', voice)
-      fd.append('cover_engine', engine)
+      fd.append('vocal_style', vocalStyle)
+      fd.append('cover_engine', 'yue2_comfy')
+      fd.append('restyle_strength', String(restyleStrength))
+      fd.append('weirdness', String(weirdness))
+      fd.append('style_influence', String(styleInfluence))
       fd.append('lyrics', lyrics)
       if (stylePrompt.trim()) fd.append('prompt', stylePrompt.trim())
       fd.append('seed', seed ? String(parseInt(seed, 10) || 0) : '0')
@@ -346,20 +349,71 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
           </div>
         </div>
 
-        <div>
-          <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.engine}</label>
-          <select value={engine} onChange={(e) => setEngine(e.target.value)}
-            className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
-            {ENGINES.map((e2) => {
-              const status = coverEngines.find((item) => item.id === e2.id)
-              const off = Boolean(status && !status.available)
-              return (
-                <option key={e2.id} value={e2.id} disabled={off}>
-                  {e2.label}{off ? ' — belum aktif di server' : ''}
-                </option>
-              )
-            })}
-          </select>
+        <div className="flex items-center justify-between rounded-lg border border-[#26262e] bg-[#18181d] px-3 py-2 text-[11px]">
+          <span className="font-medium text-[#e4e4e7]">✨ Engine Cover: YuE2 + SheetSage2 Headless</span>
+          <span className="rounded bg-[#10b981]/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#34d399]">
+            Fast Keep-Warm · Lirik &amp; Melodi Terkunci
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Karakter penyampaian vokal</label>
+            <select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value)}
+              className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
+              {VOCAL_STYLE_OPTIONS.map((vs) => (
+                <option key={vs.id} value={vs.id}>{vs.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="mb-1 flex items-center justify-between text-[11px]">
+              <span className="font-medium text-[#8e8e99]">Kunci Melodi &amp; Ketukan</span>
+              <span className="font-mono text-[#fbbf24]">{Math.round(restyleStrength * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              min={0.2}
+              max={0.85}
+              step={0.05}
+              value={restyleStrength}
+              onChange={(e) => setRestyleStrength(parseFloat(e.target.value))}
+              className="w-full accent-[#f59e0b]"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5 rounded-lg border border-[#26262e] bg-[#18181d] p-2.5">
+          <div>
+            <div className="mb-1 flex items-center justify-between text-[11px]">
+              <span className="text-[#8e8e99]">Kreativitas Aransemen</span>
+              <span className="font-mono text-[#e4e4e7]">{weirdness}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={weirdness}
+              onChange={(e) => setWeirdness(Number(e.target.value))}
+              className="w-full accent-[#f59e0b]"
+            />
+          </div>
+          <div>
+            <div className="mb-1 flex items-center justify-between text-[11px]">
+              <span className="text-[#8e8e99]">Kepatuhan Gaya Genre</span>
+              <span className="font-mono text-[#e4e4e7]">{styleInfluence}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={styleInfluence}
+              onChange={(e) => setStyleInfluence(Number(e.target.value))}
+              className="w-full accent-[#f59e0b]"
+            />
+          </div>
         </div>
 
         <div>
@@ -571,24 +625,58 @@ export default function CoverCreate({ user, authChecked = false, onSignIn, embed
               </Field>
             </div>
 
-            <Field label={L.engine}>
-              <Select value={engine} onChange={(e) => setEngine(e.target.value)}>
-                {ENGINES.map((e2) => {
-                  const status = coverEngines.find((item) => item.id === e2.id)
-                  const off = Boolean(status && !status.available)
-                  return (
-                    <option key={e2.id} value={e2.id} disabled={off}>
-                      {e2.label}{off ? ' — belum aktif di server' : ''}
-                    </option>
-                  )
-                })}
-              </Select>
-              {engineBlocked && (
-                <p className="mt-1.5 text-[11px] leading-4 text-warn">
-                  Engine ini belum aktif. Pilih engine lain yang tersedia.
-                </p>
-              )}
-            </Field>
+            <div className="flex items-center justify-between rounded-xl border border-cyan/30 bg-cyan/5 px-3.5 py-2.5 text-xs">
+              <span className="font-medium text-white">✨ Engine Cover: YuE2 + SheetSage2 Headless</span>
+              <span className="rounded bg-cyan/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-cyan-soft">
+                Fast Keep-Warm · Lirik &amp; Melodi Terkunci
+              </span>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Karakter penyampaian vokal">
+                <Select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value)}>
+                  {VOCAL_STYLE_OPTIONS.map((vs) => (
+                    <option key={vs.id} value={vs.id}>{vs.label}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label={`Kunci Melodi & Ketukan (${Math.round(restyleStrength * 100)}%)`}>
+                <input
+                  type="range"
+                  min={0.2}
+                  max={0.85}
+                  step={0.05}
+                  value={restyleStrength}
+                  onChange={(e) => setRestyleStrength(parseFloat(e.target.value))}
+                  className="mt-2 w-full accent-cyan"
+                />
+              </Field>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={`Kreativitas Aransemen (${weirdness}%)`}>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={weirdness}
+                  onChange={(e) => setWeirdness(Number(e.target.value))}
+                  className="mt-2 w-full accent-cyan"
+                />
+              </Field>
+              <Field label={`Kepatuhan Gaya Genre (${styleInfluence}%)`}>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={styleInfluence}
+                  onChange={(e) => setStyleInfluence(Number(e.target.value))}
+                  className="mt-2 w-full accent-cyan"
+                />
+              </Field>
+            </div>
 
             <Field label={L.lyrics} hint={L.lyricsHint}>
               <textarea

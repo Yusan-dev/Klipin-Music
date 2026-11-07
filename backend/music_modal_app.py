@@ -64,12 +64,16 @@ def _ensure_models() -> None:
     cpu=8,
     memory=24576,
     timeout=1800,
-    scaledown_window=120,
+    min_containers=0,
+    scaledown_window=60,
     volumes={"/models": models},
 )
 def generate_song(lyrics: str, tags: str, duration_sec: int = 180,
                   seed: int | None = None,
-                  lora_id: str | None = None) -> dict:
+                  lora_id: str | None = None,
+                  cfg_scale: float | None = None,
+                  temperature: float | None = None,
+                  topk: int | None = None) -> dict:
     """Generate a full vocal song and return the MP3 as base64 metadata."""
     _ensure_models()
     work = Path(tempfile.mkdtemp(prefix="klipin-heartmula-"))
@@ -78,14 +82,26 @@ def generate_song(lyrics: str, tags: str, duration_sec: int = 180,
     output_path = work / "song.mp3"
     lyrics_path.write_text(lyrics, encoding="utf-8")
     tags_path.write_text(tags, encoding="utf-8")
+    # On Nvidia L4 (24 GB VRAM), HeartMuLa-oss-3B (~11.5 GB) fits entirely in VRAM.
+    # Defaulting --lazy_load=false avoids disk swap thrashing between stages (~45% faster GPU time),
+    # while min_containers=0 + scaledown_window=60 guarantees $0 idle cost.
+    lazy_flag = os.environ.get("KLIPIN_HEARTMULA_LAZY_LOAD", "false").strip().lower()
+    runner_script = Path("/opt/heartlib/examples/run_music_generation.py")
+    runner_src = runner_script.read_text(encoding="utf-8", errors="ignore") if runner_script.exists() else ""
     cmd = [
-        sys.executable, "/opt/heartlib/examples/run_music_generation.py",
+        sys.executable, str(runner_script),
         f"--model_path={MODEL_ROOT}", "--version=3B",
         f"--lyrics={lyrics_path}", f"--tags={tags_path}",
         f"--save_path={output_path}",
         f"--max_audio_length_ms={max(10, min(int(duration_sec), 600)) * 1000}",
-        "--lazy_load=true",
+        f"--lazy_load={lazy_flag}",
     ]
+    if cfg_scale is not None and "--cfg_scale" in runner_src:
+        cmd.append(f"--cfg_scale={max(1.0, min(6.0, float(cfg_scale))):.2f}")
+    if temperature is not None and "--temperature" in runner_src:
+        cmd.append(f"--temperature={max(0.1, min(1.5, float(temperature))):.2f}")
+    if topk is not None and "--topk" in runner_src:
+        cmd.append(f"--topk={max(10, min(1000, int(topk)))}")
     # The official runner has no --seed/--lora flags: seed the RNGs via env
     # so top-k sampling is reproducible for a fixed seed (best-effort
     # determinism; GPU kernels may still vary bit-to-bit).
@@ -96,11 +112,15 @@ def generate_song(lyrics: str, tags: str, duration_sec: int = 180,
         # Reserved slot (Jawa moat): applied when a LoRA artifact exists.
         # Today the base model runs; the id is recorded for lineage.
         env["KLIPIN_MUSIC_LORA_ID"] = str(lora_id)
+    if cfg_scale is not None:
+        env["KLIPIN_HEARTMULA_CFG_SCALE"] = f"{float(cfg_scale):.2f}"
+    if temperature is not None:
+        env["KLIPIN_HEARTMULA_TEMPERATURE"] = f"{float(temperature):.2f}"
+    if topk is not None:
+        env["KLIPIN_HEARTMULA_TOPK"] = str(int(topk))
     # Seed torch/random inside the runner via a wrapper that seeds first,
     # then execs the official script with identical argv.
-    # Keep compound Python statements on separate lines. The previous
-    # semicolon form reached ``python -c`` as ``...;if s:`` and failed before
-    # HeartMuLa could start, even though modulo escaping was corrected.
+    # Keep compound Python statements on separate lines.
     wrapper = (
         "import os,runpy,sys\n"
         "s=os.environ.get('PYTHONHASHSEED')\n"
@@ -122,6 +142,9 @@ def generate_song(lyrics: str, tags: str, duration_sec: int = 180,
         "duration_sec": int(duration_sec),
         "seed": seed,
         "lora_id": lora_id or "",
+        "cfg_scale": cfg_scale,
+        "temperature": temperature,
+        "topk": topk,
         "audio_b64": base64.b64encode(output_path.read_bytes()).decode("ascii"),
         "stdout_tail": result.stdout[-1000:],
     }

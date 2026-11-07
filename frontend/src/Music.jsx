@@ -51,13 +51,25 @@ const VOCAL_GENDERS = [
   { id: 'male', label: 'Pria' },
   { id: 'duet', label: 'Duet' },
 ]
-// Engine + take controls. Values map 1:1 to MusicGenerateRequest so nothing is
-// hidden from the API. `available` is filled from the engine preflight at runtime.
+const VOCAL_STYLES = [
+  { id: 'auto', label: 'Otomatis (Ikuti Genre)' },
+  { id: 'warm-smooth', label: 'Hangat & Halus (Warm Smooth)' },
+  { id: 'emotional-ballad', label: 'Emosional & Dalam (Ballad)' },
+  { id: 'soulful-raspy', label: 'Soulful & Serak Tipis (Raspy)' },
+  { id: 'bright-pop', label: 'Jernih & Modern (Bright Pop)' },
+  { id: 'traditional-cengkok', label: 'Cengkok & Senggolan Nusantara' },
+  { id: 'laidback-chill', label: 'Santai & Mengalun (Chill / Reggae)' },
+]
+const TOPK_OPTIONS = [
+  { id: 120, label: '120 — Sangat Fokus & Stabil' },
+  { id: 200, label: '200 — Rapi & Terkontrol' },
+  { id: 250, label: '250 — Standar Studio (Rekomendasi)' },
+  { id: 350, label: '350 — Kaya Variasi Improvisasi' },
+  { id: 500, label: '500 — Eksploratif Maksimal' },
+]
+// Single dedicated engine for Create Lagu (HeartMuLa Studio 3B).
 const PROVIDER_OPTIONS = [
-  { id: 'heartmula', label: 'Klipin Studio Core (Full Song)', hint: 'Mesin utama Klipin Music untuk menghasilkan lagu komplit kualitas studio.' },
-  { id: 'diffrhythm', label: 'Klipin Commercial Engine (LRC)', hint: 'Mesin komersial berbasis difusi dengan lirik sinkron kata-demi-kata.' },
-  { id: 'auto', label: 'Auto Dual-Take — draft + final', hint: 'Dua take langsung: Take A draf cepat, Take B kualitas studio.' },
-  { id: 'ace-step', label: 'Klipin Fast Draft (~1m)', hint: 'Iterasi ide lebih cepat dan hemat sebelum render final.' },
+  { id: 'heartmula', label: 'HeartMuLa Studio 3B (In-Memory Fast)', hint: 'Mesin utama Klipin Music (Apache 2.0) untuk membuat lagu orisinal kualitas studio penuh.' },
 ]
 const TAKE_COUNTS = [
   { id: 1, label: '1 take — hemat' },
@@ -247,6 +259,8 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   // Suno Creative Sliders + Inspire playlist + editor section.
   const [weirdness, setWeirdness] = useState(50)
   const [styleInfluence, setStyleInfluence] = useState(50)
+  const [vocalStyle, setVocalStyle] = useState('auto')
+  const [topk, setTopk] = useState(250)
   const [sectionIndex, setSectionIndex] = useState(0)
   const [sectionInstruction, setSectionInstruction] = useState('')
   const [sectionBusy, setSectionBusy] = useState(false)
@@ -344,6 +358,9 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const [remixPrompt, setRemixPrompt] = useState('')
   const [remixLyrics, setRemixLyrics] = useState('')
   const [remixStrength, setRemixStrength] = useState(0.6)
+  const [remixVocalStyle, setRemixVocalStyle] = useState('auto')
+  const [remixWeirdness, setRemixWeirdness] = useState(45)
+  const [remixStyleInfluence, setRemixStyleInfluence] = useState(70)
   const [remixRightsConfirmed, setRemixRightsConfirmed] = useState(false)
   const [remixBusy, setRemixBusy] = useState(false)
   const [remixAsrSource, setRemixAsrSource] = useState('')
@@ -1261,18 +1278,20 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         language_mix: bilingual ? languageMix : 'none',
         language_override: languageOverride,
         vocal_gender: effectiveGender,
-        provider,
+        vocal_style: vocalStyle,
+        provider: 'heartmula',
         duration,
         auto_duration: autoDuration,
         full_song: true,
         take_count: Math.max(1, Math.min(Number(takeCount) || 1, 2)),
-        take_mode: TAKE_MODES.some((m) => m.id === takeMode) ? takeMode : 'final',
+        take_mode: 'final',
         seed: Number.isFinite(seedValue) ? seedValue : null,
         style_tags: styleTags.trim(),
         negative_tags: negativeTags.trim(),
         exclude_styles: negativeTags.trim(),
         weirdness: Number(weirdness),
         style_influence: Number(styleInfluence),
+        topk: Number(topk) || 250,
         lora_id: loraId.trim(),
         instrumental,
         bpm: Number(bpm) || 0,
@@ -1832,9 +1851,12 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         ref_strength: Number(remixStrength),
         lyrics: remixLyrics.trim(),
         vocal_gender: coverGender,
+        vocal_style: remixVocalStyle,
+        weirdness: Number(remixWeirdness),
+        style_influence: Number(remixStyleInfluence),
         persona_id: personaId,
         rights_confirmed: remixRightsConfirmed,
-        cover_engine: effEngine,
+        cover_engine: 'yue2_comfy',
         pitch_shift: remixPitch,
         restyle: effRestyle,
         voice_mode: remixVoiceMode,
@@ -2077,43 +2099,13 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         placeholder="https://www.youtube.com/watch?v=…" className={fieldCls} />
                     </div>
 
-                    <div>
-                      <label className={labelCls}>Mode cover</label>
-                      <select value={remixEngine} onChange={(e) => {
-                        const next = e.target.value
-                        setRemixEngine(next)
-                        if (next === 'arrangement') setRemixPitch('0')
-                        else if (next === 'voice' && remixPitch === '0') setRemixPitch('auto')
-                      }} className={fieldCls}>
-                        <option value="yue2_comfy">✨ YuE2 + SheetSage2 (ComfyUI Headless — VRAM 6-8GB)</option>
-                        <option value="yue2_native">⚡ YuE2 + SheetSage2 (Native Python SDK — VRAM 16-24GB)</option>
-                        <option value="voice">🎯 Persona Baru + Aransemen Baru (Lirik &amp; Ketukan Terkunci — Rekomendasi)</option>
-                        <option value="arrangement">🎛️ Vokal Asli + Aransemen Baru (Beat-Locked 4-Stem)</option>
-                        <option value="voice_pure">🎤 Persona Baru + Musik Asli (Pure Voice Swap)</option>
-                        <option value="mulacover">✨ MuLaCover — Melodi &amp; Harmoni Asli (Generative AI)</option>
-                        <option value="diffrhythm">DiffRhythm — Melodi baru &amp; lirik terkunci</option>
-                        <option value="heartmula">HeartMuLa Studio — Melodi studio baru</option>
-                        <option value="ace-step">ACE-Step — Render cepat</option>
-                        <option value="">Otomatis (Rekomendasi Terbaik)</option>
-                      </select>
-                      <p className="mt-1.5 text-[11px] leading-[1.5] text-[#71717a]">
-                        {remixEngine === 'yue2_comfy'
-                          ? 'SheetSage2 mengekstrak melodi simbolik ABC notation, YuE2 menyanyikan lirik terkunci tanpa stem bleeding via worker ComfyUI (hemat VRAM).'
-                          : remixEngine === 'yue2_native'
-                            ? 'Pipeline native Python SheetSage2 + YuE2 berbobot penuh langsung di GPU server (VRAM 16-24GB).'
-                            : remixEngine === 'voice'
-                          ? 'Vokal asli dipisah (Demucs), timbre suara diadaptasi ke gender/persona pilihan. Melodi, lirik, dan ketukan tetap utuh.'
-                          : remixEngine === 'arrangement'
-                            ? 'Vokal asli penyanyi dipertahankan, seluruh aransemen instrumen diaransemen ulang ke genre baru dengan tempo sinkron.'
-                            : remixEngine === 'mulacover'
-                              ? 'Model AI menyanyikan ulang dengan melodi dan harmoni chord asli yang setia pada lagu sumber.'
-                              : remixEngine === 'diffrhythm'
-                                ? 'Lirik lagu sumber dinyanyikan ulang dengan aransemen dan gaya melodi baru yang segar.'
-                                : remixEngine === 'ace-step'
-                                  ? 'Draft cover cepat untuk pratinjau instan dengan konsumsi waktu minimal.'
-                                  : remixEngine === 'heartmula'
-                                    ? 'Lirik dikunci presisi, diaransemen dengan mesin studio Klipin.'
-                                    : 'Memilih mesin cover terbaik yang aktif secara otomatis.'}
+                    <div className="rounded-lg border border-[#10b981]/30 bg-[#10b981]/10 px-3 py-2 text-[11px] leading-relaxed text-[#a7f3d0]">
+                      <div className="flex items-center justify-between gap-2 font-semibold text-[#34d399]">
+                        <span>✨ Engine Cover: YuE2 + SheetSage2 Headless</span>
+                        <span className="rounded bg-[#10b981]/20 px-1.5 py-0.5 font-mono text-[10px]">Fast Keep-Warm · Lirik &amp; Melodi Terkunci</span>
+                      </div>
+                      <p className="mt-1 text-[#a7f3d0]/85">
+                        Mengekstrak melodi simbolik &amp; progresi akor asli dengan SheetSage2 lalu menyanyikan ulang lirik secara utuh tanpa kebocoran instrumen lama.
                       </p>
                     </div>
 
@@ -2140,36 +2132,14 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                       <p className="-mt-1.5 text-[11px] text-[#71717a]">Persona “{identityPersona.name}” aktif — suara mengikuti persona.</p>
                     )}
 
-                    {(remixEngine === 'voice' || remixEngine === 'arrangement') && (
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <div>
-                          <label className={labelCls}>Nada vokal</label>
-                          <select value={remixPitch} onChange={(e) => setRemixPitch(e.target.value)} className={fieldCls}>
-                            <option value="0">Asli (0)</option>
-                            <option value="auto">Otomatis</option>
-                            <option value="2">+2 semitone</option>
-                            <option value="-2">-2 semitone</option>
-                            <option value="12">+12 (pria → wanita)</option>
-                            <option value="-12">-12 (wanita → pria)</option>
-                          </select>
-                        </div>
-                        {remixEngine === 'voice' && (
-                          <div>
-                            <label className={labelCls}>Sumber suara</label>
-                            <select value={remixVoiceMode} onChange={(e) => setRemixVoiceMode(e.target.value)} className={fieldCls}>
-                              <option value="manual">Persona / gender</option>
-                              <option value="auto">Pilih otomatis</option>
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {remixEngine === 'voice' && (
-                      <label className="flex items-center gap-2 text-[12px] text-[#a1a1aa]">
-                        <input type="checkbox" checked={remixRestyle} onChange={(e) => setRemixRestyle(e.target.checked)} className="h-3.5 w-3.5 accent-[#f59e0b]" />
-                        Ganti aransemen ke genre
-                      </label>
-                    )}
+                    <div>
+                      <label className={labelCls}>Karakter penyampaian vokal</label>
+                      <select value={remixVocalStyle} onChange={(e) => setRemixVocalStyle(e.target.value)} className={fieldCls}>
+                        {VOCAL_STYLES.map((vs) => (
+                          <option key={vs.id} value={vs.id}>{vs.label}</option>
+                        ))}
+                      </select>
+                    </div>
 
                     <div>
                       <div className="mb-1.5 flex items-center justify-between">
@@ -2253,11 +2223,30 @@ export default function Music({ user, authChecked = false, onSignIn }) {
 
                     <div>
                       <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
-                        <span>Kemiripan dengan lagu asli</span>
+                        <span>Kunci Melodi &amp; Ketukan ke Lagu Asli</span>
                         <span className="font-mono tabular-nums text-[#71717a]">{Math.round(remixStrength * 100)}%</span>
                       </div>
                       <input type="range" min="0.1" max="0.9" step="0.1" value={remixStrength}
                         onChange={(e) => setRemixStrength(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
+                          <span>Kreativitas Aransemen</span>
+                          <span className="font-mono tabular-nums text-[#71717a]">{remixWeirdness}%</span>
+                        </div>
+                        <input type="range" min={10} max={90} step={5} value={remixWeirdness}
+                          onChange={(e) => setRemixWeirdness(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
+                      </div>
+                      <div>
+                        <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
+                          <span>Kepatuhan Gaya Genre</span>
+                          <span className="font-mono tabular-nums text-[#71717a]">{remixStyleInfluence}%</span>
+                        </div>
+                        <input type="range" min={20} max={95} step={5} value={remixStyleInfluence}
+                          onChange={(e) => setRemixStyleInfluence(Number(e.target.value))} className="w-full accent-[#10b981]" />
+                      </div>
                     </div>
 
                     <div>
@@ -2975,44 +2964,46 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             </div>
             </Group>
 
-            <div className="grid gap-3 sm:grid-cols-[1fr_150px]">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-white/55">Model / engine</span>
-                <select value={provider} onChange={(e) => onProviderChange(e.target.value)}
-                  className="w-full rounded-xl border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none">
-                  {providerOptions.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}{item.available ? '' : ' · belum aktif di server'}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="flex items-end">
-                <button type="button" onClick={create} disabled={createBlocked}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#ff5a1f] via-[#ff2d78] to-[#b829ff] px-4 py-2.5 text-sm font-black text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
-                  {working ? <><Spinner className="h-4 w-4" /> Membuat lagu…</> : '🎵 Create'}
-                </button>
+            <div className="space-y-2.5">
+              <div className="rounded-xl border border-cyan/30 bg-cyan/10 px-3 py-2 text-[11px] leading-relaxed text-white/85">
+                <div className="flex items-center justify-between gap-2 font-semibold text-white">
+                  <span>🎵 Engine Lagu Baru: HeartMuLa Studio 3B</span>
+                  <span className="rounded bg-cyan/20 px-1.5 py-0.5 font-mono text-[10px]">Fast In-Memory · Apache 2.0</span>
+                </div>
+                <p className="mt-0.5 text-white/65">
+                  Model generatif lagu orisinal komersial 100% gratis lisensi dengan vokal Bahasa Indonesia &amp; daerah natural.
+                </p>
               </div>
+              <button type="button" onClick={create} disabled={createBlocked}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#ff5a1f] via-[#ff2d78] to-[#b829ff] px-4 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+                {working ? <><Spinner className="h-4 w-4" /> Membuat lagu…</> : '🎵 Create Lagu'}
+              </button>
             </div>
-            <p className="mt-1 text-[11px] leading-5 text-white/45">
-              {providerOptions.find((p) => p.id === provider)?.hint}
-            </p>
 
-            {!simpleMode && (<Group title="6 · Lanjutan" subtitle="Take A/B, seed, style tags, LoRA, kreativitas">
+            {!simpleMode && (<Group title="6 · Lanjutan & Parameter Model" subtitle="Karakter vokal, variasi nada (Top-K), kreativitas (Temperature), kepatuhan genre (CFG), LoRA">
                 <div className="space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">Karakter penyampaian vokal</span>
+                      <select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value)}
+                        className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
+                        {VOCAL_STYLES.map((vs) => <option key={vs.id} value={vs.id}>{vs.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">Variasi nada (Top-K)</span>
+                      <select value={topk} onChange={(e) => setTopk(Number(e.target.value))}
+                        className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
+                        {TOPK_OPTIONS.map((tk) => <option key={tk.id} value={tk.id}>{tk.label}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block">
                       <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">Jumlah take</span>
                       <select value={takeCount} onChange={(e) => setTakeCount(Number(e.target.value))}
                         className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
                         {TAKE_COUNTS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">Mode take</span>
-                      <select value={takeMode} onChange={(e) => setTakeMode(e.target.value)}
-                        className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
-                        {TAKE_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                       </select>
                     </label>
                     <label className="block">

@@ -557,13 +557,14 @@ def _sampling_extra(cfg_scale=None, temperature=None, topk=None):
 
 
 def _run_cli(source_args, lyrics_path, tags_path, wav_path, duration_sec, seed, env, extra=()):
+    lazy_args = ["--lazy_load"] if os.environ.get("KLIPIN_MULACOVER_LAZY_LOAD", "0").strip() == "1" else []
     cmd = [
         sys.executable, "-m", "mulacover.cli",
         "--model_path", str(MODEL_ROOT),
         *source_args,
         "--lyrics", str(lyrics_path), "--tags", str(tags_path),
         "--save_path", str(wav_path), "--device", "cuda:0",
-        "--dtype", "bfloat16", "--lazy_load",
+        "--dtype", "bfloat16", *lazy_args,
         "--max_audio_length_ms", str(max(10, min(int(duration_sec), 600)) * 1000),
         "--seed", str(int(seed)) if seed is not None else "0",
         "--disable_progress",
@@ -631,7 +632,7 @@ _GPU = dict(
     cpu=8,
     memory=24576,
     timeout=2400,
-    scaledown_window=int(os.environ.get("KLIPIN_MULACOVER_SCALEDOWN", "180")),
+    scaledown_window=int(os.environ.get("KLIPIN_MULACOVER_SCALEDOWN", "60")),
     min_containers=int(os.environ.get("KLIPIN_MULACOVER_MIN_CONTAINERS", "0")),
     volumes={"/models": models},
     secrets=[modal.Secret.from_name("klipin-backend-secrets")],
@@ -715,7 +716,7 @@ def generate_cover(ref_audio_b64: str, lyrics: str, tags: str,
         lyrics = _inject_vocal_timing_markers(lyrics, first_vocal_sec)
         lyrics_path.write_text(lyrics, encoding="utf-8")
 
-    active_melody_mid = melody_mid
+    active_melody_mid = locked_melody_mid if locked_melody_mid.is_file() else melody_mid
     if have_midi:
         source_args = ["--melody_midi", str(active_melody_mid), "--chord_midi", str(chord_mid)]
         if need_genre_groove:
@@ -814,7 +815,7 @@ def transcribe_ref(ref_audio_b64: str) -> dict:
             vocal_meta = _json.loads(vocal_meta_file.read_text(encoding="utf-8"))
         except Exception:
             vocal_meta = {}
-    active_melody_mid = melody_mid
+    active_melody_mid = locked_melody_mid if locked_melody_mid.is_file() else melody_mid
     bpm = ""
     bpm_file = cache_dir / "bpm.txt"
     if bpm_file.is_file():

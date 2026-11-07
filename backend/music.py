@@ -213,6 +213,9 @@ def tags_for(spec: dict, info: dict | None = None) -> str:
             parts.append(language_info(secondary).get("tag", ""))
             parts.append("multilingual lyrics, bilingual song")
         parts.append(VOCAL_GENDERS.get(gender, ""))
+        vocal_style = str(spec.get("vocal_style") or "").strip().lower()
+        if vocal_style and vocal_style in VOCAL_STYLES:
+            parts.append(VOCAL_STYLES[vocal_style])
         parts.append("clear articulate vocals, studio vocal clarity, upfront lead vocal")
     try:
         bpm = int(spec.get("bpm") or 0)
@@ -440,6 +443,16 @@ VOCAL_GENDERS = {
     "male": "male vocal, male singer, masculine voice",
     "female": "female vocal, female singer, feminine voice",
     "duet": "real male and female duet, female lead vocal, male response vocal, alternating singers, two distinct voices, duet harmony",
+}
+
+VOCAL_STYLES = {
+    "auto": "",
+    "warm-smooth": "warm smooth vocal delivery, silky phrasing, intimate studio tone",
+    "emotional-ballad": "emotional expressive vocal, dynamic vibrato, heartfelt ballad phrasing",
+    "soulful-raspy": "soulful slightly raspy vocal timbre, warm chest voice, organic grit",
+    "bright-pop": "bright polished radio pop vocal, crisp diction, energetic projection",
+    "traditional-cengkok": "authentic Nusantara cengkok vocal ornamentation, expressive melodic turns",
+    "laidback-chill": "laid-back relaxed island vocal delivery, effortless phrasing, warm pocket",
 }
 
 # Bahasa vokal yang bisa dipilih pengguna. `tag` disuntikkan ke tags HeartMuLa,
@@ -1650,6 +1663,43 @@ def _heartmula_generate(spec: dict, job_dir: Path, out_path: Path, log=None) -> 
     return out_path.exists() and out_path.stat().st_size > 1024
 
 
+def _resolve_sampling_params(spec: dict) -> dict:
+    """Resolve studio sampling parameters (temperature, cfg_scale, topk) from explicit fields or 0-100 sliders."""
+    try:
+        weirdness = float(spec.get("weirdness", 50))
+    except (TypeError, ValueError):
+        weirdness = 50.0
+    try:
+        style_influence = float(spec.get("style_influence", 50))
+    except (TypeError, ValueError):
+        style_influence = 50.0
+
+    # Map weirdness (0..100) -> temperature (0.78..1.18, neutral 50 -> 1.00)
+    default_temp = round(0.78 + (max(0.0, min(100.0, weirdness)) / 100.0) * 0.40, 2)
+    # Map style_influence (0..100) -> cfg_scale (1.15..2.65, neutral 50 -> 1.50)
+    default_cfg = round(1.15 + (max(0.0, min(100.0, style_influence)) / 100.0) * 1.50, 2)
+
+    raw_temp = spec.get("temperature")
+    try:
+        temp = round(max(0.5, min(1.4, float(raw_temp))), 2) if raw_temp not in (None, "") else default_temp
+    except (TypeError, ValueError):
+        temp = default_temp
+
+    raw_cfg = spec.get("cfg_scale")
+    try:
+        cfg = round(max(1.0, min(4.5, float(raw_cfg))), 2) if raw_cfg not in (None, "") else default_cfg
+    except (TypeError, ValueError):
+        cfg = default_cfg
+
+    raw_topk = spec.get("topk")
+    try:
+        topk = max(20, min(500, int(raw_topk))) if raw_topk not in (None, "") else 250
+    except (TypeError, ValueError):
+        topk = 250
+
+    return {"temperature": temp, "cfg_scale": cfg, "topk": topk}
+
+
 def _heartmula_modal_generate(spec: dict, out_path: Path, log=None) -> dict | None:
     """Generate a full song on the deployed HeartMuLa Modal GPU worker.
 
@@ -1674,25 +1724,39 @@ def _heartmula_modal_generate(spec: dict, out_path: Path, log=None) -> dict | No
     except (TypeError, ValueError):
         seed = None
     lora = spec.get("lora_id") or _lora_id()
-    log and log(f"🎤 HeartMuLa Modal L4 full-song task started… "
-                f"({language['label']}, tags={tags[:120]}, seed={seed})")
+    sampling = _resolve_sampling_params(spec)
+    log and log(
+        f"🎤 HeartMuLa Modal L4 full-song task started… "
+        f"({language['label']}, tags={tags[:110]}, seed={seed}, "
+        f"temp={sampling['temperature']}, cfg={sampling['cfg_scale']}, topk={sampling['topk']})"
+    )
     try:
         ensure_modal_credentials()
         import modal
         function = modal.Function.from_name(app_name, function_name)
-        # Seed + LoRA diteruskan asli (deterministik); worker lama yang tidak
-        # kenal kwargs baru tetap kompatibel via fallback 4-arg.
+        # Seed + LoRA + Sampling diteruskan asli; worker lama yang belum
+        # kenal kwargs baru tetap kompatibel via fallback bertingkat.
         try:
             result = function.remote(
                 spec.get("lyrics", ""), tags,
                 int(float(spec.get("duration") or 180)), seed,
                 lora_id=lora or None,
+                cfg_scale=sampling["cfg_scale"],
+                temperature=sampling["temperature"],
+                topk=sampling["topk"],
             )
         except TypeError:
-            result = function.remote(
-                spec.get("lyrics", ""), tags,
-                int(float(spec.get("duration") or 180)), seed
-            )
+            try:
+                result = function.remote(
+                    spec.get("lyrics", ""), tags,
+                    int(float(spec.get("duration") or 180)), seed,
+                    lora_id=lora or None,
+                )
+            except TypeError:
+                result = function.remote(
+                    spec.get("lyrics", ""), tags,
+                    int(float(spec.get("duration") or 180)), seed
+                )
     except Exception as exc:  # noqa: BLE001 - translate Modal + credential errors
         raise RuntimeError(
             friendly_modal_error(exc, app=app_name, function=function_name)) from exc
@@ -2546,18 +2610,33 @@ def _yue2_cover_generate(spec: dict, out_path: Path, engine_type: str = "yue2_co
             if (native_app, native_fn) not in workers_to_try:
                 workers_to_try.append((native_app, native_fn))
 
+        sampling = _resolve_sampling_params(spec)
         last_exc = None
         for app_name, fn_name in workers_to_try:
-            log and log(f"🚀 [{engine_type}] Merender langsung di Modal Cloud GPU L4 ({app_name}:{fn_name})...")
+            log and log(
+                f"🚀 [{engine_type}] Merender langsung di Modal Cloud GPU L4 ({app_name}:{fn_name}, "
+                f"temp={sampling['temperature']}, cfg={sampling['cfg_scale']})..."
+            )
             try:
                 fn = modal.Function.from_name(app_name, fn_name)
-                res = fn.remote(
-                    ref_audio_b64=source_b64,
-                    lyrics=formatted_lyrics,
-                    style=style_prompt,
-                    duration_sec=duration,
-                    seed=seed,
-                )
+                try:
+                    res = fn.remote(
+                        ref_audio_b64=source_b64,
+                        lyrics=formatted_lyrics,
+                        style=style_prompt,
+                        duration_sec=duration,
+                        seed=seed,
+                        cfg_scale=sampling["cfg_scale"],
+                        temperature=sampling["temperature"],
+                    )
+                except TypeError:
+                    res = fn.remote(
+                        ref_audio_b64=source_b64,
+                        lyrics=formatted_lyrics,
+                        style=style_prompt,
+                        duration_sec=duration,
+                        seed=seed,
+                    )
                 audio_b64 = res.get("audio_b64") if isinstance(res, dict) else None
                 if not audio_b64:
                     raise RuntimeError(f"Worker Modal {app_name} tidak mengembalikan audio: {str(res)[:300]}")
