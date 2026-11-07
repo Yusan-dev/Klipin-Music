@@ -45,7 +45,7 @@ import {
   uploadMusicVoicePersona,
 } from './api.js'
 
-const DURATIONS = [60, 90, 120, 150, 180, 210, 240, 300]
+const DURATIONS = [60, 90, 120, 150, 180]
 const VOCAL_GENDERS = [
   { id: 'auto', label: 'Auto' },
   { id: 'female', label: 'Wanita' },
@@ -295,7 +295,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     const seg = window.location.hash.replace(/^#\/?/, '').split(/[?/]/)[0]
     return seg === 'cover' ? 'cover' : seg === 'history' ? 'history' : 'create'
   })
-  const [duration, setDuration] = useState(180)
+  const [duration, setDuration] = useState(120)
   // Sidebar "Buat Lagu" / "Buat Cover" share the same route; keep the tab in
   // sync with the hash so clicking either link switches the studio panel.
   useEffect(() => {
@@ -451,7 +451,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     if (!promptOk && !lyricsOk) {
       found.idea = `Isi salah satu: Ide lagu minimal ${MIN_PROMPT} karakter, atau Lirik minimal ${MIN_LYRICS} karakter.`
     }
-    if (!(duration >= 15 && duration <= 600)) found.duration = 'Durasi harus 15–600 detik.'
+    if (!(duration >= 15 && duration <= 180)) found.duration = 'Durasi produksi Create maksimal 180 detik (3 menit) untuk render cepat di Modal Cloud GPU.'
     return found
   }, [title, prompt, lyrics, duration])
   const missing = useMemo(() => Object.values(issues), [issues])

@@ -327,3 +327,67 @@ def test_unlimited_female_and_male_personas_and_renaming(tmp_path, monkeypatch):
     assert switched["name"] == "Budi Reggae"
     assert switched["vocal_gender"] == "male"
 
+
+def test_create_mode_enforces_modal_only_and_caps_duration(tmp_path, monkeypatch):
+    import music as music_module
+
+    # 1. Even if local HeartMuLa paths are set, Create mode with KLIPIN_CREATE_MODAL_ONLY=1
+    # must NEVER run local _heartmula_generate or fallback to local render_bgm.
+    monkeypatch.setenv("KLIPIN_CREATE_MODAL_ONLY", "1")
+    monkeypatch.setenv("KLIPIN_HEARTMULA_MODAL_ENABLED", "0")
+    monkeypatch.setenv("KLIPIN_DIFFRHYTHM_MODAL_ENABLED", "0")
+    monkeypatch.setenv("KLIPIN_ACE_STEP_MODAL_ENABLED", "0")
+    monkeypatch.setenv("KLIPIN_HEARTMULA_ROOT", str(tmp_path))
+    monkeypatch.setenv("KLIPIN_HEARTMULA_MODEL_PATH", str(tmp_path))
+
+    local_called = {"called": False}
+
+    def forbidden_local(*args, **kwargs):
+        local_called["called"] = True
+        return True
+
+    monkeypatch.setattr(music_module, "_heartmula_generate", forbidden_local)
+
+    with pytest.raises(RuntimeError, match="Full-song generation requires"):
+        music_module.generate_music(
+            {
+                "prompt": "lagu metal sunda",
+                "genre": "metal",
+                "lyrics": "[Verse]\nBaris satu\nBaris dua",
+                "duration": 300,
+                "provider": "heartmula",
+            },
+            tmp_path / "job_no_local",
+        )
+    assert local_called["called"] is False
+
+    # 2. When Modal is enabled, Create duration is strictly capped at 180s (even if 300s requested)
+    monkeypatch.setenv("KLIPIN_HEARTMULA_MODAL_ENABLED", "1")
+    monkeypatch.setattr(music_module, "_fetch_cover_art", lambda *a, **kw: ("", ""))
+    monkeypatch.setattr(music_module, "export_wav_lufs", lambda *a, **kw: "")
+    monkeypatch.setattr(music_module, "analyze_bpm_key", lambda *a, **kw: {})
+    monkeypatch.setattr(music_module, "detect_downbeats", lambda *a, **kw: {})
+    monkeypatch.setattr(music_module, "master_audio", lambda *a, **kw: True)
+
+    captured = {}
+
+    def fake_modal(spec, out_path, log=None):
+        captured["duration"] = spec.get("duration")
+        out_path.write_bytes(b"modal-mp3-audio" * 400)
+        return {"model": "HeartMuLa-oss-3B-happy-new-year", "duration_sec": int(spec.get("duration") or 0)}
+
+    monkeypatch.setattr(music_module, "_heartmula_modal_generate", fake_modal)
+    res = music_module.generate_music(
+        {
+            "prompt": "lagu pop jawa",
+            "genre": "pop-jawa",
+            "lyrics": "[Verse]\nLagu jawa hangat",
+            "duration": 360,
+            "provider": "heartmula",
+        },
+        tmp_path / "job_modal_capped",
+    )
+    assert captured["duration"] == 180.0
+    assert res["provider"] == "heartmula-modal"
+
+

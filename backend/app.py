@@ -148,7 +148,7 @@ _music_semaphore = asyncio.Semaphore(MAX_CONCURRENT_MUSIC_JOBS)
 # Past this window a queued/processing row with no artifact is treated as an
 # orphaned task and failed so the UI stops polling forever.
 MUSIC_JOB_STALE_SECONDS = int(os.environ.get(
-    "KLIPIN_MUSIC_STALE_SECONDS", str(45 * 60)))
+    "KLIPIN_MUSIC_STALE_SECONDS", str(10 * 60)))
 # asyncio only keeps a weak reference to a task created with create_task, so an
 # un-referenced music task can be garbage-collected mid `await` while the Modal
 # worker is still running. That left the DB row stuck in `processing` even
@@ -1230,7 +1230,16 @@ async def music_engine(_user: dict = Depends(require_user)):
 @app.post("/api/music/generate")
 async def music_generate(req: MusicGenerateRequest, _user: dict = Depends(require_user)):
     from music import (GENRES, cache_key, language_info, provider_hint,
-                       resolve_language)
+                       resolve_language, _create_max_duration, _create_modal_only)
+    if _create_modal_only() and os.environ.get("KLIPIN_HEARTMULA_MODAL_ENABLED", "0").strip() != "1":
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Model Create Lagu dikunci ke Modal Cloud GPU (render lokal dinonaktifkan untuk produksi). "
+                "Aktifkan KLIPIN_HEARTMULA_MODAL_ENABLED=1 di backend/.env."
+            ),
+        )
+    max_create_dur = float(_create_max_duration())
     genre_ids = {g["id"] for g in GENRES}
     if req.genre not in genre_ids:
         raise HTTPException(status_code=400, detail=(
@@ -1246,10 +1255,11 @@ async def music_generate(req: MusicGenerateRequest, _user: dict = Depends(requir
     if len(req.prompt) < 8 and len(req.lyrics) < 20:
         missing.append("Ide lagu (min. 8 karakter) atau Lirik (min. 20 karakter)")
     if not req.auto_duration and not 15 <= float(req.duration) <= 600:
-        missing.append("Durasi lagu (15–600 detik)")
+        missing.append(f"Durasi lagu (15–{int(max_create_dur)} detik)")
     if missing:
         raise HTTPException(status_code=400, detail=(
             "Bagian berikut belum lengkap: " + "; ".join(missing) + "."))
+    req.duration = max(15.0, min(float(req.duration or 120), max_create_dur))
     req.vocal_gender = (req.vocal_gender or "auto").strip().lower()
     if req.vocal_gender not in ("auto", "male", "female", "duet"):
         raise HTTPException(status_code=400, detail=(

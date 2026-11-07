@@ -1693,11 +1693,30 @@ def _resolve_sampling_params(spec: dict) -> dict:
 
     raw_topk = spec.get("topk")
     try:
-        topk = max(20, min(500, int(raw_topk))) if raw_topk not in (None, "") else 250
+        topk = max(20, min(500, int(raw_topk))) if raw_topk not in (None, "") else 50
     except (TypeError, ValueError):
-        topk = 250
+        topk = 50
 
     return {"temperature": temp, "cfg_scale": cfg, "topk": topk}
+
+
+def _create_max_duration() -> int:
+    try:
+        return max(30, min(int(os.environ.get("KLIPIN_CREATE_MAX_DURATION", "180")), 240))
+    except (TypeError, ValueError):
+        return 180
+
+
+def _create_modal_timeout() -> int:
+    try:
+        return max(60, min(int(os.environ.get("KLIPIN_CREATE_MODAL_TIMEOUT", "300")), 600))
+    except (TypeError, ValueError):
+        return 300
+
+
+def _create_modal_only() -> bool:
+    """When True (default in production), Create never falls back to local CPU/GPU or local BGM."""
+    return os.environ.get("KLIPIN_CREATE_MODAL_ONLY", "1").strip() != "0"
 
 
 def _heartmula_modal_generate(spec: dict, out_path: Path, log=None) -> dict | None:
@@ -1710,6 +1729,7 @@ def _heartmula_modal_generate(spec: dict, out_path: Path, log=None) -> dict | No
     if os.environ.get("KLIPIN_HEARTMULA_MODAL_ENABLED", "0").strip() != "1":
         return None
     import base64
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
     from modal_credentials import ensure_modal_credentials, friendly_modal_error
 
@@ -1725,21 +1745,23 @@ def _heartmula_modal_generate(spec: dict, out_path: Path, log=None) -> dict | No
         seed = None
     lora = spec.get("lora_id") or _lora_id()
     sampling = _resolve_sampling_params(spec)
+    max_dur = _create_max_duration()
+    req_dur = max(15, min(int(float(spec.get("duration") or 120)), max_dur))
+    modal_timeout = _create_modal_timeout()
     log and log(
-        f"🎤 HeartMuLa Modal L4 full-song task started… "
-        f"({language['label']}, tags={tags[:110]}, seed={seed}, "
+        f"🎤 HeartMuLa Modal Cloud GPU task started… "
+        f"({language['label']}, dur={req_dur}s, tags={tags[:110]}, seed={seed}, "
         f"temp={sampling['temperature']}, cfg={sampling['cfg_scale']}, topk={sampling['topk']})"
     )
-    try:
+
+    def _invoke_modal():
         ensure_modal_credentials()
         import modal
         function = modal.Function.from_name(app_name, function_name)
-        # Seed + LoRA + Sampling diteruskan asli; worker lama yang belum
-        # kenal kwargs baru tetap kompatibel via fallback bertingkat.
         try:
-            result = function.remote(
+            return function.remote(
                 spec.get("lyrics", ""), tags,
-                int(float(spec.get("duration") or 180)), seed,
+                req_dur, seed,
                 lora_id=lora or None,
                 cfg_scale=sampling["cfg_scale"],
                 temperature=sampling["temperature"],
@@ -1747,16 +1769,32 @@ def _heartmula_modal_generate(spec: dict, out_path: Path, log=None) -> dict | No
             )
         except TypeError:
             try:
-                result = function.remote(
+                return function.remote(
                     spec.get("lyrics", ""), tags,
-                    int(float(spec.get("duration") or 180)), seed,
+                    req_dur, seed,
                     lora_id=lora or None,
                 )
             except TypeError:
-                result = function.remote(
+                return function.remote(
                     spec.get("lyrics", ""), tags,
-                    int(float(spec.get("duration") or 180)), seed
+                    req_dur, seed
                 )
+
+    try:
+        pool = ThreadPoolExecutor(max_workers=1)
+        fut = pool.submit(_invoke_modal)
+        try:
+            result = fut.result(timeout=modal_timeout)
+        except FuturesTimeoutError as tex:
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise RuntimeError(
+                f"Render Modal Cloud GPU melewati batas waktu produksi ({modal_timeout} detik). "
+                "Job dihentikan otomatis agar tidak menggantung; silakan coba lagi."
+            ) from tex
+        finally:
+            pool.shutdown(wait=False)
+    except RuntimeError:
+        raise
     except Exception as exc:  # noqa: BLE001 - translate Modal + credential errors
         raise RuntimeError(
             friendly_modal_error(exc, app=app_name, function=function_name)) from exc
@@ -3207,7 +3245,10 @@ def align_timeline(audio_path: Path, lyrics: str, duration: float,
         except Exception as groq_err:
             log and log(f"⚠️ Groq alignment fallback ({groq_err})")
 
-    # 2. Fallback Lokal CPU: model tiny/base hemat daya, batas core CPU agar laptop tidak freeze
+    # 2. Fallback Lokal CPU: dinonaktifkan secara default di produksi agar server/container
+    # tidak tertahan 2-5 menit di CPU lokal saat GROQ_API_KEY kosong.
+    if os.environ.get("KLIPIN_ALLOW_LOCAL_WHISPER_ALIGN", "0").strip() != "1":
+        return base
     try:
         from faster_whisper import WhisperModel
         model_name = os.environ.get("KLIPIN_MUSIC_ALIGN_MODEL", "tiny")
@@ -3753,12 +3794,14 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
     # instead of a frozen "processing" state while Whisper/LUFS run locally.
     stage = on_stage or (lambda _stage: None)
     job_dir.mkdir(parents=True, exist_ok=True)
-    duration = max(8.0, min(float(spec.get("duration") or 30), 600.0))
+    cover_mode = bool(spec.get("cover_mode"))
+    max_allowed_dur = 600.0 if cover_mode else float(_create_max_duration())
+    duration = max(8.0, min(float(spec.get("duration") or 30), max_allowed_dur))
     info = genre_info(spec.get("genre") or "pop-jawa")
     provider = _normalize_provider(spec.get("provider"))
     prompt = (spec.get("prompt") or "lagu lokal yang hangat dan mudah diingat").strip()
     spec = dict(spec)
-    cover_mode = bool(spec.get("cover_mode"))
+    spec["duration"] = duration
     cover_engine = str(spec.get("cover_engine") or "").strip().lower()
     if cover_engine == "yue2":
         cover_engine = str(os.environ.get("COVER_ENGINE", "yue2_comfy")).strip().lower()
@@ -3928,7 +3971,7 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         except Exception:  # noqa: BLE001
             _sec_per_line = 4.7
         sung = sung_line_count(lyrics)
-        target = max(30.0, min(600.0, round(sung * float(_sec_per_line) + 6.0, 1)))
+        target = max(30.0, min(max_allowed_dur, round(sung * float(_sec_per_line) + 6.0, 1)))
         duration = target
         spec["duration"] = target
         log(f"🎯 Durasi otomatis dari lirik: {sung} baris → {target:.0f} dtk")
@@ -4076,25 +4119,27 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         ace_modal_result = _ace_step_modal_generate({**spec, "lyrics": lyrics}, output, log=log)
         if ace_modal_result:
             used, used_detail = "ace-step-modal", ace_modal_result
-    if used == "fallback-bgm" and provider in ("auto", "ace-step") and _ace_step_url():
-        if _ace_step_generate({**spec, "lyrics": lyrics}, output, log=log):
-            used = "ace-step"
-    if (not faithful_audio_cover and used == "fallback-bgm"
-            and provider in ("auto", "heartmula") and heartmula_ready):
-        if _heartmula_generate({**spec, "lyrics": lyrics}, job_dir, output, log=log):
-            used = "heartmula"
-    for candidate in ([] if cover_mode else candidates):
-        if used != "fallback-bgm":
-            break
-        log(f"🎛️ Mencoba provider {candidate}…")
-        external_prompt = f"{spec.get('prompt', prompt)}; {tags_for(spec, info)}"
-        if _run_external(candidate, {**spec, "prompt": external_prompt}, output):
-            used = candidate
-            break
-    if used == "fallback-bgm" and spec.get("full_song"):
+    modal_only_create = (not cover_mode) and _create_modal_only()
+    if not modal_only_create:
+        if used == "fallback-bgm" and provider in ("auto", "ace-step") and _ace_step_url():
+            if _ace_step_generate({**spec, "lyrics": lyrics}, output, log=log):
+                used = "ace-step"
+        if (not faithful_audio_cover and used == "fallback-bgm"
+                and provider in ("auto", "heartmula") and heartmula_ready):
+            if _heartmula_generate({**spec, "lyrics": lyrics}, job_dir, output, log=log):
+                used = "heartmula"
+        for candidate in ([] if cover_mode else candidates):
+            if used != "fallback-bgm":
+                break
+            log(f"🎛️ Mencoba provider {candidate}…")
+            external_prompt = f"{spec.get('prompt', prompt)}; {tags_for(spec, info)}"
+            if _run_external(candidate, {**spec, "prompt": external_prompt}, output):
+                used = candidate
+                break
+    if used == "fallback-bgm" and (spec.get("full_song") or modal_only_create):
         raise RuntimeError(
             "Full-song generation requires an active HeartMuLa, DiffRhythm, or ACE-Step "
-            "provider (instrumental fallback is disabled for full_song). "
+            "Modal Cloud GPU provider (local rendering and instrumental fallback are disabled for production). "
             + provider_hint()
         )
     if used == "fallback-bgm":
