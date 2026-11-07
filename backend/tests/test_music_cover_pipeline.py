@@ -238,7 +238,7 @@ def test_transcript_injects_intro_and_instrumental_markers_from_timestamps():
 
 def test_mulacover_inject_vocal_timing_markers():
     """Verify _inject_vocal_timing_markers prepends [Intro] only when first_vocal_sec >= 6.0s."""
-    from mulacover_modal_app import _inject_vocal_timing_markers
+    from music import _inject_vocal_timing_markers
 
     raw = "[Verse]\nMenunggu sesuatu"
     assert _inject_vocal_timing_markers(raw, 2.5) == raw

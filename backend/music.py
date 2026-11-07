@@ -2305,6 +2305,19 @@ def _mulacover_sampling_params() -> dict:
     }
 
 
+def _inject_vocal_timing_markers(lyrics: str, first_vocal_sec: float) -> str:
+    """Ensure [Intro] precedes [Verse] when the original singer enters after >= 6.0s."""
+    text = str(lyrics or "").strip()
+    if not text or first_vocal_sec < 6.0:
+        return text
+    first_line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    if first_line.lower().startswith("[intro"):
+        return text
+    if first_line.startswith("["):
+        return f"[Intro]\n\n{text}"
+    return f"[Intro]\n\n[Verse]\n{text}"
+
+
 def _format_lyrics_for_mulacover(lyrics: str) -> str:
     """Format lyrics according to official HeartMuLa/MuLaCover documentation:
     - Multiline lyrics with section markers ([Intro], [Verse], [Chorus], [Outro])
@@ -2818,7 +2831,7 @@ def _map_words_to_lines(asr_words: list[dict], base: list[dict]) -> list[dict]:
             word = asr_words[block.a + offset]
             times[block.b + offset] = (word["start"], word["end"])
             matched += 1
-    if matched / max(1, len(lyric_words)) < 0.35:
+    if matched / max(1, len(lyric_words)) < 0.15:
         return base
 
     by_line: dict[int, list[int]] = {}
@@ -3241,7 +3254,10 @@ def align_timeline(audio_path: Path, lyrics: str, duration: float,
                 out = _map_words_to_lines(words, base)
                 if any(line.get("words") for line in out):
                     log and log(f"🎯 Alignment Groq Whisper selesai: {len(words)} kata → {len(out)} baris")
-                    return out
+                else:
+                    log and log(f"🎯 Alignment Groq Whisper selesai ({len(words)} kata terdeteksi)")
+                return out
+            return base
         except Exception as groq_err:
             log and log(f"⚠️ Groq alignment fallback ({groq_err})")
 

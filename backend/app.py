@@ -4938,7 +4938,6 @@ class _VideosApp:
                 if not target_file.is_file():
                     fallback_roots = [
                         OUTPUT_DIR.parent.parent / "outputs" / parts_check[0],
-                        OUTPUT_DIR.parent.parent / "outputs" / "reggae_cewe_terbaru",
                     ]
                     fname = parts_check[1]
                     for fb_root in fallback_roots:
