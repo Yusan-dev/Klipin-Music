@@ -2054,9 +2054,13 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const labelCls = 'mb-1.5 block text-[11px] font-medium text-[#a1a1aa]'
 
   const renderPersonaStudioPanel = ({ compact = false } = {}) => {
-    const showFemale = personaGenderFilter === 'all' || personaGenderFilter === 'female'
-    const showMale = personaGenderFilter === 'all' || personaGenderFilter === 'male'
-    const showOther = personaGenderFilter === 'all' && otherPersonas.length > 0
+    // The filter only narrows the list; the currently selected persona must stay
+    // visible, otherwise the <select> silently shows "Tanpa persona".
+    const selGender = String(selectedPersonaObj?.vocal_gender || '').toLowerCase()
+    const showFemale = personaGenderFilter === 'all' || personaGenderFilter === 'female' || selGender === 'female'
+    const showMale = personaGenderFilter === 'all' || personaGenderFilter === 'male' || selGender === 'male'
+    const showOther = otherPersonas.length > 0 && (
+      personaGenderFilter === 'all' || (selectedPersonaObj && selGender !== 'female' && selGender !== 'male'))
     return (
       <div className="space-y-2.5 rounded-xl border border-[#2c2c35] bg-[#141419] p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2164,6 +2168,14 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 🗑 Hapus
               </button>
             </div>
+          )}
+
+          {selectedPersonaObj && (
+            <p className="mt-1.5 text-[10.5px] leading-snug text-white/55">
+              {selectedPersonaObj.has_voice_sample
+                ? '🔒 Suara persona terkunci — lagu dinyanyikan dengan warna suara persona ini (konversi vokal setelah render).'
+                : '🎨 Persona karakter — saat render pertama suaranya dikunci otomatis (±1 menit), lalu dipakai sama persis di semua lagu berikutnya.'}
+            </p>
           )}
 
           {personaEditOpen && selectedPersonaObj && (

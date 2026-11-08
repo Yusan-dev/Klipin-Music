@@ -117,6 +117,11 @@ export default function CoverCreate({
     () => personas.filter((p) => String(p.vocal_gender || '').toLowerCase() === 'male'),
     [personas],
   )
+  // Persona tanpa kategori (auto) tetap harus bisa dipilih untuk menyanyi.
+  const otherPersonas = useMemo(
+    () => personas.filter((p) => !['female', 'male'].includes(String(p.vocal_gender || '').toLowerCase())),
+    [personas],
+  )
   const [engine] = useState('yue2_comfy')
   const [restyleStrength, setRestyleStrength] = useState(0.55)
   const [weirdness, setWeirdness] = useState(45)
@@ -713,6 +718,15 @@ export default function CoverCreate({
                       {malePersonas.map((p) => (
                         <option key={p.persona_id} value={p.persona_id}>
                           👨 {p.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {otherPersonas.length > 0 && (
+                    <optgroup label={`🎭 Persona Lainnya (${otherPersonas.length})`}>
+                      {otherPersonas.map((p) => (
+                        <option key={p.persona_id} value={p.persona_id}>
+                          🎭 {p.name}
                         </option>
                       ))}
                     </optgroup>

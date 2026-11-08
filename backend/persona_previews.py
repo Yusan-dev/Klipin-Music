@@ -18,6 +18,7 @@ import voice_personas
 _cap_lock = threading.Lock()
 _cap_cache = (0.0, {})
 _materialize_lock = threading.Lock()
+_persona_voice_lock = threading.Lock()
 VERSION = "singing-persona-v1"
 
 
@@ -222,6 +223,48 @@ def save(preview_id, user_id, name):
         conn.execute("UPDATE music_voice_previews SET saved_persona_id=? WHERE preview_id=? AND user_id=?",
                      (preview_id, preview_id, user_id))
     return db.get_music_persona(preview_id, user_id)
+
+
+def materialize_persona_voice(user_id: str, persona: dict) -> dict:
+    """Freeze a designed persona into a real singing voice reference (once).
+
+    A designed persona only stores text tags, so without this every song used
+    a different, random singer. We sing one short a-cappella reference from the
+    persona's own character (deterministic seed per persona), encrypt it as the
+    persona's voice sample, and from then on Seed-VC converts every song's lead
+    vocal to that exact timbre — Create Lagu and Cover Lagu alike.
+    """
+    persona_id = str(persona.get("persona_id") or "")
+    if not persona_id:
+        raise ValueError("Persona tidak valid.")
+    if persona.get("voice_ref_path"):
+        return persona
+    status = capability()
+    if not status["ready"]:
+        raise RuntimeError(status["message"])
+    gender = str(persona.get("vocal_gender") or "auto").lower()
+    timbre = {"male": "male singer,masculine voice",
+              "female": "female singer,feminine voice"}.get(gender, "natural singer")
+    character = ",".join(t.strip() for t in str(persona.get("style_tags") or "").split(",")
+                         if t.strip() and t.strip().lower() not in ("female vocal", "male vocal"))
+    tags = ",".join(p for p in (timbre, character, "solo singer,a cappella,dry studio vocal") if p)
+    seed = int(hashlib.sha256(persona_id.encode()).hexdigest()[:8], 16) % (2 ** 31 - 1) or 1
+    with _persona_voice_lock:
+        fresh = db.get_music_persona(persona_id, user_id)
+        if not fresh:
+            raise LookupError("Persona tidak ditemukan.")
+        if fresh.get("voice_ref_path"):
+            return fresh
+        result = _function("design_preview").remote(
+            tags[:300], seed, os.environ.get("KLIPIN_HEARTMULA_MODAL_APP", "klipin-music"))
+        audio = base64.b64decode(result["audio_b64"], validate=True)
+        if len(audio) < 1024 or len(audio) > 4_000_000:
+            raise ValueError("Referensi suara persona tidak valid.")
+        sample = voice_personas.store_sample(user_id, persona_id, audio)
+        with db._lock, db._connect() as conn:
+            conn.execute("UPDATE music_personas SET voice_ref_path=?, seed_base=? "
+                         "WHERE persona_id=? AND user_id=?", (sample, seed, persona_id, user_id))
+        return db.get_music_persona(persona_id, user_id)
 
 
 def convert_song(src: Path, reference: Path, output: Path, duration: float,

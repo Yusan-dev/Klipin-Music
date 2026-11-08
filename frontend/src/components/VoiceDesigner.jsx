@@ -251,13 +251,12 @@ export default function VoiceDesigner({ user, onSignIn, onSaved }) {
                 key={g.id}
                 type="button"
                 onClick={() => setSpec((prev) => ({ ...prev, vocal_gender: g.id }))}
-                className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${
-                  spec.vocal_gender === g.id
+                className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${spec.vocal_gender === g.id
                     ? g.id === 'female'
                       ? 'border-magenta/60 bg-magenta/20 text-white'
                       : 'border-cyan/60 bg-cyan/20 text-white'
                     : 'border-white/10 bg-navy-3 text-white/60 hover:text-white'
-                }`}
+                  }`}
               >
                 {g.label}
               </button>
@@ -368,9 +367,8 @@ export default function VoiceDesigner({ user, onSignIn, onSaved }) {
                 type="button"
                 onClick={() => setSelectedId(p.preview_id)}
                 aria-pressed={selectedId === p.preview_id}
-                className={`rounded-lg border px-3 py-2 text-left text-[11px] ${
-                  selectedId === p.preview_id ? 'border-cyan/50 bg-cyan/10 text-white' : 'border-white/10 text-white/55'
-                }`}
+                className={`rounded-lg border px-3 py-2 text-left text-[11px] ${selectedId === p.preview_id ? 'border-cyan/50 bg-cyan/10 text-white' : 'border-white/10 text-white/55'
+                  }`}
               >
                 {p.saved_persona_id ? '✓ Tersimpan' : `Preview #${items.length - index}`} ·{' '}
                 {p.status === 'completed' ? `${Math.round(p.duration)} dtk` : p.status === 'failed' ? 'Gagal' : 'Diproses'}

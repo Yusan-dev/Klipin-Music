@@ -2590,14 +2590,47 @@ def _mulacover_modal_generate(spec: dict, out_path: Path, log=None) -> dict | No
     return {**result, "audio_qc": qc, **sampling}
 
 
+_COVER_PIPELINE_CLAUSE = re.compile(
+    r";\s*preserve the extracted lyrics exactly.*$", re.IGNORECASE | re.DOTALL)
+_DEFAULT_COVER_PROMPT = re.compile(r"^\s*rearrange this song as [\w\- &/]+\s*$", re.IGNORECASE)
+
+
+def _cover_arrangement_direction(spec: dict) -> str:
+    """User's own arrangement words only — no pipeline instructions.
+
+    The API appends lyric/section-lock instructions to ``prompt`` for the
+    audio-conditioned engines; YuE2 reads the style as tags, so those clauses
+    (and the gender suffix) only dilute the user's direction.
+    """
+    raw = str(spec.get("arrangement_prompt") or "").strip()
+    if not raw:
+        raw = _COVER_PIPELINE_CLAUSE.sub("", str(spec.get("prompt") or "")).strip()
+    if _DEFAULT_COVER_PROMPT.match(raw):
+        return ""
+    return raw[:400]
+
+
+def _cover_vocal_direction(spec: dict) -> str:
+    """Vocal description for YuE2: persona character first, then gender."""
+    explicit = str(spec.get("vocal_persona_desc") or "").strip()
+    if explicit:
+        return explicit
+    gender_tag = VOCAL_GENDERS.get(str(spec.get("vocal_gender") or "").lower(), "") or ""
+    persona_tags = str(spec.get("style_tags") or "").strip() if spec.get("persona_id") else ""
+    parts = [p for p in (persona_tags, gender_tag) if p]
+    return ", ".join(dict.fromkeys(parts))
+
+
 def _yue2_cover_generate(spec: dict, out_path: Path, engine_type: str = "yue2_comfy", log=None) -> dict:
     """Generate cover using SheetSage2 + YuE2 via ComfyUI API or Native Python SDK (Modal Cloud GPU or Local)."""
     try:
-        from services.lyric_style_agent import normalize_lyrics as normalize_cover_lyrics, build_style_prompt
+        from services.lyric_style_agent import (
+            normalize_lyrics as normalize_cover_lyrics, build_style_prompt, arrangement_variation)
         from engines.yue2_comfy_engine import Yue2ComfyEngine
         from engines.yue2_native_engine import Yue2NativeEngine
     except ImportError:
-        from backend.services.lyric_style_agent import normalize_lyrics as normalize_cover_lyrics, build_style_prompt
+        from backend.services.lyric_style_agent import (
+            normalize_lyrics as normalize_cover_lyrics, build_style_prompt, arrangement_variation)
         from backend.engines.yue2_comfy_engine import Yue2ComfyEngine
         from backend.engines.yue2_native_engine import Yue2NativeEngine
 
@@ -2619,18 +2652,26 @@ def _yue2_cover_generate(spec: dict, out_path: Path, engine_type: str = "yue2_co
     formatted_lyrics = normalize_cover_lyrics(raw_lyrics)
 
     info = genre_info(spec.get("genre") or "pop")
-    style_prompt = build_style_prompt(
-        genre=spec.get("genre") or "pop",
-        arrangement=str(spec.get("prompt") or info.get("tags", "")),
-        vocal_persona_desc=str(spec.get("vocal_persona_desc") or VOCAL_GENDERS.get(str(spec.get("vocal_gender") or "").lower(), "")),
-    )
-
-    duration = max(10, min(int(float(spec.get("duration") or 180)), 600))
     seed = spec.get("seed")
     try:
         seed = int(seed) if seed is not None else 42
     except (TypeError, ValueError):
         seed = 42
+    # Every take gets a seeded arrangement (groove / lead / hook / mix) so a
+    # repeated cover of the same song is a new arrangement, not a re-render of
+    # one fixed preset. The user's own direction always takes priority.
+    variation = arrangement_variation(spec.get("genre") or "pop", seed,
+                                      spec.get("weirdness", 50))
+    style_prompt = build_style_prompt(
+        genre=spec.get("genre") or "pop",
+        arrangement=_cover_arrangement_direction(spec),
+        vocal_persona_desc=_cover_vocal_direction(spec),
+        variation=variation,
+    )
+    spec["_cover_arrangement_variation"] = variation
+    log and log(f"🎼 Aransemen take ini: {variation}")
+
+    duration = max(10, min(int(float(spec.get("duration") or 180)), 600))
 
     # 1. Primary: Modal Cloud GPU Execution (Nvidia L4 / A10G - Super Cepat di Cloud)
     use_modal = (
@@ -2700,6 +2741,7 @@ def _yue2_cover_generate(spec: dict, out_path: Path, engine_type: str = "yue2_co
                     "audio_encoder": res.get("audio_encoder", "sheetsage2_bf16"),
                     "provider": f"{engine_type}-modal",
                     "duration": duration,
+                    "arrangement_variation": variation,
                 }
             except Exception as exc:
                 last_exc = exc
@@ -2724,6 +2766,8 @@ def _yue2_cover_generate(spec: dict, out_path: Path, engine_type: str = "yue2_co
     if not result_audio.is_file():
         raise RuntimeError(f"Engine {engine_type} tidak menghasilkan file audio valid.")
     shutil.copyfile(result_audio, out_path)
+    if isinstance(result, dict):
+        result = {**result, "arrangement_variation": variation}
     return result
 
 
@@ -4099,6 +4143,8 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         if yue2_result:
             used = f"{cover_engine}-cover"
             used_detail = yue2_result
+            if isinstance(yue2_result, dict):
+                spec["_cover_arrangement_variation"] = yue2_result.get("arrangement_variation", "")
     if cover_mode and cover_engine == "mulacover":
         mulacover_result = _mulacover_modal_generate(
             {**spec, "lyrics": lyrics}, output, log=log)
@@ -4325,6 +4371,7 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         "groove_reset": bool(spec.get("groove_reset")) if cover_mode else False,
         "cover_reference_strength": float(spec.get("ref_strength") or 0.5) if cover_mode else 0.0,
         "cover_style_prompt": str(spec.get("cover_style_prompt") or "") if cover_mode else "",
+        "cover_arrangement_variation": str(spec.get("_cover_arrangement_variation") or "") if cover_mode else "",
         "cover_filename": cover_filename, "cover_source": cover_source,
         "wav_filename": wav_filename,
         "cover_sampling": {

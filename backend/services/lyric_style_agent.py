@@ -154,25 +154,137 @@ def normalize_lyrics(raw_lyrics: str) -> str:
     return "\n\n".join(tagged_blocks).strip()
 
 
+# Compact genre identity used when a per-take arrangement variation is supplied.
+# The long GENRE_STYLE_MAP presets pin one exact instrumentation (tempo, lead
+# instrument, hook), which made every cover take of the same song sound
+# identical. The core keeps the genre recognisable; the variation pool below
+# supplies the concrete arrangement choices so each take is a new arrangement.
+GENRE_CORE_MAP: dict[str, str] = {
+    "pop": "contemporary pop, polished modern production",
+    "rock": "rock band arrangement, live drums, electric guitars, bass guitar",
+    "jazz": "jazz arrangement, swing or bossa feel, acoustic jazz instrumentation",
+    "reggae": "authentic roots reggae, offbeat skank, one-drop drum groove, deep dub bassline",
+    "dangdut": "modern dangdut, kendang rhythm, suling flute",
+    "dangdut-koplo": "dangdut koplo, driving kendang koplo beat, festive groove",
+    "dangdut-remix": "electronic dangdut remix, kendang breaks with club kick",
+    "edm": "electronic dance music, festival production, sidechained synths",
+    "lofi": "lo-fi chillhop, dusty tape texture, relaxed drums",
+    "rnb": "contemporary R&B, soulful harmony, warm low end",
+    "hiphop": "hip hop beat, punchy drums, heavy sub-bass",
+    "folk": "indie acoustic folk, organic instrumentation",
+    "akustik": "unplugged acoustic arrangement, intimate room sound",
+    "metal": "heavy metal, high-gain guitars, aggressive drums",
+    "ambient": "ambient soundscape, evolving pads",
+}
+
+# Per-genre arrangement choices. Each take draws one item per slot from a
+# seeded RNG, so a fresh seed = a genuinely different arrangement while the
+# melody (SheetSage2 ABC) and lyrics stay locked.
+_GENERIC_VARIANTS: dict[str, list[str]] = {
+    "groove": ["laid-back groove", "driving steady groove", "half-time feel",
+               "bouncy syncopated groove", "mid-tempo pocket groove"],
+    "lead": ["piano-led arrangement", "electric guitar-led arrangement",
+             "acoustic guitar-led arrangement", "synth-led arrangement",
+             "string section-led arrangement", "organ-led arrangement"],
+    "hook": ["instrumental intro hook", "guitar riff intro", "piano motif intro",
+             "brass hook intro", "atmospheric pad intro"],
+    "texture": ["warm analog mix", "bright airy mix", "wide cinematic mix",
+                "tight dry punchy mix", "vintage tape-saturated mix"],
+}
+GENRE_ARRANGEMENT_VARIANTS: dict[str, dict[str, list[str]]] = {
+    "reggae": {
+        "groove": ["laid-back 68 BPM half-time one-drop", "steppers four-on-the-floor reggae kick",
+                   "rockers reggae groove with busy hi-hat", "slow lovers-rock groove",
+                   "uptempo ska-tinged offbeat groove", "dancehall-influenced riddim"],
+        "lead": ["muted clean electric guitar skank with Hammond organ bubble",
+                 "nylon acoustic guitar skank with cajon", "Rhodes electric piano skank",
+                 "clavinet chops with wah guitar", "melodica lead lines over organ bubble",
+                 "ukulele strum with island percussion"],
+        "hook": ["saxophone melodic intro hook", "trumpet and trombone horn section hook",
+                 "melodica intro motif", "dub siren and echo intro", "lead guitar melodic intro",
+                 "flute intro melody"],
+        "texture": ["warm plate reverb and dub tape delay", "crisp modern reggae-pop mix",
+                    "vintage 70s roots analog mix", "spacious dub mix with spring reverb",
+                    "bright beach-pop reggae mix"],
+    },
+    "pop": {
+        "groove": ["upbeat four-on-the-floor pop groove", "mid-tempo ballad groove",
+                   "syncopated dance-pop groove", "half-time anthem groove"],
+        "lead": ["bright synth plucks", "grand piano chords", "acoustic guitar strums",
+                 "funky electric guitar", "lush string arrangement"],
+        "hook": ["vocal chop hook", "piano motif intro", "guitar riff intro", "synth lead hook"],
+        "texture": ["polished radio mix", "warm intimate mix", "wide modern mix"],
+    },
+    "dangdut-koplo": {
+        "groove": ["fast koplo kendang groove", "mid-tempo koplo jaipong groove",
+                   "koplo with trap hi-hat accents"],
+        "lead": ["suling bamboo flute lead", "electric guitar melodic lead", "keyboard organ lead",
+                 "mandolin melody"],
+        "hook": ["suling intro hook", "keyboard intro riff", "guitar melodic intro"],
+        "texture": ["live stage koplo mix", "modern clean studio mix"],
+    },
+    "rock": {
+        "groove": ["driving straight eighth groove", "heavy half-time groove", "punk-pop fast groove"],
+        "lead": ["crunchy rhythm guitars", "dual lead guitars", "piano and guitar rock"],
+        "hook": ["guitar riff intro", "drum fill intro", "lead guitar solo intro"],
+        "texture": ["raw live mix", "big stadium mix", "vintage 70s mix"],
+    },
+}
+
+
+def arrangement_variation(genre: str, seed: int | None, weirdness: float = 50.0) -> str:
+    """Pick a seeded set of arrangement choices for one take.
+
+    Higher weirdness adds a cross-genre flavour slot so creative takes drift
+    further from the default preset.
+    """
+    import random
+
+    g_key = (genre or "").strip().lower()
+    pool = GENRE_ARRANGEMENT_VARIANTS.get(g_key) or _GENERIC_VARIANTS
+    rng = random.Random(int(seed) if seed is not None else None)
+    picks = [rng.choice(pool[slot]) for slot in ("groove", "lead", "hook", "texture") if pool.get(slot)]
+    try:
+        w = float(weirdness)
+    except (TypeError, ValueError):
+        w = 50.0
+    if w >= 60:
+        picks.append(rng.choice(_GENERIC_VARIANTS["lead"]).replace("-led arrangement", " colour"))
+    return ", ".join(picks)
+
+
 def build_style_prompt(
     genre: str,
     arrangement: str = "",
     vocal_persona_desc: str = "",
+    variation: str = "",
 ) -> str:
     """Build a rich, structured English style prompt for YuE2 / SheetSage2.
 
     Follows the GMVP hierarchy:
     Genre / Subgenre -> Mood & Atmosphere -> Instruments & Arrangement -> Vocal Style -> Production Quality.
+
+    ``arrangement`` is the user's own direction and takes priority. When a
+    seeded ``variation`` is given, a compact genre core is used instead of the
+    rigid full preset so every take gets a different arrangement.
     """
     g_key = (genre or "").strip().lower()
     base_genre_style = GENRE_STYLE_MAP.get(g_key, f"{genre} style music, rhythmic accompaniment, studio production")
-
-    parts: list[str] = [base_genre_style]
+    var = (variation or "").strip()
+    if var:
+        base_genre_style = GENRE_CORE_MAP.get(g_key) or f"{genre} style music"
 
     arr = (arrangement or "").strip()
-    if arr:
-        # Ensure arrangement does not duplicate genre keywords blindly
-        parts.append(arr)
+    parts: list[str] = []
+    if arr and var:
+        # User direction first so YuE2 weights it above the genre core.
+        parts.extend([arr, base_genre_style, var])
+    else:
+        parts.append(base_genre_style)
+        if arr:
+            parts.append(arr)
+        if var:
+            parts.append(var)
 
     voc = (vocal_persona_desc or "").strip()
     if voc:
