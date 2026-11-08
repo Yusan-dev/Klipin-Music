@@ -144,6 +144,7 @@ export default function VoiceDesigner({ user, onSignIn, onSaved }) {
     setNotice('')
     try {
       const defaultLabel = spec.vocal_gender === 'male' ? 'Penyanyi Cowok' : 'Penyanyi Cewek'
+      const activePreviewId = selected?.status === 'completed' ? selected.preview_id : undefined
       const res = await createDesignedMusicPersona({
         name: name.trim() || `${defaultLabel} (${spec.texture})`,
         vocal_gender: spec.vocal_gender === 'male' ? 'male' : 'female',
@@ -152,6 +153,7 @@ export default function VoiceDesigner({ user, onSignIn, onSaved }) {
         texture: spec.texture || 'smooth',
         energy: spec.energy || 'balanced',
         register: spec.register || 'mid',
+        preview_id: activePreviewId,
       })
       if (res?.persona) {
         setNotice(`✓ Persona "${res.persona.name}" (${res.persona.vocal_gender === 'male' ? '👨 Cowok' : '👩 Cewek'}) berhasil disimpan! Kamu bisa membuat persona baru sebanyak mungkin tanpa batas.`)

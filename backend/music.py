@@ -806,11 +806,12 @@ def apply_voice_persona(src: Path, reference_path: Path, job_dir: Path,
         mixed = subprocess.run(
             [ffmpeg, "-y", "-v", "error", "-i", str(backing_candidates[0]),
              "-i", str(converted), "-filter_complex",
-             "[0:a]volume=1.0[bg];[1:a]volume=1.0[v];"
+             "[1:a]highpass=f=80,equalizer=f=3500:t=q:w=1.2:g=1.8,equalizer=f=10500:t=q:w=1.0:g=2.5,volume=1.08[v];"
+             "[0:a]volume=0.86[bg];"
              "[bg][v]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
-             "alimiter=limit=0.96[out]",
+             "alimiter=limit=0.98[out]",
              "-map", "[out]", "-t", f"{float(duration):.3f}",
-             "-c:a", "libmp3lame", "-b:a", "192k", str(target)],
+             "-c:a", "libmp3lame", "-b:a", "256k", str(target)],
             capture_output=True, text=True, timeout=600)
         if mixed.returncode != 0 or not target.is_file() or target.stat().st_size < 1024:
             raise RuntimeError("Pencampuran vokal persona gagal: " + mixed.stderr[-500:])

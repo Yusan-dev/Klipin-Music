@@ -412,7 +412,11 @@ def convert_song(audio_b64: str, reference_b64: str = "", duration: float = 180.
             reference = work / "reference.wav"
             reference.write_bytes(base64.b64decode(reference_b64, validate=True))
             output_dir = work / "converted"
-            _run([sys.executable, "/opt/seed-vc/inference.py", "--source", str(vocals),
+            clean_vocals = work / "clean_vocals.wav"
+            _run(["ffmpeg", "-y", "-v", "error", "-i", str(vocals),
+                  "-af", "highpass=f=80,equalizer=f=3500:t=q:w=1.0:g=1.2",
+                  "-c:a", "pcm_s16le", str(clean_vocals)])
+            _run([sys.executable, "/opt/seed-vc/inference.py", "--source", str(clean_vocals),
                   "--target", str(reference), "--output", str(output_dir),
                   "--diffusion-steps", "30", "--f0-condition", "True",
                   "--auto-f0-adjust", "True" if auto_f0 else "False",
@@ -425,10 +429,15 @@ def convert_song(audio_b64: str, reference_b64: str = "", duration: float = 180.
             method_name = "seed-vc-vocal-stem"
 
         target = work / "song.mp3"
+        # Studio vocal chain: highpass 80Hz + presence 3.5kHz + air sheen 10.5kHz
+        # Gain staging: backing at 0.86, vocal at 1.08 gives a 2dB center pocket so the persona sings clearly above the band
         _run(["ffmpeg", "-y", "-v", "error", "-i", str(backing), "-i", str(converted_wav),
-              "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.96[out]",
+              "-filter_complex",
+              "[1:a]highpass=f=80,equalizer=f=3500:t=q:w=1.2:g=1.8,equalizer=f=10500:t=q:w=1.0:g=2.5,volume=1.08[voc];"
+              "[0:a]volume=0.86[bg];"
+              "[bg][voc]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.98[out]",
               "-map", "[out]", "-t", str(max(3, min(float(duration), 600))),
-              "-c:a", "libmp3lame", "-b:a", "192k", str(target)])
+              "-c:a", "libmp3lame", "-b:a", "256k", str(target)])
         models.commit()
         return {"audio_b64": base64.b64encode(target.read_bytes()).decode("ascii"),
                 "gpu_sec": time.monotonic() - started, "method": method_name}

@@ -1704,6 +1704,7 @@ class MusicDesignedPersonaRequest(BaseModel):
     texture: str = "smooth"
     energy: str = "balanced"
     vocal_register: str = Field(default="mid", alias="register")
+    preview_id: str | None = None
 
 
 @app.get("/api/music/personas")
@@ -1845,10 +1846,29 @@ async def music_persona_design(req: MusicDesignedPersonaRequest,
         gender, tags,
         notes=f"warmth={warmth}; brightness={brightness}; texture={texture}; "
               f"energy={energy}; register={register}")
-    persona["has_voice_sample"] = False
+    has_sample = False
+    clean_prev_id = (req.preview_id or "").strip()
+    if clean_prev_id:
+        try:
+            import persona_previews
+            import voice_personas
+            prev_row = persona_previews.get(clean_prev_id, _user["google_sub"])
+            if prev_row and prev_row.get("status") == "completed" and prev_row.get("sample_name"):
+                raw_audio = persona_previews.audio(clean_prev_id, _user["google_sub"])
+                stored_name = voice_personas.store_sample(_user["google_sub"], persona["persona_id"], raw_audio)
+                with db._lock, db._connect() as conn:
+                    conn.execute("UPDATE music_personas SET voice_ref_path=?, persona_type='synthetic' "
+                                 "WHERE persona_id=? AND user_id=?",
+                                 (stored_name, persona["persona_id"], _user["google_sub"]))
+                persona["voice_ref_path"] = stored_name
+                persona["persona_type"] = "synthetic"
+                has_sample = True
+        except Exception as prev_err:
+            print(f"[personas] Attach preview to persona note: {prev_err}", flush=True)
+    persona["has_voice_sample"] = has_sample
     persona["voice_conversion_ready"] = True
     return {"persona": persona, "notice": (
-        "Karakter vokal tersimpan dan siap digunakan untuk Create Lagu maupun Cover Lagu.")}
+        "Karakter vokal tersimpan dengan audio jernih dan siap digunakan untuk Create Lagu maupun Cover Lagu.")}
 
 
 class MusicPersonaUpdateRequest(BaseModel):

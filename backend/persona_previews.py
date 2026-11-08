@@ -255,6 +255,26 @@ def materialize_persona_voice(user_id: str, persona: dict) -> dict:
             raise LookupError("Persona tidak ditemukan.")
         if fresh.get("voice_ref_path"):
             return fresh
+        # Prioritaskan preview suara jernih yang sudah pernah dibuat/didengarkan user
+        with db._lock, db._connect() as conn:
+            previews = conn.execute(
+                "SELECT * FROM music_voice_previews WHERE user_id=? AND status='completed' "
+                "AND sample_name!='' ORDER BY created_at DESC", (user_id,)
+            ).fetchall()
+            for r in previews:
+                spec_json = json.loads(r["spec"] or "{}")
+                p_gender = str(spec_json.get("vocal_gender") or "").lower()
+                if not gender or gender == "auto" or p_gender == gender:
+                    try:
+                        raw = voice_personas.read_sample(user_id, r["preview_id"], r["sample_name"])
+                        sample = voice_personas.store_sample(user_id, persona_id, raw)
+                        conn.execute("UPDATE music_personas SET voice_ref_path=?, seed_base=?, persona_type='synthetic' "
+                                     "WHERE persona_id=? AND user_id=?",
+                                     (sample, spec_json.get("seed"), persona_id, user_id))
+                        return db.get_music_persona(persona_id, user_id)
+                    except Exception:
+                        pass
+
         result = _function("design_preview").remote(
             tags[:300], seed, os.environ.get("KLIPIN_HEARTMULA_MODAL_APP", "klipin-music"))
         audio = base64.b64decode(result["audio_b64"], validate=True)
