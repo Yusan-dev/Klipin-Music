@@ -4211,7 +4211,18 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
     stage("mixing")
     voice_conversion: dict = {}
     reference_path = str(spec.get("_voice_reference_path") or "").strip()
-    if reference_path and not spec.get("_voice_restyle_done"):
+    # Voice conversion (Demucs stem separation + Seed-VC) harus HANYA dijalankan untuk
+    # mode cover vokal murni (cover_engine == 'voice') atau ketika user eksplisit meminta kloning suara.
+    # Untuk engine generatif (YuE2, HeartMuLa, DiffRhythm, ACE-Step), karakter vokal persona
+    # SUDAH disintesis langsung ke dalam track secara native stereo 48kHz dengan artikulasi lirik sempurna.
+    # Menjalankan Demucs + Seed-VC di atas track generatif menyebabkan artikulasi cadel/pelo,
+    # vokal ganda/campuran akibat kebocoran Demucs, dan runtuhnya stereo menjadi mono.
+    run_voice_conversion = bool(
+        reference_path
+        and (cover_engine == "voice" or spec.get("force_voice_conversion"))
+        and not spec.get("_voice_restyle_done")
+    )
+    if run_voice_conversion:
         if used == "fallback-bgm":
             voice_conversion = {
                 "status": "not_applied",

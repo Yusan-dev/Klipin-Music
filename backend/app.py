@@ -1561,37 +1561,6 @@ async def _run_music_job(job_id: str, spec: dict, user_id: str):
         await _run_music_take(job_id, spec, user_id)
 
 
-async def _lock_designed_persona_voice(spec: dict, user_id: str, job_id: str) -> str:
-    """Give a designed (text-only) persona a frozen voice before rendering.
-
-    Returns the persona id when its voice reference is ready so the take is
-    sung in that exact persona timbre (Seed-VC on the vocal stem); returns ""
-    to fall back to tag-only conditioning. Never fails the render.
-    """
-    persona_id = str(spec.get("persona_id") or "").strip()
-    if (not persona_id or spec.get("instrumental")
-            or str(spec.get("vocal_gender") or "").lower() == "duet"
-            or spec.get("keep_original_vocal")
-            or str(spec.get("cover_engine") or "").lower() == "arrangement"):
-        return ""
-    persona = db.get_music_persona(persona_id, user_id)
-    if not persona:
-        return ""
-    if persona.get("voice_ref_path"):
-        return persona_id
-    try:
-        import persona_previews
-        if not persona_previews.enabled():
-            return ""
-        print(f"[music] {job_id}: mengunci suara persona {persona_id} sebelum render", flush=True)
-        locked = await asyncio.to_thread(
-            persona_previews.materialize_persona_voice, user_id, persona)
-        return persona_id if locked and locked.get("voice_ref_path") else ""
-    except Exception as exc:  # noqa: BLE001 — persona tags still apply
-        print(f"[music] {job_id}: suara persona {persona_id} belum bisa dikunci: {exc}", flush=True)
-        return ""
-
-
 async def _run_music_take(job_id: str, spec: dict, user_id: str):
     job_dir = OUTPUT_DIR / job_id
     mode = spec.get("take_mode", "final")
@@ -1623,9 +1592,8 @@ async def _run_music_take(job_id: str, spec: dict, user_id: str):
     try:
         from music import generate_music
         voice_persona_id = str(spec.get("voice_persona_id") or "").strip()
-        if not voice_persona_id:
-            voice_persona_id = await _lock_designed_persona_voice(spec, user_id, job_id)
-        if voice_persona_id:
+        cover_engine = str(spec.get("cover_engine") or "").lower()
+        if voice_persona_id and (cover_engine == "voice" or spec.get("force_voice_conversion")):
             persona = db.get_music_persona(voice_persona_id, user_id)
             if not persona or not persona.get("voice_ref_path"):
                 raise RuntimeError("Persona suara tidak ditemukan; lagu belum dijalankan.")
