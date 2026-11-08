@@ -1803,10 +1803,15 @@ export default function Music({ user, authChecked = false, onSignIn }) {
       if (res?.persona) {
         setPersonas((prev) => [res.persona, ...prev])
         setPersonaId(res.persona.persona_id)
+        if (res.persona.vocal_gender === 'female' || res.persona.vocal_gender === 'male') {
+          setVocalGender(res.persona.vocal_gender)
+          setRemixGender(res.persona.vocal_gender)
+        }
         setVoiceCapability(res.voice_conversion || null)
         setVoiceName('')
         setVoiceFile(null)
         setVoiceConsent(false)
+        setPersonaMode('choose')
         setVoicePreviewUrl((oldUrl) => { if (oldUrl) URL.revokeObjectURL(oldUrl); return '' })
         const fileInput = document.getElementById('music-voice-sample')
         if (fileInput) fileInput.value = ''
@@ -2053,16 +2058,11 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     const showMale = personaGenderFilter === 'all' || personaGenderFilter === 'male'
     const showOther = personaGenderFilter === 'all' && otherPersonas.length > 0
     return (
-      <div className="space-y-3 rounded-xl border border-[#2c2c35] bg-[#141419] p-3">
+      <div className="space-y-2.5 rounded-xl border border-[#2c2c35] bg-[#141419] p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <span className="block text-xs font-bold uppercase tracking-widest text-white/80">
-              🎤 Persona Suara ({personas.length} Tersimpan · ∞ Tanpa Batas)
-            </span>
-            <span className="text-[11px] text-white/45">
-              Dipisahkan Suara Cewek &amp; Cowok · Bisa upload/rekam suara asli atau buat karakter sendiri
-            </span>
-          </div>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-white/80">
+            🎤 Persona Suara ({personas.length})
+          </span>
           <div className="inline-flex rounded-lg border border-white/10 bg-black/30 p-0.5 text-[10px] font-semibold">
             {[
               { id: 'all', label: `Semua (${personas.length})` },
@@ -2073,7 +2073,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 key={tab.id}
                 type="button"
                 onClick={() => setPersonaGenderFilter(tab.id)}
-                className={`rounded-md px-2 py-1 transition ${
+                className={`rounded-md px-2 py-0.5 transition ${
                   personaGenderFilter === tab.id
                     ? 'bg-[#2a2a35] text-white'
                     : 'text-white/55 hover:text-white'
@@ -2099,14 +2099,14 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 setRemixGender(found.vocal_gender)
               }
             }}
-            className="w-full rounded-lg border border-white/15 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan"
+            className="w-full rounded-lg border border-white/15 bg-navy-3 px-3 py-2 text-xs text-white outline-none focus:border-cyan"
           >
             <option value="">Tanpa persona — pakai pengaturan vokal default</option>
             {showFemale && femalePersonas.length > 0 && (
               <optgroup label={`👩 Persona Suara Cewek (${femalePersonas.length})`}>
                 {femalePersonas.map((p) => (
                   <option key={p.persona_id} value={p.persona_id}>
-                    👩 {p.has_voice_sample ? '🎙️ ' : '🎨 '}{p.name} ({p.has_voice_sample ? 'Rekaman Suara' : 'Karakter Vokal'})
+                    👩 {p.has_voice_sample ? '🎙️ ' : '🎨 '}{p.name} ({p.has_voice_sample ? 'Rekaman' : 'Karakter'})
                   </option>
                 ))}
               </optgroup>
@@ -2115,7 +2115,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               <optgroup label={`👨 Persona Suara Cowok (${malePersonas.length})`}>
                 {malePersonas.map((p) => (
                   <option key={p.persona_id} value={p.persona_id}>
-                    👨 {p.has_voice_sample ? '🎙️ ' : '🎨 '}{p.name} ({p.has_voice_sample ? 'Rekaman Suara' : 'Karakter Vokal'})
+                    👨 {p.has_voice_sample ? '🎙️ ' : '🎨 '}{p.name} ({p.has_voice_sample ? 'Rekaman' : 'Karakter'})
                   </option>
                 ))}
               </optgroup>
@@ -2132,9 +2132,9 @@ export default function Music({ user, authChecked = false, onSignIn }) {
           </select>
 
           {selectedPersonaObj && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
               <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/80">
-                {selectedPersonaObj.vocal_gender === 'male' ? '👨 Suara Cowok' : '👩 Suara Cewek'} · <b>{selectedPersonaObj.name}</b>
+                {selectedPersonaObj.vocal_gender === 'male' ? '👨 Cowok' : '👩 Cewek'} · <b>{selectedPersonaObj.name}</b>
               </span>
               <button
                 type="button"
@@ -2145,7 +2145,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 }}
                 className="rounded-md border border-cyan/40 bg-cyan/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-soft hover:border-cyan"
               >
-                ✏️ Ganti Nama / Gender
+                ✏️ Ubah
               </button>
               {selectedPersonaObj.has_voice_sample && (
                 <button
@@ -2153,7 +2153,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                   onClick={() => setPersonaListenId(personaListenId === personaId ? '' : personaId)}
                   className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300"
                 >
-                  {personaListenId === personaId ? '⏹ Tutup Audio' : '▶ Dengarkan Suara'}
+                  {personaListenId === personaId ? '⏹ Tutup' : '▶ Putar'}
                 </button>
               )}
               <button
@@ -2167,8 +2167,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
           )}
 
           {personaEditOpen && selectedPersonaObj && (
-            <div className="mt-2.5 space-y-2 rounded-lg border border-cyan/30 bg-black/30 p-2.5">
-              <div className="text-[11px] font-semibold text-cyan-soft">Ubah Nama &amp; Kategori Persona</div>
+            <div className="mt-2 space-y-2 rounded-lg border border-cyan/30 bg-black/30 p-2.5">
               <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
                 <input
                   value={personaEditName}
@@ -2181,8 +2180,8 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                   onChange={(e) => setPersonaEditGender(e.target.value)}
                   className="rounded-lg border border-white/15 bg-navy-3 px-2.5 py-1.5 text-xs text-white outline-none"
                 >
-                  <option value="female">👩 Suara Cewek</option>
-                  <option value="male">👨 Suara Cowok</option>
+                  <option value="female">👩 Cewek</option>
+                  <option value="male">👨 Cowok</option>
                 </select>
                 <button
                   type="button"
@@ -2197,33 +2196,24 @@ export default function Music({ user, authChecked = false, onSignIn }) {
           )}
         </div>
 
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Cara membuat persona">
-          <button
-            type="button"
-            onClick={() => setPersonaMode('choose')}
-            className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
-              personaMode === 'choose' ? 'border-cyan/50 bg-cyan/10 text-cyan-soft' : 'border-white/10 bg-white/5 text-white/60 hover:text-white'
-            }`}
-          >
-            📋 Pilih Persona
-          </button>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Buat persona baru">
           <button
             type="button"
             onClick={() => setPersonaMode(personaMode === 'record' ? 'choose' : 'record')}
-            className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
-              personaMode === 'record' ? 'border-magenta/50 bg-magenta/15 text-white' : 'border-white/10 bg-white/5 text-white/60 hover:text-white'
+            className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
+              personaMode === 'record' ? 'border-magenta/50 bg-magenta/15 text-white' : 'border-white/10 bg-white/5 text-white/65 hover:text-white'
             }`}
           >
-            🎙️ + Upload / Rekam Suara Sendiri
+            {personaMode === 'record' ? '✕ Tutup Rekaman' : '🎙️ + Upload / Rekam Suara'}
           </button>
           <button
             type="button"
             onClick={() => setPersonaMode(personaMode === 'design' ? 'choose' : 'design')}
-            className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
-              personaMode === 'design' ? 'border-cyan/50 bg-cyan/15 text-white' : 'border-white/10 bg-white/5 text-white/60 hover:text-white'
+            className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
+              personaMode === 'design' ? 'border-cyan/50 bg-cyan/15 text-white' : 'border-white/10 bg-white/5 text-white/65 hover:text-white'
             }`}
           >
-            🎨 + Buat Karakter Suara Sendiri
+            {personaMode === 'design' ? '✕ Tutup Desain' : '🎨 + Buat Karakter Suara'}
           </button>
         </div>
 
@@ -2231,38 +2221,35 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         {personaListenId && <PrivateVoicePlayer id={personaListenId} savedPersona />}
 
         {personaMode === 'record' && (
-          <section className="rounded-xl border border-magenta/25 bg-magenta/5 p-3.5">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-white/80">
-                🎙️ Buat Persona dari Upload / Rekaman Suara Asli
+          <section className="rounded-xl border border-magenta/25 bg-magenta/5 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-bold text-white/85">
+                🎙️ Upload / Rekam Suara Asli
               </span>
-              <span className="rounded bg-magenta/20 px-1.5 py-0.5 font-mono text-[10px] text-white/80">∞ Unlimited</span>
+              <span className="rounded bg-magenta/20 px-1.5 py-0.5 font-mono text-[10px] text-white/80">∞ Tanpa Batas</span>
             </div>
-            <p className="mb-3 text-[11px] leading-5 text-white/55">
-              Beri nama personamu, pilih kategori <b>👩 Suara Cewek</b> atau <b>👨 Suara Cowok</b>, lalu rekam atau unggah sampel vokal. Kamu bisa menyimpan persona suara sebanyak mungkin tanpa batas.
-            </p>
-            <div className="grid gap-2.5 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-2">
               <label className="block text-[11px] text-white/70">
-                Nama Persona Suara
+                Nama Persona
                 <input
                   value={voiceName}
                   onChange={(e) => setVoiceName(e.target.value)}
-                  placeholder={voiceGender === 'male' ? 'Contoh: Suara Budi (Cowok)' : 'Contoh: Suara Rina (Cewek)'}
-                  className="mt-1 w-full rounded-lg border border-white/15 bg-navy-3 px-3 py-2 text-xs text-white outline-none focus:border-magenta"
+                  placeholder={voiceGender === 'male' ? 'Contoh: Suara Budi' : 'Contoh: Suara Rina'}
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-navy-3 px-2.5 py-1.5 text-xs text-white outline-none focus:border-magenta"
                 />
               </label>
               <div className="text-[11px] text-white/70">
-                <span>Kategori Suara (Cewek / Cowok)</span>
+                <span>Kategori Suara</span>
                 <div className="mt-1 grid grid-cols-2 gap-1.5">
                   {[
-                    { id: 'female', label: '👩 Suara Cewek' },
-                    { id: 'male', label: '👨 Suara Cowok' },
+                    { id: 'female', label: '👩 Cewek' },
+                    { id: 'male', label: '👨 Cowok' },
                   ].map((g) => (
                     <button
                       key={g.id}
                       type="button"
                       onClick={() => setVoiceGender(g.id)}
-                      className={`rounded-lg border px-2.5 py-2 text-xs font-bold transition ${
+                      className={`rounded-lg border px-2 py-1.5 text-xs font-bold transition ${
                         voiceGender === g.id
                           ? g.id === 'female'
                             ? 'border-magenta/60 bg-magenta/20 text-white'
@@ -2276,56 +2263,49 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 </div>
               </div>
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2.5">
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={toggleVoiceRecording}
-                className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold ${
                   voiceRecording ? 'border-danger/50 bg-danger/10 text-danger' : 'border-magenta/40 bg-magenta/10 text-white'
                 }`}
               >
-                {voiceRecording ? `■ Berhenti merekam · ${voiceRecordingSeconds} dtk` : '● Rekam dengan mikrofon'}
+                {voiceRecording ? `■ Berhenti · ${voiceRecordingSeconds} dtk` : '● Rekam Mikrofon'}
               </button>
-              {voiceRecording && (
-                <span aria-live="polite" className="text-[11px] text-white/55">
-                  Maks. 30 detik. Nyanyikan atau ucapkan kalimat di ruangan tenang.
-                </span>
-              )}
+              <input
+                id="music-voice-sample"
+                type="file"
+                accept="audio/*"
+                onChange={(e) => {
+                  setVoiceFile(e.target.files?.[0] || null)
+                  setVoicePreviewUrl((oldUrl) => {
+                    if (oldUrl) URL.revokeObjectURL(oldUrl)
+                    return ''
+                  })
+                }}
+                className="block flex-1 text-xs text-white/60 file:mr-2 file:rounded-lg file:border-0 file:bg-white/10 file:px-2.5 file:py-1.5 file:text-white"
+              />
             </div>
-            <input
-              id="music-voice-sample"
-              type="file"
-              accept="audio/*"
-              onChange={(e) => {
-                setVoiceFile(e.target.files?.[0] || null)
-                setVoicePreviewUrl((oldUrl) => {
-                  if (oldUrl) URL.revokeObjectURL(oldUrl)
-                  return ''
-                })
-              }}
-              className="mt-3 block w-full text-xs text-white/60 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-white"
-            />
             {voicePreviewUrl && (
-              <audio controls src={voicePreviewUrl} className="mt-3 h-9 max-w-full" aria-label="Pratinjau rekaman persona" />
+              <audio controls src={voicePreviewUrl} className="mt-2.5 h-8 max-w-full" aria-label="Pratinjau rekaman persona" />
             )}
-            <label className="mt-3 flex items-start gap-2 text-[11px] leading-5 text-white/55">
+            <label className="mt-2.5 flex items-start gap-2 text-[11px] leading-4 text-white/55">
               <input
                 type="checkbox"
                 checked={voiceConsent}
                 onChange={(e) => setVoiceConsent(e.target.checked)}
-                className="mt-1"
+                className="mt-0.5"
               />
-              <span>
-                Saya memiliki hak/izin atas suara ini dan menyetujui pemrosesan rekaman untuk vokal lagu.
-              </span>
+              <span>Saya memiliki izin atas suara ini untuk diproses menjadi vokal lagu.</span>
             </label>
             <button
               type="button"
               onClick={saveVoicePersona}
               disabled={!voiceFile || !voiceConsent || voiceBusy || voiceRecording}
-              className="mt-3 rounded-lg border border-magenta/50 bg-magenta/20 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-magenta/30 disabled:opacity-40"
+              className="mt-2.5 rounded-lg border border-magenta/50 bg-magenta/20 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-magenta/30 disabled:opacity-40"
             >
-              {voiceBusy ? 'Menyimpan rekaman…' : `💾 Simpan Persona ${voiceGender === 'male' ? 'Cowok' : 'Cewek'} Ini`}
+              {voiceBusy ? 'Menyimpan…' : `💾 Simpan Persona ${voiceGender === 'male' ? 'Cowok' : 'Cewek'}`}
             </button>
           </section>
         )}
@@ -2342,7 +2322,8 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 setVocalGender(persona.vocal_gender)
                 setRemixGender(persona.vocal_gender)
               }
-              setPersonaFeedback(`✓ Persona "${persona.name}" (${persona.vocal_gender === 'male' ? '👨 Suara Cowok' : '👩 Suara Cewek'}) aktif dan siap dipakai!`)
+              setPersonaMode('choose')
+              setPersonaFeedback(`✓ Persona "${persona.name}" (${persona.vocal_gender === 'male' ? '👨 Cowok' : '👩 Cewek'}) siap dipakai!`)
             }}
           />
         )}
@@ -2492,9 +2473,9 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             )}
 
             {studioTab === 'cover' && (
-              <div className="space-y-4">
+              <div className="space-y-3.5">
                 <div className="inline-flex w-full rounded-lg bg-[#18181d] p-0.5">
-                  {[{ id: 'url', label: 'Dari link YouTube', icon: 'link' }, { id: 'upload', label: 'Upload file', icon: 'upload' }].map((t) => (
+                  {[{ id: 'url', label: 'Dari Link YouTube', icon: 'link' }, { id: 'upload', label: 'Upload File Audio', icon: 'upload' }].map((t) => (
                     <button key={t.id} type="button" onClick={() => setCoverSourceTab(t.id)}
                       className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[12px] font-medium transition ${
                         coverSourceTab === t.id ? 'bg-[#2a2a32] text-[#f4f4f6]' : 'text-[#8e8e99] hover:text-[#f4f4f6]'}`}>
@@ -2504,54 +2485,69 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 </div>
 
                 {coverSourceTab === 'upload' ? (
-                  <div className="space-y-3.5">
-                    {renderPersonaStudioPanel({ compact: true })}
-                    <CoverCreate
-                      user={user}
-                      authChecked={authChecked}
-                      onSignIn={onSignIn}
-                      embedded
-                      personaId={personaId}
-                      selectedPersona={selectedPersonaObj}
-                    />
-                  </div>
+                  <CoverCreate
+                    user={user}
+                    authChecked={authChecked}
+                    onSignIn={onSignIn}
+                    embedded
+                    personaId={personaId}
+                    selectedPersona={selectedPersonaObj}
+                    personaSlot={renderPersonaStudioPanel({ compact: true })}
+                  />
                 ) : (
                   <div className="space-y-3.5">
-                    <div>
-                      <div className="mb-1.5 flex items-center justify-between">
-                        <label className={labelCls}>Link lagu sumber</label>
-                        <button
-                          type="button"
-                          onClick={fetchAndReviewAsr}
-                          disabled={!remixUrl.trim() || remixTranscribing || remixBusy}
-                          className="flex items-center gap-1 text-[11px] font-medium text-[#f59e0b] transition hover:text-[#fbbf24] disabled:opacity-40"
-                        >
-                          {remixTranscribing ? (
-                            <><Spinner className="h-3 w-3" /> Transkripsi ASR…</>
-                          ) : (
-                            <>🎙️ Ambil &amp; Review Lirik (ASR)</>
-                          )}
-                        </button>
+                    {/* Langkah 1: Lagu Sumber & Lirik */}
+                    <div className="space-y-2.5 rounded-xl border border-[#26262e] bg-[#141419] p-3">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-white/75">
+                        1 · Lagu Sumber &amp; Lirik
                       </div>
-                      <input value={remixUrl} onChange={(e) => { setRemixUrl(e.target.value); setRemixAsrReviewed(false); }}
-                        placeholder="https://www.youtube.com/watch?v=…" className={fieldCls} />
-                    </div>
-
-                    <div className="rounded-lg border border-[#10b981]/30 bg-[#10b981]/10 px-3 py-2 text-[11px] leading-relaxed text-[#a7f3d0]">
-                      <div className="flex items-center justify-between gap-2 font-semibold text-[#34d399]">
-                        <span>✨ Engine Cover: YuE2 + SheetSage2 Headless</span>
-                        <span className="rounded bg-[#10b981]/20 px-1.5 py-0.5 font-mono text-[10px]">Fast Keep-Warm · Lirik &amp; Melodi Terkunci</span>
-                      </div>
-                      <p className="mt-1 text-[#a7f3d0]/85">
-                        Mengekstrak melodi simbolik &amp; progresi akor asli dengan SheetSage2 lalu menyanyikan ulang lirik secara utuh tanpa kebocoran instrumen lama.
-                      </p>
-                    </div>
-
-                    {renderPersonaStudioPanel({ compact: true })}
-
-                    <div className="grid grid-cols-2 gap-2.5">
                       <div>
-                        <label className={labelCls}>Genre</label>
+                        <div className="mb-1 flex items-center justify-between">
+                          <label className="text-[11px] font-medium text-[#8e8e99]">Link YouTube lagu sumber</label>
+                          <button
+                            type="button"
+                            onClick={fetchAndReviewAsr}
+                            disabled={!remixUrl.trim() || remixTranscribing || remixBusy}
+                            className="flex items-center gap-1 text-[11px] font-medium text-[#f59e0b] transition hover:text-[#fbbf24] disabled:opacity-40"
+                          >
+                            {remixTranscribing ? (
+                              <><Spinner className="h-3 w-3" /> Transkripsi ASR…</>
+                            ) : (
+                              <>🎙️ Ambil Lirik (ASR)</>
+                            )}
+                          </button>
+                        </div>
+                        <input value={remixUrl} onChange={(e) => { setRemixUrl(e.target.value); setRemixAsrReviewed(false); }}
+                          placeholder="https://www.youtube.com/watch?v=…" className={fieldCls} />
+                      </div>
+
+                      <div>
+                        <div className="mb-1 flex items-center justify-between">
+                          <label className="text-[11px] font-medium text-[#8e8e99]">Lirik lagu sumber (opsional / otomatis ASR)</label>
+                          {remixAsrSource && (
+                            <span className="rounded bg-[#10b981]/15 px-2 py-0.5 font-mono text-[10px] text-[#34d399]">
+                              {remixAsrSource === 'groq-whisper-large-v3-turbo' ? 'Groq Whisper' : remixAsrSource === 'user' ? 'Manual' : 'Whisper'}
+                            </span>
+                          )}
+                        </div>
+                        {remixAsrReviewed && (
+                          <div className="mb-2 rounded-lg border border-[#10b981]/30 bg-[#10b981]/10 p-2 text-[11px] leading-relaxed text-[#a7f3d0]">
+                            <span className="font-semibold text-[#34d399]">🔍 Review Lirik ASR:</span> Periksa lirik di bawah lalu tekan tombol <b>Buat Cover Lagu</b>.
+                          </div>
+                        )}
+                        <textarea value={remixLyrics} onChange={(e) => setRemixLyrics(e.target.value)} rows={4}
+                          placeholder={'Kosongkan untuk ekstraksi otomatis dari lagu asli.\n[Verse]\nsatu baris = satu frasa vokal'}
+                          className={`${fieldCls} resize-y font-mono text-[12px] leading-5`} />
+                      </div>
+                    </div>
+
+                    {/* Langkah 2: Gaya Musik Cover */}
+                    <div className="space-y-2.5 rounded-xl border border-[#26262e] bg-[#141419] p-3">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-white/75">
+                        2 · Gaya Musik Cover (Genre &amp; Aransemen)
+                      </div>
+                      <div>
+                        <label className={labelCls}>Genre tujuan</label>
                         <select value={remixGenre} onChange={(e) => setRemixGenre(e.target.value)} className={fieldCls}>
                           {(catalog.genres || []).map((g) => {
                             const id = g.id || g
@@ -2559,162 +2555,155 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                           })}
                         </select>
                       </div>
+
                       <div>
-                        <label className={labelCls}>Vokal</label>
-                        <select value={remixGender} disabled={!!identityPersona} onChange={(e) => setRemixGender(e.target.value)} className={fieldCls}>
-                          {VOCAL_GENDERS.map((g) => (
-                            <option key={g.id} value={g.id}>{g.id === 'auto' ? 'Ikuti persona' : g.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    {identityPersona && (
-                      <p className="-mt-1.5 text-[11px] text-[#71717a]">Persona “{identityPersona.name}” ({identityPersona.vocal_gender === 'male' ? '👨 Cowok' : '👩 Cewek'}) aktif — suara mengikuti persona.</p>
-                    )}
-
-                    <div>
-                      <label className={labelCls}>Karakter penyampaian vokal</label>
-                      <select value={remixVocalStyle} onChange={(e) => setRemixVocalStyle(e.target.value)} className={fieldCls}>
-                        {VOCAL_STYLES.map((vs) => (
-                          <option key={vs.id} value={vs.id}>{vs.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <div className="mb-1.5 flex items-center justify-between">
-                        <label className={labelCls}>Lirik (opsional)</label>
-                        {remixAsrSource && (
-                          <span className="rounded bg-[#10b981]/15 px-2 py-0.5 font-mono text-[10px] text-[#34d399]">
-                            {remixAsrSource === 'groq-whisper-large-v3-turbo' ? 'Groq Whisper' : remixAsrSource === 'user' ? 'Manual' : 'Whisper lokal'}
-                          </span>
-                        )}
-                      </div>
-                      {remixAsrReviewed && (
-                        <div className="mb-2 rounded-lg border border-[#10b981]/30 bg-[#10b981]/10 p-2.5 text-[11px] leading-relaxed text-[#a7f3d0]">
-                          <span className="font-semibold text-[#34d399]">🔍 Review Lirik ASR:</span> Silakan periksa lirik hasil transkripsi di bawah. Koreksi bila ada kata yang keliru sebelum membuat cover.
+                        <div className="mb-1 flex items-center justify-between">
+                          <label className="text-[11px] font-medium text-[#8e8e99]">Preset Vibe / Arahan Aransemen (opsional)</label>
+                          {remixGenre === 'reggae' && (
+                            <span className="rounded bg-[#f59e0b]/15 px-1.5 py-0.5 text-[10px] font-medium text-[#fbbf24]">
+                              🌴 Preset Reggae
+                            </span>
+                          )}
                         </div>
-                      )}
-                      <textarea value={remixLyrics} onChange={(e) => setRemixLyrics(e.target.value)} rows={5}
-                        placeholder={'Kosongkan untuk ekstraksi otomatis.\n[Verse]\nsatu baris = satu frasa vokal'}
-                        className={`${fieldCls} resize-y font-mono text-[12px] leading-5`} />
-                      <p className="mt-1 text-[11px] text-[#71717a]">
-                        Lirik dikunci apa adanya tanpa diparafrase atau diterjemahkan model.
-                      </p>
+                        {remixGenre === 'reggae' && (
+                          <div className="mb-2 flex flex-wrap gap-1.5">
+                            {[
+                              {
+                                id: 'boenter',
+                                label: '🌴 Reggae Santai (BOENTER)',
+                                strength: 0.4,
+                                prompt: 'warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove, muted clean offbeat guitar skank, warm Hammond B3 organ bubble, deep round sub-dub bassline, melodic brass intro hook, relaxed soulful vocal with warm reverb and subtle dub echo, silky analog highs',
+                              },
+                              {
+                                id: 'ska',
+                                label: '🎺 Reggae Ska & Brass',
+                                strength: 0.4,
+                                prompt: 'upbeat Indonesian ska-reggae cover, lively brass section (trumpet, trombone, saxophone hooks), crisp offbeat guitar skank, bouncy walking dub bassline, tight one-drop snare and rimshot',
+                              },
+                              {
+                                id: 'acoustic',
+                                label: '🌊 Reggae Akustik',
+                                strength: 0.45,
+                                prompt: 'acoustic island reggae cover, nylon and steel acoustic guitar offbeat skank, warm cajon and rimshot one-drop, deep upright dub bass, relaxed intimate vocal',
+                              },
+                              {
+                                id: 'dub',
+                                label: '🔊 Reggae Dub Bass',
+                                strength: 0.4,
+                                prompt: 'deep roots dub reggae cover, heavy warm sub-bass pocket (60-140 Hz), spacious spring reverb and analog tape echo, laid-back one-drop rimshot, warm Hammond organ bubble',
+                              },
+                            ].map((preset) => (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                onClick={() => {
+                                  setRemixPrompt(preset.prompt)
+                                  setRemixStrength(preset.strength)
+                                }}
+                                className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                                  remixPrompt === preset.prompt
+                                    ? 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fbbf24]'
+                                    : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f4a] hover:text-[#f4f4f6]'
+                                }`}
+                              >
+                                {preset.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <input value={remixPrompt} onChange={(e) => setRemixPrompt(e.target.value)} placeholder="Contoh: warm roots reggae, brass intro, dub bassline, santai…" className={fieldCls} />
+                      </div>
                     </div>
 
-                    <div>
-                      <div className="mb-1.5 flex items-center justify-between">
-                        <label className={labelCls}>Arahan tambahan &amp; Preset Vibe</label>
-                        {remixGenre === 'reggae' && (
-                          <span className="rounded bg-[#f59e0b]/15 px-1.5 py-0.5 text-[10px] font-medium text-[#fbbf24]">
-                            🌴 Preset Reggae AI
-                          </span>
-                        )}
+                    {/* Langkah 3: Penyanyi & Persona Suara */}
+                    <div className="space-y-2.5 rounded-xl border border-[#26262e] bg-[#141419] p-3">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-white/75">
+                        3 · Penyanyi &amp; Persona Suara (👩 Cewek / 👨 Cowok)
                       </div>
-                      {remixGenre === 'reggae' && (
-                        <div className="mb-2 flex flex-wrap gap-1.5">
-                          {[
-                            {
-                              id: 'boenter',
-                              label: '🌴 Reggae Santai (Gaya BOENTER)',
-                              strength: 0.4,
-                              prompt: 'warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove, muted clean offbeat guitar skank, warm Hammond B3 organ bubble, deep round sub-dub bassline, melodic brass intro hook, relaxed soulful vocal with warm reverb and subtle dub echo, silky analog highs',
-                            },
-                            {
-                              id: 'ska',
-                              label: '🎺 Reggae Ska & Brass',
-                              strength: 0.4,
-                              prompt: 'upbeat Indonesian ska-reggae cover, lively brass section (trumpet, trombone, saxophone hooks), crisp offbeat guitar skank, bouncy walking dub bassline, tight one-drop snare and rimshot',
-                            },
-                            {
-                              id: 'acoustic',
-                              label: '🌊 Reggae Akustik Pantai',
-                              strength: 0.45,
-                              prompt: 'acoustic island reggae cover, nylon and steel acoustic guitar offbeat skank, warm cajon and rimshot one-drop, deep upright dub bass, relaxed intimate vocal',
-                            },
-                            {
-                              id: 'dub',
-                              label: '🔊 Reggae Dub Bass Tebal',
-                              strength: 0.4,
-                              prompt: 'deep roots dub reggae cover, heavy warm sub-bass pocket (60-140 Hz), spacious spring reverb and analog tape echo, laid-back one-drop rimshot, warm Hammond organ bubble',
-                            },
-                          ].map((preset) => (
+                      {renderPersonaStudioPanel({ compact: true })}
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className={labelCls}>Vokal</label>
+                          <select value={remixGender} disabled={!!identityPersona} onChange={(e) => setRemixGender(e.target.value)} className={fieldCls}>
+                            {VOCAL_GENDERS.map((g) => (
+                              <option key={g.id} value={g.id}>{g.id === 'auto' ? 'Ikuti persona' : g.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={labelCls}>Karakter vokal</label>
+                          <select value={remixVocalStyle} onChange={(e) => setRemixVocalStyle(e.target.value)} className={fieldCls}>
+                            {VOCAL_STYLES.map((vs) => (
+                              <option key={vs.id} value={vs.id}>{vs.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Pengaturan Lanjutan & Studio EQ (Opsional - Lipat) */}
+                    <details className="group rounded-xl border border-[#26262e] bg-[#141419] p-3">
+                      <summary className="flex cursor-pointer list-none items-center justify-between text-[11px] font-semibold text-[#a1a1aa] hover:text-white">
+                        <span>⚙️ Pengaturan Lanjutan &amp; Studio EQ (Opsional)</span>
+                        <span className="font-mono text-[10px] text-white/40 group-open:rotate-180">▼</span>
+                      </summary>
+                      <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
+                        <div>
+                          <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
+                            <span>Kunci Melodi &amp; Ketukan ke Lagu Asli</span>
+                            <span className="font-mono tabular-nums text-[#71717a]">{Math.round(remixStrength * 100)}%</span>
+                          </div>
+                          <input type="range" min="0.1" max="0.9" step="0.1" value={remixStrength}
+                            onChange={(e) => setRemixStrength(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div>
+                            <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
+                              <span>Kreativitas Aransemen</span>
+                              <span className="font-mono tabular-nums text-[#71717a]">{remixWeirdness}%</span>
+                            </div>
+                            <input type="range" min={10} max={90} step={5} value={remixWeirdness}
+                              onChange={(e) => setRemixWeirdness(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
+                          </div>
+                          <div>
+                            <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
+                              <span>Kepatuhan Genre</span>
+                              <span className="font-mono tabular-nums text-[#71717a]">{remixStyleInfluence}%</span>
+                            </div>
+                            <input type="range" min={20} max={95} step={5} value={remixStyleInfluence}
+                              onChange={(e) => setRemixStyleInfluence(Number(e.target.value))} className="w-full accent-[#10b981]" />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="mb-1.5 flex items-center justify-between">
+                            <span className="text-[11px] font-medium text-[#a1a1aa]">Pre-Master Studio Equalizer</span>
                             <button
-                              key={preset.id}
                               type="button"
-                              onClick={() => {
-                                setRemixPrompt(preset.prompt)
-                                setRemixStrength(preset.strength)
-                              }}
-                              className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                                remixPrompt === preset.prompt
-                                  ? 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fbbf24]'
-                                  : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f4a] hover:text-[#f4f4f6]'
+                              onClick={() => setShowPreEq((v) => !v)}
+                              className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition ${
+                                showPreEq || preEqConfig.preset !== 'flat'
+                                  ? 'border-[#10b981]/60 bg-[#10b981]/15 text-[#34d399]'
+                                  : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:text-[#f4f4f6]'
                               }`}
                             >
-                              {preset.label}
+                              🎚️ {preEqConfig.preset === 'custom' ? 'Custom 8-Band' : (STUDIO_EQ_PRESETS.find((p) => p.id === preEqConfig.preset)?.label || 'Studio Flat')}
                             </button>
-                          ))}
+                          </div>
+                          {showPreEq && (
+                            <StudioEqualizer
+                              audioRef={audioRef}
+                              genre={remixGenre}
+                              initialEq={preEqConfig}
+                              onChange={setPreEqConfig}
+                              compact
+                              title="PRE-MASTER STUDIO EQUALIZER"
+                            />
+                          )}
                         </div>
-                      )}
-                      <input value={remixPrompt} onChange={(e) => setRemixPrompt(e.target.value)} placeholder="Contoh: warm roots reggae, brass intro, dub bassline, santai…" className={fieldCls} />
-                    </div>
-
-                    <div>
-                      <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
-                        <span>Kunci Melodi &amp; Ketukan ke Lagu Asli</span>
-                        <span className="font-mono tabular-nums text-[#71717a]">{Math.round(remixStrength * 100)}%</span>
                       </div>
-                      <input type="range" min="0.1" max="0.9" step="0.1" value={remixStrength}
-                        onChange={(e) => setRemixStrength(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
-                          <span>Kreativitas Aransemen</span>
-                          <span className="font-mono tabular-nums text-[#71717a]">{remixWeirdness}%</span>
-                        </div>
-                        <input type="range" min={10} max={90} step={5} value={remixWeirdness}
-                          onChange={(e) => setRemixWeirdness(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
-                      </div>
-                      <div>
-                        <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
-                          <span>Kepatuhan Gaya Genre</span>
-                          <span className="font-mono tabular-nums text-[#71717a]">{remixStyleInfluence}%</span>
-                        </div>
-                        <input type="range" min={20} max={95} step={5} value={remixStyleInfluence}
-                          onChange={(e) => setRemixStyleInfluence(Number(e.target.value))} className="w-full accent-[#10b981]" />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="mb-1.5 flex items-center justify-between">
-                        <span className="text-[11px] font-medium text-[#a1a1aa]">Pre-Master Studio Equalizer</span>
-                        <button
-                          type="button"
-                          onClick={() => setShowPreEq((v) => !v)}
-                          className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition ${
-                            showPreEq || preEqConfig.preset !== 'flat'
-                              ? 'border-[#10b981]/60 bg-[#10b981]/15 text-[#34d399]'
-                              : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:text-[#f4f4f6]'
-                          }`}
-                        >
-                          🎚️ {preEqConfig.preset === 'custom' ? 'Custom 8-Band' : (STUDIO_EQ_PRESETS.find((p) => p.id === preEqConfig.preset)?.label || 'Studio Flat')}
-                        </button>
-                      </div>
-                      {showPreEq && (
-                        <StudioEqualizer
-                          audioRef={audioRef}
-                          genre={remixGenre}
-                          initialEq={preEqConfig}
-                          onChange={setPreEqConfig}
-                          compact
-                          title="PRE-MASTER STUDIO EQUALIZER"
-                        />
-                      )}
-                    </div>
+                    </details>
 
                     <label className="flex items-start gap-2 text-[12px] leading-5 text-[#a1a1aa]">
                       <input type="checkbox" checked={remixRightsConfirmed} onChange={(e) => setRemixRightsConfirmed(e.target.checked)} className="mt-1 h-3.5 w-3.5 accent-[#f59e0b]" />
@@ -2723,7 +2712,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
 
                     <button type="button" onClick={remixFromUrl}
                       disabled={!remixUrl.trim() || remixBusy || remixTranscribing || busy || !remixRightsConfirmed}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#f59e0b] px-4 py-2.5 text-[13px] font-semibold text-[#0e0e11] transition hover:bg-[#fbbf24] disabled:cursor-not-allowed disabled:opacity-40">
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#f59e0b] px-4 py-3 text-[13px] font-bold text-[#0e0e11] shadow-md transition hover:bg-[#fbbf24] disabled:cursor-not-allowed disabled:opacity-40">
                       {remixBusy ? (
                         <><Spinner className="h-3.5 w-3.5" /> Menyiapkan cover…</>
                       ) : remixTranscribing ? (
@@ -2731,7 +2720,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                       ) : (!remixLyrics.trim() && !remixAsrReviewed && !['arrangement'].includes(remixEngine)) ? (
                         <>🎙️ Ambil Lirik &amp; Review ASR</>
                       ) : (
-                        'Konfirmasi &amp; Buat Cover'
+                        '🎵 Buat Cover Lagu'
                       )}
                     </button>
                   </div>
@@ -2807,42 +2796,23 @@ export default function Music({ user, authChecked = false, onSignIn }) {
 
             {studioTab !== 'cover' && studioTab !== 'history' && (<>
 
-            <Group title="1 · Ide & Judul" subtitle="Cerita/mood lagu dan judulnya" defaultOpen>
-            <label className="block">
-              <span className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-bold uppercase tracking-widest text-white/55">
-                <span>Song idea <span className="text-danger">*</span></span>
-                <button type="button" onClick={rollIdea}
-                  title="Pilih ide acak ala “Roll for a random prompt” Suno"
-                  className="rounded-full border border-cyan/40 bg-cyan/10 px-2.5 py-1 text-[10px] font-bold normal-case text-white/85 transition hover:border-cyan">
-                  🎲 Ide acak
-                </button>
-              </span>
-              <textarea ref={promptInputRef} value={prompt} onChange={(e) => { setPrompt(e.target.value); setRequestError('') }} rows={3}
-                aria-invalid={Boolean(vis("idea"))}
-                className={`w-full resize-none rounded-xl border bg-black/20 p-4 text-sm text-white outline-none transition ${
-                  vis("idea") ? 'border-danger/50' : 'border-white/10 focus:border-cyan/60'}`}
-                placeholder="Describe the feeling, story, instruments…" />
-              <span className="mt-1 block font-mono text-[10px] text-white/35">
-                {prompt.trim().length}/{MIN_PROMPT} karakter — atau isi lirik di bawah.
-              </span>
-            </label>
-
+            <Group title="1 · Judul, Ide & Lirik Lagu" subtitle="Tulis judul, ide cerita, dan lirik lagu" defaultOpen>
             <div className="block">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-bold uppercase tracking-widest text-white/55">
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold uppercase tracking-widest text-white/65">
                   Judul lagu <span className="text-danger">*</span>
                 </span>
                 <button type="button" onClick={suggestTitles} disabled={titleBusy || working || (!prompt.trim() && !lyrics.trim())}
                   title="Minta 3 saran judul dari ide/lirik (Gemini)"
-                  className="rounded-full border border-magenta/40 bg-magenta/10 px-2.5 py-1 text-[10px] font-bold text-white/85 transition hover:border-magenta disabled:opacity-40">
+                  className="rounded-full border border-magenta/40 bg-magenta/10 px-2.5 py-0.5 text-[10px] font-bold text-white/85 transition hover:border-magenta disabled:opacity-40">
                   {titleBusy ? '✨ Memikir…' : '✨ Saran judul'}
                 </button>
               </div>
               <input ref={titleInputRef} value={title} onChange={(e) => { setTitle(e.target.value); setTitleIdeas([]); setRequestError('') }}
                 aria-invalid={Boolean(vis("title"))}
-                className={`w-full rounded-lg border bg-black/20 px-3 py-2.5 text-sm text-white outline-none transition ${
+                className={`w-full rounded-lg border bg-black/20 px-3 py-2 text-sm text-white outline-none transition ${
                   vis("title") ? 'border-danger/50' : 'border-white/10 focus:border-cyan/60'}`}
-                placeholder="Tulis judul sendiri atau minta saran AI…" />
+                placeholder="Tulis judul lagu…" />
               {titleIdeas.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {titleIdeas.map((t) => (
@@ -2857,14 +2827,138 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 <span className="mt-1 block text-[11px] text-danger">{vis("title")}</span>
               )}
             </div>
+
+            <label className="block">
+              <span className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-bold uppercase tracking-widest text-white/65">
+                <span>Ide / Cerita Lagu <span className="text-danger">*</span></span>
+                <button type="button" onClick={rollIdea}
+                  title="Pilih ide acak"
+                  className="rounded-full border border-cyan/40 bg-cyan/10 px-2.5 py-0.5 text-[10px] font-bold normal-case text-white/85 transition hover:border-cyan">
+                  🎲 Ide acak
+                </button>
+              </span>
+              <textarea ref={promptInputRef} value={prompt} onChange={(e) => { setPrompt(e.target.value); setRequestError('') }} rows={2}
+                aria-invalid={Boolean(vis("idea"))}
+                className={`w-full resize-none rounded-xl border bg-black/20 p-3 text-sm text-white outline-none transition ${
+                  vis("idea") ? 'border-danger/50' : 'border-white/10 focus:border-cyan/60'}`}
+                placeholder="Ceritakan suasana, tema, atau instrumen lagu yang diinginkan…" />
+              <span className="mt-1 block font-mono text-[10px] text-white/35">
+                {prompt.trim().length}/{MIN_PROMPT} karakter minimal.
+              </span>
+            </label>
+
+            {!simpleMode && (
+              <div className="block border-t border-white/10 pt-3">
+                <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-widest text-white/65">
+                    Lirik Lagu <span className="font-mono normal-case text-white/35">({lyricSungCount}/{lyricTarget} baris)</span>
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    <button type="button" onClick={() => writeLyricsAi('compose')} disabled={lyricsAiBusy || working || instrumental}
+                      title="AI menulis lirik penuh dari ide lagu"
+                      className="rounded-full border border-magenta/40 bg-magenta/10 px-2.5 py-0.5 text-[10px] font-bold text-white/85 transition hover:border-magenta disabled:opacity-40">
+                      {lyricsAiBusy ? '✍️ Menulis…' : '✨ Tulis AI'}
+                    </button>
+                    <button type="button" onClick={() => writeLyricsAi('expand')} disabled={lyricsAiBusy || working || instrumental || !lyrics.trim()}
+                      title="Kembangkan lirik menjadi lagu penuh"
+                      className="rounded-full border border-cyan/40 bg-cyan/10 px-2 py-0.5 text-[10px] font-bold text-white/85 transition hover:border-cyan disabled:opacity-40">
+                      ⤢ Expand
+                    </button>
+                    <button type="button" onClick={() => writeLyricsAi('refine')} disabled={lyricsAiBusy || working || instrumental || lyricSungCount < 2}
+                      title="Rapikan rima & keternyanyian"
+                      className="rounded-full border border-signal/40 bg-signal/10 px-2 py-0.5 text-[10px] font-bold text-white/85 transition hover:border-signal disabled:opacity-40">
+                      🪄 Refine
+                    </button>
+                    {lyrics && (
+                      <button type="button" onClick={() => { setLyrics(''); setLyricsAiInfo('') }} disabled={working || instrumental}
+                        title="Kosongkan lirik"
+                        className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-bold text-white/60 transition hover:border-danger/50">
+                        🗑
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="mb-1.5 flex flex-wrap items-center gap-1">
+                  {STRUCTURE_TAGS.map((tag) => (
+                    <button key={tag} type="button" onClick={() => insertStructureTag(tag)} disabled={instrumental}
+                      className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[10px] text-white/60 transition hover:border-cyan/50 hover:text-white disabled:opacity-40">
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+                <textarea ref={lyricsRef} value={instrumental ? '[Instrumental — lirik dilewati]' : lyrics} onChange={(e) => { setLyrics(e.target.value); setRequestError('') }} rows={7}
+                  aria-invalid={Boolean(vis("idea"))}
+                  disabled={instrumental}
+                  placeholder={'Kosongkan agar AI menulis lirik otomatis, atau tulis sendiri:\n[Verse]\n...\n[Chorus]\n...'}
+                  className={`w-full resize-y rounded-xl border bg-black/20 p-3 font-mono text-xs leading-5 text-white/85 outline-none transition disabled:opacity-50 placeholder:text-white/25 ${
+                    vis("idea") ? 'border-danger/40' : 'border-white/10 focus:border-cyan/60'}`} />
+                {lyricsAiInfo && <span className="mt-1 block font-mono text-[10px] text-cyan-soft">{lyricsAiInfo}</span>}
+
+                <details className="mt-2 rounded-lg border border-white/10 bg-black/15 p-2">
+                  <summary className="cursor-pointer list-none font-mono text-[10px] text-white/50 hover:text-white">
+                    📂 Draft Lirik &amp; Edit per Bagian (Opsional)
+                  </summary>
+                  <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <input value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)}
+                        placeholder="Judul draft" aria-label="Judul draft lirik"
+                        className="w-36 rounded-md border border-white/10 bg-navy-3 px-2 py-1 text-[11px] text-white outline-none" />
+                      <button type="button" onClick={saveLyricDraft} disabled={draftBusy || !user}
+                        className="rounded-md border border-cyan/40 bg-cyan/10 px-2 py-1 text-[10px] font-bold text-white/85 disabled:opacity-40">
+                        {draftBusy ? 'Menyimpan…' : currentDraft ? 'Simpan' : 'Simpan Draft'}
+                      </button>
+                      <button type="button" onClick={newLyricDraft}
+                        className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-[10px] text-white/60">
+                        Baru
+                      </button>
+                      {currentDraft && (
+                        <button type="button" onClick={removeLyricDraft} disabled={draftBusy}
+                          className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1 text-[10px] text-danger">
+                          Hapus
+                        </button>
+                      )}
+                      {lyricDrafts.slice(0, 4).map((entry) => (
+                        <button key={entry.draft_id} type="button" onClick={() => openLyricDraft(entry)}
+                          className={`max-w-[120px] truncate rounded-md border px-2 py-1 text-[10px] ${
+                            currentDraft?.draft_id === entry.draft_id
+                              ? 'border-magenta/60 bg-magenta/20 text-white'
+                              : 'border-white/10 bg-white/5 text-white/60'}`}>
+                          {entry.title || 'Draft'}
+                        </button>
+                      ))}
+                    </div>
+                    {lyricSections.length > 0 && (
+                      <div className="grid gap-1.5 sm:grid-cols-[minmax(0,140px)_1fr_auto]">
+                        <select value={sectionIndex} onChange={(e) => { setSectionIndex(Number(e.target.value)); setSectionInfo('') }}
+                          className="rounded-lg border border-white/10 bg-navy-3 px-2 py-1.5 text-xs text-white outline-none">
+                          {lyricSections.map((sec, i) => (
+                            <option key={`${sec.header}-${i}`} value={i}>
+                              {sec.header || '[Pembuka]'} ({sec.lines.length})
+                            </option>
+                          ))}
+                        </select>
+                        <input value={sectionInstruction} onChange={(e) => setSectionInstruction(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') rewriteSection() }}
+                          placeholder='Ubah bagian ini, mis. "lebih megah"'
+                          className="rounded-lg border border-white/10 bg-navy-3 px-2.5 py-1.5 text-xs text-white outline-none" />
+                        <button type="button" onClick={rewriteSection} disabled={sectionBusy || instrumental || sectionInstruction.trim().length < 3}
+                          className="rounded-lg border border-magenta/40 bg-magenta/10 px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-40">
+                          {sectionBusy ? 'Menulis…' : '✏️ Ubah'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              </div>
+            )}
             </Group>
 
-            <Group title="2 · Gaya & Suara" subtitle="Genre, bahasa, durasi, dan vokal" defaultOpen>
+            <Group title="2 · Gaya Musik, Bahasa & Durasi" subtitle="Pilih genre, bahasa vokal, dan durasi lagu" defaultOpen>
             <div className="relative">
-              <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-white/55">Genre</span>
+              <span className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-white/65">Genre Musik</span>
               <button type="button" onClick={() => setGenreOpen((v) => !v)}
                 aria-haspopup="listbox" aria-expanded={genreOpen}
-                className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-left text-sm text-white outline-none transition focus:border-cyan/60">
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-left text-sm text-white outline-none transition focus:border-cyan/60">
                 <span className="truncate">
                   {(catalog.genres || []).find((g) => g.id === genre)?.label || genre}
                   {genreInfo?.language_locked && (
@@ -2886,8 +2980,6 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                       {visibleGenres.map((item) => (
                         <button key={item.id} type="button" role="option" aria-selected={genre === item.id}
                           onClick={() => { setGenre(item.id); setGenreOpen(false); setGenreQuery('') }}
-                          title={item.language_locked
-                            ? `Bahasa vokal terkunci: ${item.language_label}` : 'Bahasa vokal bebas'}
                           className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
                             genre === item.id
                               ? 'bg-magenta/25 font-bold text-white'
@@ -2907,10 +2999,10 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               )}
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold uppercase tracking-widest text-white/55">Bahasa vokal</span>
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-widest text-white/65">Bahasa vokal</span>
                   {languageLocked && (
                     <span className="rounded-full border border-cyan/30 bg-cyan/10 px-2 py-0.5 font-mono text-[9px] uppercase text-cyan-soft">
                       🔒 Terkunci
@@ -2919,7 +3011,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 </div>
                 <select value={language} onChange={(e) => setLanguage(e.target.value)}
                   disabled={languageLocked} aria-label="Bahasa vokal"
-                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-60">
+                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-60">
                   {languageGroups.map(([group, items]) => (
                     <optgroup key={group} label={group}>
                       {items.map((item) => (
@@ -2928,443 +3020,123 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                     </optgroup>
                   ))}
                 </select>
-                <p className="mt-1.5 text-[11px] leading-4 text-white/45">
-                  {languageLocked
-                    ? `Genre ${genreInfo?.label || genre} selalu berbahasa ${genreInfo?.language_label || languageLabel}.`
-                    : `Bahasa bebas dipilih. Aktif: ${languageLabel}.`}
-                </p>
               </div>
-              <div className="grid gap-4">
-                <label className="block">
-                  <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-white/55">Gender vokal</span>
-                  <select value={effectiveGender} disabled={!!identityPersona} onChange={(e) => setVocalGender(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none">
-                    {VOCAL_GENDERS.map((item) => (
-                      <option key={item.id} value={item.id}>{item.label}</option>
-                    ))}
-                  </select>
-                  {identityPersona && <span className="mt-1 block text-[11px] text-white/50">Mengikuti persona {identityPersona.name}. Pilih “Tanpa persona” untuk mengganti gender.</span>}
-                </label>
-                <label className="block">
-                  <span className="mb-2 flex items-center justify-between gap-2 text-xs font-bold uppercase tracking-widest text-white/55">
-                    <span>Durasi lagu</span>
-                    <span className="flex items-center gap-1 text-[10px] font-semibold normal-case tracking-normal text-white/55">
-                      <input type="checkbox" checked={autoDuration}
-                        onChange={(e) => setAutoDuration(e.target.checked)}
-                        className="accent-cyan" />
-                      Auto ikuti lirik
-                    </span>
+
+              <label className="block">
+                <span className="mb-1.5 flex items-center justify-between gap-2 text-xs font-bold uppercase tracking-widest text-white/65">
+                  <span>Durasi lagu</span>
+                  <span className="flex items-center gap-1 text-[10px] font-semibold normal-case tracking-normal text-white/55">
+                    <input type="checkbox" checked={autoDuration}
+                      onChange={(e) => setAutoDuration(e.target.checked)}
+                      className="accent-cyan" />
+                    Auto lirik
                   </span>
-                  <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}
-                    disabled={autoDuration}
-                    className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50">
-                    {DURATIONS.map((value) => (
-                      <option key={value} value={value}>
-                        {value < 60 ? `${value} detik` : `${value / 60} menit`}
-                      </option>
-                    ))}
-                  </select>
-                  {autoDuration && (
-                    <span className="mt-1 block text-[11px] leading-4 text-cyan-soft">
-                      {lyricSungCount > 0
-                        ? `≈ ${Math.max(30, Math.min(600, Math.round(lyricSungCount * AUTO_SECONDS_PER_LINE + 6)))} dtk mengikuti ${lyricSungCount} baris lirik; panjang akhir = audio sebenarnya.`
-                        : 'Panjang mengikuti lirik yang dibuat/diisi; durasi akhir = audio sebenarnya.'}
-                    </span>
-                  )}
-                  {vis("duration") && !autoDuration && (
-                    <span className="mt-1 block text-[11px] text-danger">{vis("duration")}</span>
-                  )}
-                </label>
-              </div>
-            </div>
-
-              <label className="flex items-start gap-2 rounded-lg border border-white/10 bg-black/20 p-3 text-[11px] leading-5 text-white/55">
-                <input type="checkbox" checked={instrumental}
-                  onChange={(e) => setInstrumental(e.target.checked)}
-                  className="mt-0.5 accent-magenta" />
-                <span>
-                  <b className="text-white/80">Instrumental</b> — tanpa vokal sama sekali
-                  (lirik dilewati, deteksi BPM/key tetap jalan).
                 </span>
-              </label>
-            </Group>
-
-            <Group title="3 · Persona Suara (Cewek / Cowok) & Bahasa" subtitle="Pilih / buat persona suara sendiri (upload / desain tak terbatas), dual language" defaultOpen>
-            <label className="flex items-start gap-2 rounded-lg border border-white/10 bg-black/20 p-3 text-[11px] leading-5 text-white/55">
-              <input type="checkbox" checked={languageOverride}
-                onChange={(e) => setLanguageOverride(e.target.checked)}
-                className="mt-0.5 accent-cyan" />
-              <span>
-                <b className="text-white/80">Timpa bahasa vokal</b> — pakai bahasa pilihan saya
-                walaupun genrenya daerah (mis. Pop Jawa dengan vokal Indonesia).
-              </span>
-            </label>
-
-            <div className="rounded-xl border border-magenta/25 bg-magenta/5 p-3.5">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <div>
-                  <span className="block text-xs font-bold uppercase tracking-widest text-white/70">Dual language</span>
-                  <span className="text-[11px] text-white/45">Verse Jawa → chorus Korea/Jepang atau kombinasi lain</span>
-                </div>
-                {bilingual && <span className="rounded-full border border-magenta/40 bg-magenta/15 px-2 py-0.5 font-mono text-[9px] text-magenta-soft">AKTIF</span>}
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">Bahasa kedua</span>
-                  <select value={languageSecondary} onChange={(e) => setLanguageSecondary(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none">
-                    <option value="">Tanpa bahasa kedua</option>
-                    {languageGroups.map(([group, items]) => (
-                      <optgroup key={`secondary-${group}`} label={group}>
-                        {items.filter((item) => item.id !== language).map((item) => (
-                          <option key={`secondary-${item.id}`} value={item.id}>{item.label}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">Pola bahasa</span>
-                  <select value={languageMix} onChange={(e) => setLanguageMix(e.target.value)}
-                    disabled={!languageSecondary}
-                    className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none disabled:opacity-50">
-                    <option value="chorus">Verse utama → Chorus bahasa kedua</option>
-                    <option value="verse-chorus">Verse utama, chorus bergantian</option>
-                    <option value="line">Bergantian per baris</option>
-                    <option value="auto">Auto AI menentukan section</option>
-                    <option value="none">Nonaktif</option>
-                  </select>
-                </label>
-              </div>
-              {bilingual && (
-                <p className="mt-2 text-[11px] leading-4 text-warn">
-                  ⚠ Pelafalan Jawa wajib direview penutur asli sebelum dipublikasikan. AI akan membuat lirik full sesuai pembagian section, tetapi lirik tetap bisa diedit manual di bawah.
-                </p>
-              )}
-              {!bilingual && languageSecondary && (
-                <p className="mt-2 text-[11px] text-white/40">Pilih pola selain Nonaktif untuk memakai {languageLabel} + {languageSecondaryLabel}.</p>
-              )}
-            </div>
-
-            {renderPersonaStudioPanel({ compact: false })}
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-white/55">BPM</span>
-                <input type="number" min={0} max={220} value={bpm || ''}
-                  onChange={(e) => setBpm(Number(e.target.value) || 0)} placeholder="auto"
-                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none" />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-white/55">Key</span>
-                <input value={musicKey} onChange={(e) => setMusicKey(e.target.value)} placeholder="auto"
-                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2.5 text-sm text-white outline-none" />
+                <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}
+                  disabled={autoDuration}
+                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50">
+                  {DURATIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {value < 60 ? `${value} detik` : `${value / 60} menit`}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
-            </Group>
 
-            {!simpleMode && (<Group title="4 · Lirik" subtitle="Tulis, generate, atau edit per bagian" defaultOpen={Boolean(lyrics.trim())}>
-            <div className="block">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-bold uppercase tracking-widest text-white/55">
-                  Lirik <span className="font-mono normal-case text-white/30">({lyricSungCount}/{lyricTarget} baris)</span>
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  <button type="button" onClick={() => writeLyricsAi('compose')} disabled={lyricsAiBusy || working || instrumental}
-                    title="Gemini menulis lirik full dari ide — sesuai durasi & bahasa genre"
-                    className="rounded-full border border-magenta/40 bg-magenta/10 px-2.5 py-1 text-[10px] font-bold text-white/85 transition hover:border-magenta disabled:opacity-40">
-                    {lyricsAiBusy ? '✍️ Menulis…' : '✨ Generate'}
-                  </button>
-                  <button type="button" onClick={() => writeLyricsAi('expand')} disabled={lyricsAiBusy || working || instrumental || !lyrics.trim()}
-                    title="Kembangkan coretanmu menjadi struktur lagu full"
-                    className="rounded-full border border-cyan/40 bg-cyan/10 px-2.5 py-1 text-[10px] font-bold text-white/85 transition hover:border-cyan disabled:opacity-40">
-                    ⤢ Expand
-                  </button>
-                  <button type="button" onClick={() => writeLyricsAi('refine')} disabled={lyricsAiBusy || working || instrumental || lyricSungCount < 2}
-                    title="Perbaiki rima & keternyanyian tanpa mengubah cerita dan struktur"
-                    className="rounded-full border border-signal/40 bg-signal/10 px-2.5 py-1 text-[10px] font-bold text-white/85 transition hover:border-signal disabled:opacity-40">
-                    🪄 Refine
-                  </button>
-                  <button type="button" onClick={() => { setLyrics(''); setLyricsAiInfo('') }} disabled={working || instrumental || !lyrics}
-                    title="Kosongkan editor lirik"
-                    className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-bold text-white/60 transition hover:border-danger/50 disabled:opacity-40">
-                    🗑
-                  </button>
-                </div>
-              </div>
-              <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">Sisipkan struktur</span>
-                {STRUCTURE_TAGS.map((tag) => (
-                  <button key={tag} type="button" onClick={() => insertStructureTag(tag)} disabled={instrumental}
-                    title={`Sisipkan ${tag} di posisi kursor`}
-                    className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[10px] text-white/60 transition hover:border-cyan/50 hover:text-white disabled:opacity-40">
-                    {tag}
-                  </button>
-                ))}
-              </div>
-              <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-white/10 bg-black/15 px-2 py-1.5">
-                <span className="font-mono text-[10px] uppercase tracking-widest text-white/35">Draft lirik</span>
-                <input value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)}
-                  placeholder="Judul draft" aria-label="Judul draft lirik"
-                  className="w-40 rounded-md border border-white/10 bg-navy-3 px-2 py-1 text-[11px] text-white outline-none focus:border-cyan/60" />
-                <button type="button" onClick={saveLyricDraft} disabled={draftBusy || !user}
-                  className="rounded-md border border-cyan/40 bg-cyan/10 px-2 py-1 text-[10px] font-bold text-white/85 transition hover:border-cyan disabled:opacity-40">
-                  {draftBusy ? 'Menyimpan.' : currentDraft ? 'Simpan' : 'Buat draft'}
-                </button>
-                <button type="button" onClick={newLyricDraft}
-                  title="Mulai draft baru tanpa menghapus draft lama"
-                  className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-bold text-white/60 transition hover:border-white/30">
-                  Baru
-                </button>
-                {currentDraft && (
-                  <button type="button" onClick={removeLyricDraft} disabled={draftBusy}
-                    className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1 text-[10px] font-bold text-danger transition hover:border-danger disabled:opacity-40">
-                    Hapus
-                  </button>
-                )}
-                {lyricDrafts.slice(0, 4).map((entry) => (
-                  <button key={entry.draft_id} type="button" onClick={() => openLyricDraft(entry)}
-                    title={`${entry.lyric_chars} karakter - buka draft`}
-                    className={`max-w-[140px] truncate rounded-md border px-2 py-1 text-[10px] transition ${
-                      currentDraft?.draft_id === entry.draft_id
-                        ? 'border-magenta/60 bg-magenta/20 text-white'
-                        : 'border-white/10 bg-white/5 text-white/60 hover:border-cyan/50'}`}>
-                    {entry.title || 'Draft tanpa judul'}
-                  </button>
-                ))}
-                {draftInfo && <span className="text-[10px] text-cyan-soft">{draftInfo}</span>}
-              </div>
-              <textarea ref={lyricsRef} value={instrumental ? '[Instrumental — lirik dilewati]' : lyrics} onChange={(e) => { setLyrics(e.target.value); setRequestError('') }} rows={10}
-                aria-invalid={Boolean(vis("idea"))}
-                disabled={instrumental}
-                placeholder="[Verse]&#10;Tulis coretan lirikmu di sini…&#10;[Chorus]&#10;…atau tekan ✨ Generate dari ide di atas"
-                className={`w-full resize-y rounded-xl border bg-black/20 p-4 font-mono text-xs leading-6 text-white/85 outline-none transition disabled:opacity-50 placeholder:text-white/25 ${
-                  vis("idea") ? 'border-danger/40' : 'border-white/10 focus:border-cyan/60'}`} />
-              <span className="mt-1 block font-mono text-[10px] text-white/35">
-                {lyrics.trim().length} karakter · {lyricSungCount}/{lyricTarget} baris nyanyi · tag [Verse]/[Chorus]
-                {lyricsAiInfo && <span className="text-cyan-soft"> · {lyricsAiInfo}</span>}
-              </span>
-
-              {lyricSections.length > 0 && (
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/45">Edit satu bagian (AI section editing)</span>
-                    <span className="font-mono text-[10px] text-white/35">{lyricSections.length} bagian</span>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,180px)_1fr_auto]">
-                    <select value={sectionIndex} onChange={(e) => { setSectionIndex(Number(e.target.value)); setSectionInfo('') }}
-                      className="rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
-                      {lyricSections.map((sec, i) => (
-                        <option key={`${sec.header}-${i}`} value={i}>
-                          {sec.header || '[Pembuka]'} · {sec.lines.length} baris
-                        </option>
-                      ))}
-                    </select>
-                    <input value={sectionInstruction} onChange={(e) => setSectionInstruction(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') rewriteSection() }}
-                      placeholder='mis. "jadikan chorus lebih megah dan gospel"'
-                      className="rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none" />
-                    <button type="button" onClick={rewriteSection} disabled={sectionBusy || instrumental || sectionInstruction.trim().length < 3}
-                      className="rounded-lg border border-magenta/40 bg-magenta/10 px-3 py-2 text-xs font-bold text-white transition hover:border-magenta disabled:opacity-40">
-                      {sectionBusy ? '✏️ Menulis…' : '✏️ Tulis ulang bagian'}
-                    </button>
-                  </div>
-                  {sectionInfo && <p className="mt-2 text-[11px] leading-4 text-signal">{sectionInfo}</p>}
-                </div>
-              )}
-            </div>
-            </Group>)}
-
-            <Group title="5 · Aransemen & Hook" subtitle="Rencana seksi, energi, hook">
-            <div className="rounded-xl border border-cyan/25 bg-cyan/5 p-3.5">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">Rencana aransemen</span>
-                <div className="flex items-center gap-1.5">
-                  <label className="flex items-center gap-1 text-[10px] text-white/50">
-                    <input type="checkbox" checked={planAi} onChange={(e) => setPlanAi(e.target.checked)} className="accent-cyan" />
-                    Saran AI
+            {!simpleMode && (
+              <details className="rounded-lg border border-white/10 bg-black/15 p-2.5">
+                <summary className="cursor-pointer list-none text-[11px] font-semibold text-white/60 hover:text-white">
+                  🌐 Opsi Bahasa Ganda / Timpa Bahasa Daerah {bilingual ? '(Aktif)' : '(Opsional)'}
+                </summary>
+                <div className="mt-2.5 space-y-2.5 border-t border-white/10 pt-2.5">
+                  <label className="flex items-start gap-2 text-[11px] leading-4 text-white/60">
+                    <input type="checkbox" checked={languageOverride}
+                      onChange={(e) => setLanguageOverride(e.target.checked)}
+                      className="mt-0.5 accent-cyan" />
+                    <span>Timpa kunci bahasa genre daerah (mis. Pop Jawa dengan lirik Indonesia).</span>
                   </label>
-                  <button type="button" onClick={loadPlan} disabled={planBusy}
-                    title="Susun struktur seksi + hook sebelum render"
-                    className="rounded-full border border-cyan/40 bg-cyan/10 px-2.5 py-1 text-[10px] font-bold text-white/85 transition hover:border-cyan disabled:opacity-40">
-                    {planBusy ? '🧠 Menyusun…' : '🧠 Susun rencana'}
-                  </button>
-                </div>
-              </div>
-
-              {planInfo && <p className="mb-2 text-[11px] leading-4 text-cyan-soft">{planInfo}</p>}
-
-              {plan ? (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-1.5">
-                    {(plan.sections || []).map((sec) => (
-                      <span key={`${sec.index}-${sec.name}`}
-                        title={`${sec.start_sec}s–${sec.end_sec}s · ${sec.vocal} · ${sec.focus}`}
-                        className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-semibold ${
-                          sec.hook ? 'border-magenta/50 bg-magenta/15 text-white' : 'border-white/10 bg-white/5 text-white/70'}`}>
-                        <span className="font-mono">{sec.name}</span>
-                        <span className="flex gap-[2px]">
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <span key={n} className={`h-2.5 w-1 rounded-sm ${n <= sec.energy ? 'bg-cyan' : 'bg-white/15'}`} />
-                          ))}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                  {plan.hook?.line && (
-                    <p className="text-[11px] leading-4 text-white/70">
-                      <span className="mr-1 font-mono text-[10px] uppercase text-white/40">hook</span>
-                      “{plan.hook.line}”
-                    </p>
-                  )}
-                  {plan.style_tags && (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono text-[10px] uppercase text-white/40">style</span>
-                      {plan.style_tags.split(',').map((t) => t.trim()).filter(Boolean).map((t) => (
-                        <button key={t} type="button" onClick={() => toggleStyleChip(t)}
-                          className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/70 transition hover:border-cyan">
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {(plan.hook?.variants || []).length > 0 && (
-                    <div className="space-y-1">
-                      <span className="font-mono text-[10px] uppercase text-white/40">varian hook</span>
-                      {plan.hook.variants.map((v, i) => (
-                        <div key={`${v.line}-${i}`} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 px-2 py-1">
-                          <span className="truncate text-[11px] text-white/75">{v.line}</span>
-                          <span className="shrink-0 font-mono text-[10px] text-white/45">{v.score}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {planAi && plan.source === 'offline' && (
-                    <p className="text-[10px] leading-4 text-white/35">
-                      Saran AI tidak tersedia (kuota teks) — memakai rencana offline.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-[11px] leading-4 text-white/40">
-                  Susun struktur (verse → chorus lift, energi per seksi, hook) sebelum render. Deterministik, tanpa GPU; tag-nya ikut dikirim ke engine.
-                </p>
-              )}
-            </div>
-            </Group>
-
-            <Group title="Proyek & revisi" subtitle="Simpan form + rencana, buka versi sebelumnya">
-            <div className="rounded-xl border border-cyan/25 bg-cyan/5 p-3.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <input value={projectName} onChange={(e) => setProjectName(e.target.value)}
-                  placeholder="Nama proyek" aria-label="Nama proyek musik"
-                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none focus:border-cyan/60" />
-                <button type="button" onClick={saveProject} disabled={projectsBusy || !user}
-                  className="rounded-lg border border-cyan/40 bg-cyan/10 px-3 py-2 text-xs font-bold text-white transition hover:border-cyan disabled:opacity-40">
-                  {projectsBusy ? 'Menyimpan.' : currentProject ? 'Simpan revisi' : 'Simpan proyek'}
-                </button>
-                {currentProject && (
-                  <button type="button" onClick={startNewProject}
-                    className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-white/70 transition hover:border-white/30">
-                    Proyek baru
-                  </button>
-                )}
-                {currentProject && (
-                  <button type="button" onClick={removeProject} disabled={projectsBusy}
-                    className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs font-bold text-danger transition hover:border-danger disabled:opacity-40">
-                    Hapus
-                  </button>
-                )}
-              </div>
-
-              {!user && (
-                <p className="mt-2 text-[11px] leading-4 text-white/45">
-                  Masuk untuk menyimpan proyek dan revisinya.
-                </p>
-              )}
-              {projectInfo && <p className="mt-2 text-[11px] leading-4 text-cyan-soft">{projectInfo}</p>}
-
-              {user && projects.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {projects.slice(0, 8).map((entry) => (
-                    <button key={entry.project_id} type="button" onClick={() => openProject(entry)}
-                      className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
-                        currentProject?.project_id === entry.project_id
-                          ? 'border-magenta/60 bg-magenta/20 text-white'
-                          : 'border-white/10 bg-black/20 text-white/65 hover:border-cyan/50'}`}>
-                      <span className="max-w-[160px] truncate">{entry.name}</span>
-                      <span className="font-mono text-[9px] opacity-60">{entry.revision_count}x</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {currentProject && projectRevisions.length > 0 && (
-                <div className="mt-3 space-y-1">
-                  <span className="font-mono text-[10px] uppercase text-white/40">Revisi</span>
-                  {projectRevisions.map((rev) => (
-                    <div key={rev.revision_id}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 px-2 py-1">
-                      <button type="button" onClick={() => loadProjectRevision(rev)}
-                        className="min-w-0 flex-1 truncate text-left text-[11px] text-white/75 transition hover:text-white">
-                        <span className="font-mono text-white/40">#{rev.revision_index}</span>{' '}
-                        {rev.label || 'revisi'}
-                      </button>
-                      <button type="button" onClick={() => restoreProjectRevision(rev)} disabled={projectsBusy}
-                        className="shrink-0 rounded-full border border-white/15 px-2 py-0.5 text-[10px] font-semibold text-white/60 transition hover:border-cyan/50 disabled:opacity-40">
-                        Restore
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            </Group>
-
-            <div className="space-y-2.5">
-              <div className="rounded-xl border border-cyan/30 bg-cyan/10 px-3 py-2 text-[11px] leading-relaxed text-white/85">
-                <div className="flex items-center justify-between gap-2 font-semibold text-white">
-                  <span>🎵 Engine Lagu Baru: HeartMuLa Studio 3B</span>
-                  <span className="rounded bg-cyan/20 px-1.5 py-0.5 font-mono text-[10px]">Fast In-Memory · Apache 2.0</span>
-                </div>
-                <p className="mt-0.5 text-white/65">
-                  Model generatif lagu orisinal komersial 100% gratis lisensi dengan vokal Bahasa Indonesia &amp; daerah natural.
-                </p>
-              </div>
-              <button type="button" onClick={create} disabled={createBlocked}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#ff5a1f] via-[#ff2d78] to-[#b829ff] px-4 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
-                {working ? <><Spinner className="h-4 w-4" /> Membuat lagu…</> : '🎵 Create Lagu'}
-              </button>
-            </div>
-
-            {!simpleMode && (<Group title="6 · Lanjutan & Parameter Model" subtitle="Karakter vokal, variasi nada (Top-K), kreativitas (Temperature), kepatuhan genre (CFG), LoRA">
-                <div className="space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">Karakter penyampaian vokal</span>
-                      <select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value)}
-                        className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
-                        {VOCAL_STYLES.map((vs) => <option key={vs.id} value={vs.id}>{vs.label}</option>)}
+                  <div className="grid gap-2.5 sm:grid-cols-2">
+                    <label className="block text-[11px] text-white/60">
+                      Bahasa kedua
+                      <select value={languageSecondary} onChange={(e) => setLanguageSecondary(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-navy-3 px-2.5 py-1.5 text-xs text-white outline-none">
+                        <option value="">Tanpa bahasa kedua</option>
+                        {languageGroups.map(([group, items]) => (
+                          <optgroup key={`secondary-${group}`} label={group}>
+                            {items.filter((item) => item.id !== language).map((item) => (
+                              <option key={`secondary-${item.id}`} value={item.id}>{item.label}</option>
+                            ))}
+                          </optgroup>
+                        ))}
                       </select>
                     </label>
+                    <label className="block text-[11px] text-white/60">
+                      Pola pergantian
+                      <select value={languageMix} onChange={(e) => setLanguageMix(e.target.value)}
+                        disabled={!languageSecondary}
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-navy-3 px-2.5 py-1.5 text-xs text-white outline-none disabled:opacity-50">
+                        <option value="chorus">Verse utama → Chorus kedua</option>
+                        <option value="verse-chorus">Bergantian per section</option>
+                        <option value="line">Bergantian per baris</option>
+                        <option value="auto">Otomatis AI</option>
+                        <option value="none">Nonaktif</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              </details>
+            )}
+            </Group>
+
+            <Group title="3 · Penyanyi & Persona Suara (👩 Cewek / 👨 Cowok)" subtitle="Pilih atau buat persona suara sendiri tanpa batas" defaultOpen>
+            {renderPersonaStudioPanel({ compact: false })}
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-white/65">Gender vokal</span>
+                <select value={effectiveGender} disabled={!!identityPersona} onChange={(e) => setVocalGender(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none disabled:opacity-60">
+                  {VOCAL_GENDERS.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-white/65">Karakter vokal</span>
+                <select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
+                  {VOCAL_STYLES.map((vs) => <option key={vs.id} value={vs.id}>{vs.label}</option>)}
+                </select>
+              </label>
+            </div>
+            </Group>
+
+            {!simpleMode && (<Group title="4 · Pengaturan Lanjutan & Proyek (Opsional)" subtitle="Style tags, BPM/Key, kreativitas model, rencana aransemen & simpan proyek">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <label className="block">
-                      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">Variasi nada (Top-K)</span>
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-white/45">BPM</span>
+                      <input type="number" min={0} max={220} value={bpm || ''}
+                        onChange={(e) => setBpm(Number(e.target.value) || 0)} placeholder="auto"
+                        className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-white/45">Key</span>
+                      <input value={musicKey} onChange={(e) => setMusicKey(e.target.value)} placeholder="auto"
+                        className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none" />
+                    </label>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-white/45">Variasi nada (Top-K)</span>
                       <select value={topk} onChange={(e) => setTopk(Number(e.target.value))}
                         className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
                         {TOPK_OPTIONS.map((tk) => <option key={tk.id} value={tk.id}>{tk.label}</option>)}
                       </select>
                     </label>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block">
-                      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">Jumlah take</span>
-                      <select value={takeCount} onChange={(e) => setTakeCount(Number(e.target.value))}
-                        className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
-                        {TAKE_COUNTS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">Seed</span>
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-white/45">Seed</span>
                       <input value={seed} onChange={(e) => setSeed(e.target.value)} inputMode="numeric" placeholder="acak"
                         className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none" />
                     </label>
@@ -3373,11 +3145,11 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                     <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-white/45">Style tags tambahan</span>
                       <div className="flex gap-1.5">
-                        <button type="button" onClick={rollStyle} title="Gaya acak ala “Use Random Style” Suno"
+                        <button type="button" onClick={rollStyle}
                           className="rounded-full border border-cyan/40 bg-cyan/10 px-2 py-0.5 text-[10px] font-bold text-white/80 transition hover:border-cyan">
                           🎲 Gaya acak
                         </button>
-                        <button type="button" onClick={styleFromHistory} title="Ambil gaya dari riwayat lagumu (ala “My Taste” Suno)"
+                        <button type="button" onClick={styleFromHistory}
                           className="rounded-full border border-magenta/40 bg-magenta/10 px-2 py-0.5 text-[10px] font-bold text-white/80 transition hover:border-magenta">
                           ✨ Dari riwayat
                         </button>
@@ -3398,7 +3170,6 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         )
                       })}
                     </div>
-                    <span className="mt-1 block text-[10px] leading-4 text-white/35">Ditambahkan ke tag genre. Bila dikosongkan, nilai dari persona akan dipakai.</span>
                   </div>
                   <div className="block">
                     <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
@@ -3420,71 +3191,65 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         )
                       })}
                     </div>
-                    <span className="mt-1 block text-[10px] leading-4 text-white/35">Diteruskan ke engine sebagai arahan “no &#123;tag&#125;” di akhir gaya (bentuk terverifikasi Suno). Maksimal 3 item.</span>
                   </div>
-                  <label className="block">
-                    <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/45">LoRA / slot regional</span>
-                    <input value={loraId} onChange={(e) => setLoraId(e.target.value)} placeholder="kosong = base model"
-                      className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none" />
-                    <span className="mt-1 block text-[10px] leading-4 text-white/35">Aktif di server: {engine?.lora_id || 'belum ada'}. Untuk moat regional (mis. Jawa).</span>
-                  </label>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block">
-                      <span className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/45">
-                        <span>Weirdness</span><span className="font-mono text-white/40">{weirdness}</span>
+                      <span className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/45">
+                        <span>Kreativitas (Weirdness)</span><span className="font-mono text-white/40">{weirdness}%</span>
                       </span>
                       <input type="range" min={0} max={100} value={weirdness} onChange={(e) => setWeirdness(Number(e.target.value))} className="w-full accent-magenta" />
-                      <span className="mt-1 block text-[10px] leading-4 text-white/35">
-                        {weirdness <= 30 ? 'Aman & konvensional — ikuti tag erat.'
-                          : weirdness <= 45 ? 'Konservatif — struktur lagu lugas.'
-                            : weirdness <= 55 ? 'Seimbang — campuran kontrol & kejutan.'
-                              : weirdness <= 70 ? 'Agak eksperimental — sedikit kejutan.'
-                                : 'Eksperimental — struktur & melodi tak terduga.'}
-                      </span>
                     </label>
                     <label className="block">
-                      <span className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/45">
-                        <span>Style influence</span><span className="font-mono text-white/40">{styleInfluence}</span>
+                      <span className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/45">
+                        <span>Kepatuhan Genre</span><span className="font-mono text-white/40">{styleInfluence}%</span>
                       </span>
                       <input type="range" min={0} max={100} value={styleInfluence} onChange={(e) => setStyleInfluence(Number(e.target.value))} className="w-full accent-cyan" />
-                      <span className="mt-1 block text-[10px] leading-4 text-white/35">
-                        {styleInfluence <= 20 ? 'Tag hanya saran longgar — kreativitas maksimum.'
-                          : styleInfluence <= 35 ? 'Interpretasi longgar — susunan lebih bebas.'
-                            : styleInfluence <= 65 ? 'Seimbang — iterator & tag gaya berpadu.'
-                              : styleInfluence <= 80 ? 'Kuat — patuh pada tag genre.'
-                                : 'Sangat patuh — nyaris tanpa penyimpangan dari tag.'}
-                      </span>
                     </label>
                   </div>
-                  <p className="text-[11px] leading-5 text-white/40">
-                    Seed sama + spesifikasi sama = hasil reproducible. Bila 2 take dipilih, server memakai seed berurutan untuk membandingkan A/B.
-                  </p>
+
+                  {/* Rencana Aransemen & Simpan Proyek */}
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">Rencana Aransemen &amp; Proyek</span>
+                      <button type="button" onClick={loadPlan} disabled={planBusy}
+                        className="rounded-full border border-cyan/40 bg-cyan/10 px-2.5 py-0.5 text-[10px] font-bold text-white/85 disabled:opacity-40">
+                        {planBusy ? '🧠 Menyusun…' : '🧠 Susun Rencana'}
+                      </button>
+                    </div>
+                    {plan && (
+                      <div className="mb-2 flex flex-wrap gap-1">
+                        {(plan.sections || []).map((sec) => (
+                          <span key={`${sec.index}-${sec.name}`}
+                            className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[10px] text-white/70">
+                            {sec.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input value={projectName} onChange={(e) => setProjectName(e.target.value)}
+                        placeholder="Nama proyek untuk disimpan…" aria-label="Nama proyek musik"
+                        className="min-w-0 flex-1 rounded-lg border border-white/10 bg-navy-3 px-2.5 py-1.5 text-xs text-white outline-none" />
+                      <button type="button" onClick={saveProject} disabled={projectsBusy || !user}
+                        className="rounded-lg border border-cyan/40 bg-cyan/10 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-40">
+                        {projectsBusy ? 'Menyimpan…' : currentProject ? 'Simpan Revisi' : 'Simpan Proyek'}
+                      </button>
+                    </div>
+                    {projectInfo && <p className="mt-1.5 text-[11px] text-cyan-soft">{projectInfo}</p>}
+                  </div>
                 </div>
             </Group>)}
-            <p className={`text-center font-mono text-[10px] ${
-              engineReady === false || missing.length ? 'text-warn' : 'text-white/35'}`}>
-              {readinessText}
-              {!missing.length && engineReady !== false && !engineBusy && !working && (
-                <> {provider === 'heartmula'
-                  ? '🎵 HeartMuLa final · engine asli Klipin Music (Apache 2.0)'
-                  : provider === 'diffrhythm'
-                    ? '⚡ DiffRhythm full song · latent diffusion cepat (Apache 2.0)'
-                    : provider === 'auto'
-                      ? '🅰️🅱️ Auto · draft cepat lalu final untuk dibandingkan'
-                      : '⚡ ACE-Step draft cepat · untuk mencoba ide'}</>
-              )}
-            </p>
-            {costEstimate && (
-              <p className="text-center font-mono text-[10px] text-white/45">
-                Estimasi: ±{costEstimate.gpu_sec}s GPU · ±${costEstimate.usd} · ±{costEstimate.credits} kredit
-                (aktual dicatat per take)
+
+            <div className="space-y-2 pt-1">
+              <button type="button" onClick={create} disabled={createBlocked}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#ff5a1f] via-[#ff2d78] to-[#b829ff] px-4 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+                {working ? <><Spinner className="h-4 w-4" /> Membuat lagu…</> : '🎵 Buat Lagu Sekarang'}
+              </button>
+              <p className={`text-center font-mono text-[10px] ${
+                engineReady === false || missing.length ? 'text-warn' : 'text-white/40'}`}>
+                {readinessText}
               </p>
-            )}
-            {costSummary && costSummary.takes > 0 && (
-              <p className="text-center font-mono text-[10px] text-white/30">
-                Total kamu: {costSummary.takes} takes · {costSummary.gpu_sec}s GPU · ${costSummary.usd} · {costSummary.credits} kredit
-              </p>
-            )}
+            </div>
             </>)}
           </div>
           </div>

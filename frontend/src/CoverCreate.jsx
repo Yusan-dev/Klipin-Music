@@ -93,6 +93,7 @@ export default function CoverCreate({
   embedded = false,
   personaId: parentPersonaId = '',
   selectedPersona: parentSelectedPersona = null,
+  personaSlot = null,
 }) {
   const L = labels()
   const [genres, setGenres] = useState([])
@@ -336,7 +337,11 @@ export default function CoverCreate({
   if (embedded) {
     return (
       <div className="space-y-3.5">
-        <div>
+        {/* Langkah 1: Lagu Sumber & Lirik */}
+        <div className="space-y-2.5 rounded-xl border border-[#26262e] bg-[#141419] p-3">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-white/75">
+            1 · Lagu Sumber &amp; Lirik
+          </div>
           <input
             ref={fileRef}
             type="file"
@@ -354,7 +359,7 @@ export default function CoverCreate({
               setDrag(false)
               pickFile(e.dataTransfer?.files?.[0])
             }}
-            className={`flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed px-4 py-5 text-center transition ${
+            className={`flex w-full flex-col items-center gap-1 rounded-lg border border-dashed px-4 py-4 text-center transition ${
               drag ? 'border-[#f59e0b] bg-[#f59e0b]/10' : 'border-[#2c2c35] bg-[#18181d] hover:border-[#3f3f4a] hover:bg-[#1c1c22]'
             }`}
           >
@@ -367,9 +372,24 @@ export default function CoverCreate({
               </span>
             )}
           </button>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.lyrics}</label>
+            <textarea
+              value={lyrics}
+              onChange={(e) => setLyrics(e.target.value)}
+              rows={3}
+              placeholder={L.lyricsHint}
+              className="w-full resize-y rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] placeholder:text-[#5c5c66] outline-none focus:border-[#52525b]"
+            />
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5">
+        {/* Langkah 2: Gaya Musik Cover */}
+        <div className="space-y-2.5 rounded-xl border border-[#26262e] bg-[#141419] p-3">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-white/75">
+            2 · Gaya Musik Cover (Genre &amp; Aransemen)
+          </div>
           <div>
             <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.genre}</label>
             <select value={genre} onChange={(e) => setGenre(e.target.value)}
@@ -379,168 +399,173 @@ export default function CoverCreate({
               ))}
             </select>
           </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.voice}</label>
-            <select value={voice} onChange={(e) => setVoice(e.target.value)}
-              className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
-              {VOICE_OPTIONS.map((v) => (
-                <option key={v.id} value={v.id}>{v.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
 
-        <div className="flex items-center justify-between rounded-lg border border-[#26262e] bg-[#18181d] px-3 py-2 text-[11px]">
-          <span className="font-medium text-[#e4e4e7]">✨ Engine Cover: YuE2 + SheetSage2 Headless</span>
-          <span className="rounded bg-[#10b981]/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#34d399]">
-            Fast Keep-Warm · Lirik &amp; Melodi Terkunci
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Karakter penyampaian vokal</label>
-            <select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value)}
-              className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
-              {VOCAL_STYLE_OPTIONS.map((vs) => (
-                <option key={vs.id} value={vs.id}>{vs.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <div className="mb-1 flex items-center justify-between text-[11px]">
-              <span className="font-medium text-[#8e8e99]">Kunci Melodi &amp; Ketukan</span>
-              <span className="font-mono text-[#fbbf24]">{Math.round(restyleStrength * 100)}%</span>
-            </div>
+            <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Preset Vibe / Arahan Aransemen (opsional)</label>
+            {genre === 'reggae' && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {[
+                  {
+                    id: 'boenter',
+                    label: '🌴 Reggae Santai (BOENTER)',
+                    prompt: 'warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove, muted clean offbeat guitar skank, warm Hammond B3 organ bubble, deep round sub-dub bassline, melodic brass intro hook, relaxed soulful vocal with warm reverb and subtle dub echo, silky analog highs',
+                  },
+                  {
+                    id: 'ska',
+                    label: '🎺 Reggae Ska & Brass',
+                    prompt: 'upbeat Indonesian ska-reggae cover, lively brass section (trumpet, trombone, saxophone hooks), crisp offbeat guitar skank, bouncy walking dub bassline, tight one-drop snare and rimshot',
+                  },
+                  {
+                    id: 'acoustic',
+                    label: '🌊 Reggae Akustik',
+                    prompt: 'acoustic island reggae cover, nylon and steel acoustic guitar offbeat skank, warm cajon and rimshot one-drop, deep upright dub bass, relaxed intimate vocal',
+                  },
+                  {
+                    id: 'dub',
+                    label: '🔊 Reggae Dub Bass',
+                    prompt: 'deep roots dub reggae cover, heavy warm sub-bass pocket (60-140 Hz), spacious spring reverb and analog tape echo, laid-back one-drop rimshot, warm Hammond organ bubble',
+                  },
+                ].map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setStylePrompt(preset.prompt)}
+                    className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                      stylePrompt === preset.prompt
+                        ? 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fbbf24]'
+                        : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f4a] hover:text-[#f4f4f6]'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <input
-              type="range"
-              min={0.2}
-              max={0.85}
-              step={0.05}
-              value={restyleStrength}
-              onChange={(e) => setRestyleStrength(parseFloat(e.target.value))}
-              className="w-full accent-[#f59e0b]"
+              value={stylePrompt}
+              onChange={(e) => setStylePrompt(e.target.value)}
+              placeholder="Contoh: warm roots reggae, brass intro, dub bassline, santai…"
+              className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] placeholder:text-[#5c5c66] outline-none focus:border-[#52525b]"
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5 rounded-lg border border-[#26262e] bg-[#18181d] p-2.5">
-          <div>
-            <div className="mb-1 flex items-center justify-between text-[11px]">
-              <span className="text-[#8e8e99]">Kreativitas Aransemen</span>
-              <span className="font-mono text-[#e4e4e7]">{weirdness}%</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={weirdness}
-              onChange={(e) => setWeirdness(Number(e.target.value))}
-              className="w-full accent-[#f59e0b]"
-            />
+        {/* Langkah 3: Penyanyi & Persona Suara */}
+        <div className="space-y-2.5 rounded-xl border border-[#26262e] bg-[#141419] p-3">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-white/75">
+            3 · Penyanyi &amp; Persona Suara (👩 Cewek / 👨 Cowok)
           </div>
-          <div>
-            <div className="mb-1 flex items-center justify-between text-[11px]">
-              <span className="text-[#8e8e99]">Kepatuhan Gaya Genre</span>
-              <span className="font-mono text-[#e4e4e7]">{styleInfluence}%</span>
+          {personaSlot}
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.voice}</label>
+              <select
+                value={voice}
+                disabled={Boolean(activePersona)}
+                onChange={(e) => setVoice(e.target.value)}
+                className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b] disabled:opacity-60"
+              >
+                {VOICE_OPTIONS.map((v) => (
+                  <option key={v.id} value={v.id}>{v.id === 'auto' && activePersona ? 'Ikuti Persona' : v.label}</option>
+                ))}
+              </select>
             </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={styleInfluence}
-              onChange={(e) => setStyleInfluence(Number(e.target.value))}
-              className="w-full accent-[#f59e0b]"
-            />
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Karakter vokal</label>
+              <select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value)}
+                className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
+                {VOCAL_STYLE_OPTIONS.map((vs) => (
+                  <option key={vs.id} value={vs.id}>{vs.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
-        <div>
-          <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Arahan gaya &amp; Preset Vibe (opsional)</label>
-          {genre === 'reggae' && (
-            <div className="mb-2 flex flex-wrap gap-1.5">
-              {[
-                {
-                  id: 'boenter',
-                  label: '🌴 Reggae Santai (Gaya BOENTER)',
-                  prompt: 'warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove, muted clean offbeat guitar skank, warm Hammond B3 organ bubble, deep round sub-dub bassline, melodic brass intro hook, relaxed soulful vocal with warm reverb and subtle dub echo, silky analog highs',
-                },
-                {
-                  id: 'ska',
-                  label: '🎺 Reggae Ska & Brass',
-                  prompt: 'upbeat Indonesian ska-reggae cover, lively brass section (trumpet, trombone, saxophone hooks), crisp offbeat guitar skank, bouncy walking dub bassline, tight one-drop snare and rimshot',
-                },
-                {
-                  id: 'acoustic',
-                  label: '🌊 Reggae Akustik Pantai',
-                  prompt: 'acoustic island reggae cover, nylon and steel acoustic guitar offbeat skank, warm cajon and rimshot one-drop, deep upright dub bass, relaxed intimate vocal',
-                },
-                {
-                  id: 'dub',
-                  label: '🔊 Reggae Dub Bass Tebal',
-                  prompt: 'deep roots dub reggae cover, heavy warm sub-bass pocket (60-140 Hz), spacious spring reverb and analog tape echo, laid-back one-drop rimshot, warm Hammond organ bubble',
-                },
-              ].map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => setStylePrompt(preset.prompt)}
-                  className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                    stylePrompt === preset.prompt
-                      ? 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fbbf24]'
-                      : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f4a] hover:text-[#f4f4f6]'
-                  }`}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          )}
-          <input
-            value={stylePrompt}
-            onChange={(e) => setStylePrompt(e.target.value)}
-            placeholder="Contoh: warm roots reggae, brass intro, dub bassline, santai…"
-            className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] placeholder:text-[#5c5c66] outline-none focus:border-[#52525b]"
-          />
-        </div>
-
-        <div>
-          <div className="mb-1 flex items-center justify-between">
-            <label className="block text-[11px] font-medium text-[#8e8e99]">{L.lyrics}</label>
-            <button
-              type="button"
-              onClick={() => setShowStudioEq((v) => !v)}
-              className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition ${
-                showStudioEq || eqConfig.preset !== 'flat'
-                  ? 'border-[#10b981]/60 bg-[#10b981]/15 text-[#34d399]'
-                  : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:text-[#f4f4f6]'
-              }`}
-            >
-              🎚️ Studio EQ ({eqConfig.preset === 'custom' ? 'Custom' : (STUDIO_EQ_PRESETS.find((p) => p.id === eqConfig.preset)?.label || 'Flat')})
-            </button>
-          </div>
-          {showStudioEq && (
-            <div className="mb-2.5">
-              <StudioEqualizer
-                audioRef={previewAudioRef}
-                genre={genre}
-                initialEq={eqConfig}
-                onChange={setEqConfig}
-                compact
-                title="PRE-MASTER STUDIO EQUALIZER"
+        {/* Pengaturan Lanjutan & Studio EQ (Opsional - Lipat) */}
+        <details className="group rounded-xl border border-[#26262e] bg-[#141419] p-3">
+          <summary className="flex cursor-pointer list-none items-center justify-between text-[11px] font-semibold text-[#a1a1aa] hover:text-white">
+            <span>⚙️ Pengaturan Lanjutan &amp; Studio EQ (Opsional)</span>
+            <span className="font-mono text-[10px] text-white/40 group-open:rotate-180">▼</span>
+          </summary>
+          <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
+            <div>
+              <div className="mb-1 flex items-center justify-between text-[11px]">
+                <span className="text-[#8e8e99]">Kunci Melodi &amp; Ketukan</span>
+                <span className="font-mono text-[#fbbf24]">{Math.round(restyleStrength * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={0.2}
+                max={0.85}
+                step={0.05}
+                value={restyleStrength}
+                onChange={(e) => setRestyleStrength(parseFloat(e.target.value))}
+                className="w-full accent-[#f59e0b]"
               />
             </div>
-          )}
-          <textarea
-            value={lyrics}
-            onChange={(e) => setLyrics(e.target.value)}
-            rows={4}
-            placeholder={L.lyricsHint}
-            className="w-full resize-y rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] placeholder:text-[#5c5c66] outline-none focus:border-[#52525b]"
-          />
-        </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <div className="mb-1 flex items-center justify-between text-[11px]">
+                  <span className="text-[#8e8e99]">Kreativitas Aransemen</span>
+                  <span className="font-mono text-[#e4e4e7]">{weirdness}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={weirdness}
+                  onChange={(e) => setWeirdness(Number(e.target.value))}
+                  className="w-full accent-[#f59e0b]"
+                />
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between text-[11px]">
+                  <span className="text-[#8e8e99]">Kepatuhan Genre</span>
+                  <span className="font-mono text-[#e4e4e7]">{styleInfluence}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={styleInfluence}
+                  onChange={(e) => setStyleInfluence(Number(e.target.value))}
+                  className="w-full accent-[#f59e0b]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[11px] font-medium text-[#8e8e99]">Pre-Master Studio Equalizer</span>
+                <button
+                  type="button"
+                  onClick={() => setShowStudioEq((v) => !v)}
+                  className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition ${
+                    showStudioEq || eqConfig.preset !== 'flat'
+                      ? 'border-[#10b981]/60 bg-[#10b981]/15 text-[#34d399]'
+                      : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:text-[#f4f4f6]'
+                  }`}
+                >
+                  🎚️ Studio EQ ({eqConfig.preset === 'custom' ? 'Custom' : (STUDIO_EQ_PRESETS.find((p) => p.id === eqConfig.preset)?.label || 'Flat')})
+                </button>
+              </div>
+              {showStudioEq && (
+                <StudioEqualizer
+                  audioRef={previewAudioRef}
+                  genre={genre}
+                  initialEq={eqConfig}
+                  onChange={setEqConfig}
+                  compact
+                  title="PRE-MASTER STUDIO EQUALIZER"
+                />
+              )}
+            </div>
+          </div>
+        </details>
 
         <label className="flex items-start gap-2 text-xs text-[#8e8e99]">
           <input
@@ -558,9 +583,9 @@ export default function CoverCreate({
           type="button"
           onClick={create}
           disabled={busy || engineBlocked}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#f59e0b] px-4 py-2.5 text-xs font-semibold text-[#0e0e11] transition hover:bg-[#fbbf24] disabled:opacity-45"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#f59e0b] px-4 py-3 text-[13px] font-bold text-[#0e0e11] shadow-md transition hover:bg-[#fbbf24] disabled:opacity-45"
         >
-          {busy ? (<><Spinner className="h-3.5 w-3.5" /> {L.creating}</>) : L.create}
+          {busy ? (<><Spinner className="h-3.5 w-3.5" /> {L.creating}</>) : '🎵 Buat Cover Lagu'}
         </button>
 
         {groupId && (

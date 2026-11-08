@@ -47,6 +47,13 @@ def _is_music_route(route) -> bool:
         return True
     if isinstance(route, Mount) and path.startswith("/videos"):
         return True
+    orig = getattr(route, "original_router", None)
+    if orig is not None:
+        orig_prefix = getattr(orig, "prefix", "") or ""
+        if any(orig_prefix == prefix or orig_prefix.startswith(prefix + "/") for prefix in ALLOWED_PREFIXES):
+            return True
+        if any(_is_music_route(sub) for sub in getattr(orig, "routes", [])):
+            return True
     return False
 
 
@@ -54,6 +61,9 @@ app = _main_app.app
 app.title = "Klipin Music Studio API"
 app.description = "Standalone Suno-style AI Music & Cover Studio (decoupled from Video Clipper)."
 app.router.routes = [r for r in app.router.routes if _is_music_route(r)]
+# Ensure voice preview & persona audition routes remain registered after route filtering
+if hasattr(_main_app, "_voice_preview_router") and hasattr(_main_app, "require_user"):
+    app.include_router(_main_app._voice_preview_router(_main_app.require_user))
 
 
 @app.get("/api/music/service-info")

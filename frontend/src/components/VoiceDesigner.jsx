@@ -93,8 +93,9 @@ export default function VoiceDesigner({ user, onSignIn, onSaved }) {
         }))
       }
       mounted.current = true
-    } catch (e) {
-      setError(e.message)
+    } catch {
+      // Jangan tampilkan error "Not Found" saat inisialisasi; simpan persona karakter tetap berjalan instan.
+      setCapability({ ready: false })
     }
   }, [user])
 

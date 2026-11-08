@@ -126,6 +126,10 @@ async def rate_limit_middleware(request: Request, call_next):
         path.startswith("/api/music/group/") or
         path.startswith("/api/music/status/") or
         path.startswith("/api/music/projects") or
+        path.startswith("/api/music/personas") or
+        path.startswith("/api/music/voice-previews") or
+        path.startswith("/api/music/genres") or
+        path.startswith("/api/music/cost") or
         (path.startswith("/api/projects/") and "/status" in path) or
         path.startswith("/api/payment/mock/status/")
     )
