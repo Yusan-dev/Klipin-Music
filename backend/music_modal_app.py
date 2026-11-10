@@ -23,7 +23,7 @@ import modal
 APP_NAME = "klipin-music"
 MODEL_VOLUME = "klipin-music-models"
 MODEL_ROOT = Path("/models/heartmula")
-MAX_CREATE_DURATION_SEC = 180  # Production cap: max 3 minutes for fast, reliable generation
+MAX_CREATE_DURATION_SEC = 300  # Mendukung lagu penuh hingga 5 menit (rentang 4-5 menit)
 _HEARTMULA_PIPE = None
 
 app = modal.App(APP_NAME)
@@ -143,7 +143,8 @@ def _get_heartmula_pipe():
     gpu=["A10G", "L4", "A100"],
     cpu=8,
     memory=32768,
-    timeout=600,
+    timeout=720,
+    max_containers=10,
     min_containers=0,
     scaledown_window=60,
     volumes={"/models": models},
@@ -280,7 +281,7 @@ def generate_song(lyrics: str, tags: str, duration_sec: int = 120,
         ) % (cmd[1:],)
         result = subprocess.run(
             [sys.executable, "-c", wrapper],
-            capture_output=True, text=True, timeout=540, env=env)
+            capture_output=True, text=True, timeout=660, env=env)
         if result.returncode != 0 or not output_path.exists():
             raise RuntimeError(
                 f"In-proc error: {inproc_exc}\nCLI stderr: {result.stderr[-2500:]}"

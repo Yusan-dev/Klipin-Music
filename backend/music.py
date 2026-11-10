@@ -234,6 +234,9 @@ def tags_for(spec: dict, info: dict | None = None) -> str:
     if isinstance(plan, dict):
         for tag in (plan.get("driver_tags") or [])[:4]:
             parts.append(str(tag)[:80])
+    take_var = str(spec.get("_take_arrangement_variation") or "").strip()
+    if take_var:
+        parts.append(take_var)
     parts.extend(_creative_hints(spec))
     parts.append(spec.get("prompt") or "")
     # Exclude Styles ("no X") selalu paling akhir: Suno memproses positives
@@ -1703,16 +1706,16 @@ def _resolve_sampling_params(spec: dict) -> dict:
 
 def _create_max_duration() -> int:
     try:
-        return max(30, min(int(os.environ.get("KLIPIN_CREATE_MAX_DURATION", "180")), 240))
+        return max(30, min(int(os.environ.get("KLIPIN_CREATE_MAX_DURATION", "300")), 360))
     except (TypeError, ValueError):
-        return 180
+        return 300
 
 
 def _create_modal_timeout() -> int:
     try:
-        return max(60, min(int(os.environ.get("KLIPIN_CREATE_MODAL_TIMEOUT", "300")), 600))
+        return max(60, min(int(os.environ.get("KLIPIN_CREATE_MODAL_TIMEOUT", "480")), 720))
     except (TypeError, ValueError):
-        return 300
+        return 480
 
 
 def _create_modal_only() -> bool:

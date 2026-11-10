@@ -46,7 +46,14 @@ import {
   uploadMusicVoicePersona,
 } from './api.js'
 
-const DURATIONS = [60, 90, 120, 150, 180]
+const DURATIONS = [60, 90, 120, 150, 180, 240, 300]
+const DURATION_RANGES = [
+  { id: '2-3', label: '⏱️ 2 – 3 Menit (120 – 180 dtk) — Standar Pop / Radio' },
+  { id: '3-4', label: '⏱️ 3 – 4 Menit (180 – 240 dtk) — Versi Lengkap / Ballad' },
+  { id: '4-5', label: '⏱️ 4 – 5 Menit (240 – 300 dtk) — Extended / Progresif' },
+  { id: 'auto', label: '✨ Otomatis (AI menentukan sesuai alur lirik & aransemen)' },
+  { id: '1-2', label: '⏱️ 1 – 2 Menit (60 – 120 dtk) — Cuplikan Singkat' },
+]
 const VOCAL_GENDERS = [
   { id: 'auto', label: 'Auto' },
   { id: 'female', label: 'Wanita' },
@@ -249,7 +256,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   // Engine, jumlah take, mode, seed, style tags, dan LoRA/regional adalah
   // kontrol lanjutan yang dipetakan langsung ke MusicGenerateRequest.
   const [provider, setProvider] = useState('heartmula')
-  const [takeCount, setTakeCount] = useState(1)
+  const [takeCount, setTakeCount] = useState(2)
   const [takeMode, setTakeMode] = useState('final')
   const [seed, setSeed] = useState('')
   const [styleTags, setStyleTags] = useState('')
@@ -296,7 +303,8 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     const seg = window.location.hash.replace(/^#\/?/, '').split(/[?/]/)[0]
     return seg === 'cover' ? 'cover' : seg === 'history' ? 'history' : 'create'
   })
-  const [duration, setDuration] = useState(120)
+  const [durationRange, setDurationRange] = useState('2-3')
+  const [duration, setDuration] = useState(165)
   // Sidebar "Buat Lagu" / "Buat Cover" share the same route; keep the tab in
   // sync with the hash so clicking either link switches the studio panel.
   useEffect(() => {
@@ -452,9 +460,11 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     if (!promptOk && !lyricsOk) {
       found.idea = `Isi salah satu: Ide lagu minimal ${MIN_PROMPT} karakter, atau Lirik minimal ${MIN_LYRICS} karakter.`
     }
-    if (!(duration >= 15 && duration <= 180)) found.duration = 'Durasi produksi Create maksimal 180 detik (3 menit) untuk render cepat di Modal Cloud GPU.'
+    if (!autoDuration && durationRange !== 'auto' && !(duration >= 15 && duration <= 300)) {
+      found.duration = 'Durasi produksi Create maksimal 300 detik (5 menit) di Modal Cloud GPU.'
+    }
     return found
-  }, [title, prompt, lyrics, duration])
+  }, [title, prompt, lyrics, duration, autoDuration, durationRange])
   const missing = useMemo(() => Object.values(issues), [issues])
   // Error merah hanya tampil setelah user mencoba Create / mengisi field —
   // form kosong saat dibuka tidak langsung "dimarahi".
@@ -944,6 +954,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     vocal_gender: vocalGender,
     provider,
     duration,
+    duration_range: durationRange,
     auto_duration: autoDuration,
     take_count: takeCount,
     take_mode: takeMode,
@@ -983,6 +994,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     setText(snap.lora_id, setLoraId)
     setText(snap.music_key, setMusicKey)
     setText(snap.persona_id, setPersonaId)
+    if (typeof snap.duration_range === 'string') setDurationRange(snap.duration_range)
     if (typeof snap.duration === 'number') setDuration(snap.duration)
     if (typeof snap.take_count === 'number') setTakeCount(snap.take_count)
     if (typeof snap.bpm === 'number') setBpm(snap.bpm)
@@ -1299,10 +1311,11 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         vocal_gender: effectiveGender,
         vocal_style: vocalStyle,
         provider: 'heartmula',
-        duration,
-        auto_duration: autoDuration,
+        duration: durationRange === 'auto' ? 180 : duration,
+        duration_range: autoDuration ? 'auto' : durationRange,
+        auto_duration: autoDuration || durationRange === 'auto',
         full_song: true,
-        take_count: Math.max(1, Math.min(Number(takeCount) || 1, 2)),
+        take_count: Math.max(1, Math.min(Number(takeCount) || 2, 2)),
         take_mode: 'final',
         seed: Number.isFinite(seedValue) ? seedValue : null,
         style_tags: styleTags.trim(),
@@ -3036,20 +3049,42 @@ export default function Music({ user, authChecked = false, onSignIn }) {
 
               <label className="block">
                 <span className="mb-1.5 flex items-center justify-between gap-2 text-xs font-bold uppercase tracking-widest text-white/65">
-                  <span>Durasi lagu</span>
+                  <span>Rentang Durasi</span>
                   <span className="flex items-center gap-1 text-[10px] font-semibold normal-case tracking-normal text-white/55">
                     <input type="checkbox" checked={autoDuration}
-                      onChange={(e) => setAutoDuration(e.target.checked)}
+                      onChange={(e) => {
+                        const checked = e.target.checked
+                        setAutoDuration(checked)
+                        if (checked) {
+                          setDurationRange('auto')
+                          setDuration(180)
+                        } else {
+                          setDurationRange('2-3')
+                          setDuration(165)
+                        }
+                      }}
                       className="accent-cyan" />
                     Auto lirik
                   </span>
                 </span>
-                <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}
-                  disabled={autoDuration}
-                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50">
-                  {DURATIONS.map((value) => (
-                    <option key={value} value={value}>
-                      {value < 60 ? `${value} detik` : `${value / 60} menit`}
+                <select value={autoDuration ? 'auto' : durationRange} onChange={(e) => {
+                  const val = e.target.value
+                  setDurationRange(val)
+                  if (val === 'auto') {
+                    setAutoDuration(true)
+                    setDuration(180)
+                  } else {
+                    setAutoDuration(false)
+                    if (val === '2-3') setDuration(165)
+                    else if (val === '3-4') setDuration(210)
+                    else if (val === '4-5') setDuration(270)
+                    else if (val === '1-2') setDuration(90)
+                  }
+                }}
+                  className="w-full rounded-lg border border-white/10 bg-navy-3 px-3 py-2 text-sm text-white outline-none">
+                  {DURATION_RANGES.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
                     </option>
                   ))}
                 </select>
@@ -3255,7 +3290,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             <div className="space-y-2 pt-1">
               <button type="button" onClick={create} disabled={createBlocked}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#ff5a1f] via-[#ff2d78] to-[#b829ff] px-4 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
-                {working ? <><Spinner className="h-4 w-4" /> Membuat lagu…</> : '🎵 Buat Lagu Sekarang'}
+                {working ? <><Spinner className="h-4 w-4" /> Merender 2 versi lagu paralel…</> : '🎵 Buat 2 Versi Lagu (Take 1 & Take 2)'}
               </button>
               <p className={`text-center font-mono text-[10px] ${
                 engineReady === false || missing.length ? 'text-warn' : 'text-white/40'}`}>
@@ -3314,7 +3349,8 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                             <span className="truncate text-xs font-medium text-[#f4f4f6]">{t.title || 'Lagu'}</span>
                           </div>
                           <span className="mt-0.5 block truncate font-mono text-[10px] text-[#71717a]">
-                            {t.take_mode || t.provider} · {t.metadata?.duration ? formatClock(t.metadata.duration) : ''}
+                            {t.metadata?.arrangement_variation ? t.metadata.arrangement_variation.split(',').slice(0, 2).join(' · ') : (t.take_mode || t.provider)}
+                            {t.duration || t.metadata?.duration ? ` · ${formatClock(t.duration || t.metadata.duration)}` : ''}
                           </span>
                         </div>
                         <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase ${

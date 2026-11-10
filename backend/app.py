@@ -142,7 +142,7 @@ _semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
 # unbounded, so a burst of requests could multiply Modal L4 jobs and its cost
 # with no ceiling. A dedicated semaphore bounds concurrent music renders
 # without letting a long song queue starve the video render pool.
-MAX_CONCURRENT_MUSIC_JOBS = int(os.environ.get("MAX_CONCURRENT_MUSIC_JOBS", "3"))
+MAX_CONCURRENT_MUSIC_JOBS = int(os.environ.get("MAX_CONCURRENT_MUSIC_JOBS", "6"))
 _music_semaphore = asyncio.Semaphore(MAX_CONCURRENT_MUSIC_JOBS)
 # A long song can legitimately spend 20+ minutes on Modal + local mastering.
 # Past this window a queued/processing row with no artifact is treated as an
@@ -1042,10 +1042,11 @@ class MusicGenerateRequest(BaseModel):
     provider: str = "heartmula"
     duration: float = 180
     auto_duration: bool = False       # panjang mengikuti lirik, bukan preset
+    duration_range: str = ""          # auto | 1-2 | 2-3 | 3-4 | 4-5
     seed: int | None = None
     full_song: bool = True
     cover_url: str = ""
-    take_count: int = 1               # Suno-style A/B: 1 = final saja (default), 2 = A/B
+    take_count: int = 2               # Selalu hasilkan 2 lagu (Take 1 & Take 2) agar user bisa membandingkan
     take_mode: str = "final"          # draft | final | both
     lora_id: str = ""                 # regional LoRA slot (Jawa moat), '' = base
     parent_job_id: str = ""           # extend/remix source
@@ -1299,7 +1300,7 @@ async def music_generate(req: MusicGenerateRequest, _user: dict = Depends(requir
             language, req.language_secondary, req.language_mix)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    take_count = 1 if req.take_count is None else max(1, min(int(req.take_count), 2))
+    take_count = 2 if req.take_count is None else max(1, min(int(req.take_count), 2))
     take_mode = (req.take_mode or "final").strip().lower()
     if take_mode not in ("draft", "final", "both"):
         take_mode = "final"
@@ -1308,7 +1309,18 @@ async def music_generate(req: MusicGenerateRequest, _user: dict = Depends(requir
         # tidak berguna dan hanya membuang GPU).
         take_mode = "final"
     base_spec = req.model_dump()
-    if req.auto_duration:
+    if req.duration_range == "auto":
+        base_spec["auto_duration"] = True
+        base_spec["duration"] = 180.0
+    elif req.duration_range == "2-3":
+        base_spec["duration"] = 165.0
+    elif req.duration_range == "3-4":
+        base_spec["duration"] = 210.0
+    elif req.duration_range == "4-5":
+        base_spec["duration"] = 270.0
+    elif req.duration_range == "1-2":
+        base_spec["duration"] = 90.0
+    elif req.auto_duration:
         # Durasi final dihitung dari lirik di dalam generate_music; pakai preset
         # sebagai estimasi awal untuk penulisan lirik & estimasi biaya.
         base_spec["duration"] = float(req.duration or 180)
@@ -1470,9 +1482,37 @@ def _create_music_group(base_spec: dict, user_id: str,
         if base_spec.get("provider") not in ("auto", "", None):
             provider = base_spec["provider"]
         spec = dict(base_spec)
+
+        # Variasi aransemen unik per-take & per-seed agar Take 1 & Take 2 berbeda aransemen meski 1 genre
+        take_arrangement = ""
+        try:
+            try:
+                from services.lyric_style_agent import arrangement_variation
+            except ImportError:
+                from backend.services.lyric_style_agent import arrangement_variation
+            take_arrangement = arrangement_variation(base_spec.get("genre") or "pop", seed, base_spec.get("weirdness", 50))
+        except Exception:
+            pass
+
+        dur_range = str(base_spec.get("duration_range") or "").strip()
+        take_dur = base_spec.get("duration")
+        if dur_range == "2-3":
+            take_dur = 150.0 + (seed % 30)  # 150 - 180s (2.5 - 3 min)
+        elif dur_range == "3-4":
+            take_dur = 195.0 + (seed % 45)  # 195 - 240s (3.25 - 4 min)
+        elif dur_range == "4-5":
+            take_dur = 255.0 + (seed % 45)  # 255 - 300s (4.25 - 5 min)
+        elif dur_range == "1-2":
+            take_dur = 75.0 + (seed % 35)   # 75 - 110s (1.25 - 1.8 min)
+        elif dur_range == "auto":
+            take_dur = 160.0 + (seed % 50)  # 160 - 210s
+        if take_dur:
+            spec["duration"] = round(float(take_dur), 1)
+
         spec.update({"seed": seed, "provider": provider, "take_mode": mode,
+                     "_take_arrangement_variation": take_arrangement,
                      "lora_id": base_spec.get("lora_id") or "",
-                     "cache_key": _ck({**base_spec, "seed": seed, "provider": provider}),
+                     "cache_key": _ck({**base_spec, "seed": seed, "provider": provider, "_take_arr": take_arrangement}),
                      "stage": "queued-draft" if mode == "draft" else "queued-final"})
         planned.append({"spec": spec, "take_index": take_index, "provider": provider,
                         "mode": mode, "seed": seed,
@@ -1516,6 +1556,8 @@ def _create_music_group(base_spec: dict, user_id: str,
                                     "cover_reference_strength": spec.get("ref_strength", 0.0),
                                     "language_secondary": spec.get("language_secondary", ""),
                                     "language_mix": spec.get("language_mix", "none"),
+                                    "duration_range": str(spec.get("duration_range") or ""),
+                                    "arrangement_variation": spec.get("_take_arrangement_variation", ""),
                                     "stage": spec["stage"]})})
         if stored and stored.get("_deduped"):
             # Lost the dedup race with a concurrent identical request: reuse the
