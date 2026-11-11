@@ -92,9 +92,9 @@ export default function MobileBottomNav({ route, onNavigate, onOpenMenu }) {
         {hasTrack ? (
           <button
             type="button"
-            onClick={() => setSheetOpen(true)}
+            onClick={() => setSheetOpen((o) => !o)}
             onDoubleClick={togglePlay}
-            aria-label="Buka pemutar lagu"
+            aria-label="Buka atau tutup pop-up pemutar lagu"
             className="mobile-nav-btn flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[10px] font-semibold text-cyan transition hover:bg-cyan/10"
           >
             <span className={`relative flex h-5 w-5 items-center justify-center rounded-full border border-cyan/50 bg-cyan/15 ${playing ? 'animate-pulse-soft' : ''}`}>
@@ -117,3 +117,4 @@ export default function MobileBottomNav({ route, onNavigate, onOpenMenu }) {
     </nav>
   )
 }
+

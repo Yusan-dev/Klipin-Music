@@ -3,7 +3,6 @@ import { usePlayer } from './playerStore.jsx'
 import Icon from './components/Icon.jsx'
 import VoiceDesigner, { PrivateVoicePlayer } from './components/VoiceDesigner.jsx'
 import CoverCreate from './CoverCreate.jsx'
-import MusicWaveform from './components/MusicWaveform.jsx'
 import StudioEqualizer, { STUDIO_EQ_PRESETS } from './components/StudioEqualizer.jsx'
 import { Spinner } from './components/ui.jsx'
 import {
@@ -410,14 +409,12 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     audioRef,
     track: playerTrack,
     playing,
-    currentTime,
-    duration: songDuration,
     error: playerError,
     setError: setPlayerError,
+    setSheetOpen,
+    setTrackActions,
     loadTrack,
     updateTrackMeta,
-    togglePlay,
-    seek: seekTo,
   } = usePlayer()
   const [coverBusy, setCoverBusy] = useState(false)
   const [coverUrl, setCoverUrl] = useState('')
@@ -444,7 +441,6 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const voiceRecorderRef = useRef(null)
   const voiceStreamRef = useRef(null)
   const voiceChunksRef = useRef([])
-  const activeLineRef = useRef(null)
   const startedAt = useRef(0)
   const promptInputRef = useRef(null)
   const titleInputRef = useRef(null)
@@ -1617,22 +1613,6 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     return resolveMediaAsset(path)
   }, [wavKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const activeIndex = useMemo(() => {
-    const total = songDuration || Number(job?.duration) || 0
-    if (!lyricsLines.length || !total) return -1
-    let idx = -1
-    for (let i = 0; i < lyricsLines.length; i += 1) {
-      if (currentTime >= (Number(lyricsLines[i].start) || 0)) idx = i
-    }
-    return idx
-  }, [lyricsLines, currentTime, songDuration, job])
-
-  useEffect(() => {
-    if (activeLineRef.current) {
-      activeLineRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    }
-  }, [activeIndex])
-
   const visibleGenres = useMemo(() => {
     const query = genreQuery.trim().toLowerCase()
     const list = catalog.genres || []
@@ -1706,6 +1686,44 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     if (playerError) setRequestError(playerError)
   }, [playerError])
 
+  // Expose live studio actions (refresh cover, +60s, stems, share, persona, align)
+  // to the global draggable MiniPlayer pop-up when viewing the matching song.
+  useEffect(() => {
+    if (job?.status !== 'completed' || !job?.job_id) {
+      setTrackActions(null)
+      return undefined
+    }
+    const src = job?.metadata?.lyrics_source
+    const lyricsSourceLabel = src === 'groq-whisper-large-v3-turbo'
+      ? 'Groq Whisper'
+      : src === 'user'
+        ? 'Manual pengguna'
+        : src === 'source_vocal_stem'
+          ? 'Vokal lagu asli'
+          : src
+            ? 'Whisper ASR'
+            : ''
+    setTrackActions({
+      jobId: job.job_id,
+      lyricsSource: lyricsSourceLabel,
+      lyricsPath: job.lyrics_path || '',
+      coverBusy,
+      onRefreshCover: () => regenerateCover(),
+      extendBusy,
+      onExtend: extendSong,
+      stemsBusy,
+      stemsInfo,
+      onLoadStems: loadStems,
+      shareBusy,
+      isPublic: Boolean(job.is_public),
+      onToggleShare: toggleShare,
+      onSavePersona: savePersona,
+      realignBusy,
+      onRealignLyrics: lyricsLines.length > 0 ? realignTimeline : null,
+    })
+    return () => setTrackActions(null)
+  }, [job?.job_id, job?.status, job?.is_public, job?.lyrics_path, job?.metadata?.lyrics_source, coverBusy, extendBusy, stemsBusy, stemsInfo, shareBusy, realignBusy, lyricsLines.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const realignTimeline = async () => {
     if (!job?.job_id || realignBusy) return
     setRealignBusy(true)
@@ -1740,6 +1758,9 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     // preferred take a moment later.
     setJob(entry)
     setTakes([entry])
+    if (entry.status === 'completed' && entry.audio_path) {
+      setSheetOpen(true)
+    }
     // Riwayat lama = single job; bila entry punya group_id, muat grup A/B-nya.
     const gid = entry.group_id || entry.metadata?.group_id || ''
     if (gid) {
@@ -1750,6 +1771,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         const preferred = preferredGroupJob(next)
         setJob(preferred || entry)
         setBusy(Boolean(preferred && ['queued', 'processing'].includes(preferred.status)))
+        if (preferred?.status === 'completed' && preferred.audio_path) setSheetOpen(true)
       }).catch(() => {
         setTakes([entry])
         setJob(entry)
@@ -1769,6 +1791,9 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     setStemsInfo('')
     setPlayerError('')
     setJob(take)
+    if (take?.status === 'completed' && take.audio_path) {
+      setSheetOpen(true)
+    }
   }
 
   const savePersona = async () => {
@@ -2391,7 +2416,18 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             </button>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-2.5 text-xs text-white/60">
+        <div className="ml-auto flex items-center gap-2 text-xs text-white/60">
+          {playerTrack?.audioUrl && (
+            <button
+              type="button"
+              onClick={() => setSheetOpen((o) => !o)}
+              className="touch-hit inline-flex items-center gap-1.5 rounded-full border border-cyan/40 bg-cyan/15 px-3 py-1 text-[11px] font-semibold text-cyan transition hover:bg-cyan/25"
+              title="Buka / geser pop-up media pemutar"
+            >
+              <Icon name={playing ? 'pause' : 'play'} className="h-3 w-3" />
+              <span className="max-w-[120px] truncate">{playerTrack.title || 'Pemutar'}</span>
+            </button>
+          )}
           <span className="hidden truncate md:inline">{engineLabel}</span>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-navy-2/80 px-2.5 py-1 text-[11px]">
             <span className={`h-2 w-2 rounded-full ${
@@ -2423,25 +2459,28 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         </div>
       )}
 
-      {/* Mobile pane switcher (desktop shows panes side by side) */}
-      <div className="flex border-b border-border-soft bg-navy-1/50 xl:hidden">
-        {[
-          { id: 'create', label: studioTab === 'cover' ? 'Studio Cover' : 'Form Lagu' },
-          { id: 'songs', label: `Player & Riwayat${historyList.length ? ` (${historyList.length})` : ''}` },
-        ].map((p) => (
-          <button key={p.id} type="button" onClick={() => setMobilePane(p.id)}
-            className={`touch-hit flex-1 py-2.5 text-[13px] font-semibold transition ${
-              mobilePane === p.id ? 'border-b-2 border-cyan text-cyan' : 'text-white/55 hover:text-white'
-            }`}>
-            {p.label}
-          </button>
-        ))}
-      </div>
+      {/* Mobile pane switcher (hidden when browsing Library directly so it has full width) */}
+      {studioTab !== 'history' && (
+        <div className="flex border-b border-border-soft bg-navy-1/50 xl:hidden">
+          {[
+            { id: 'create', label: studioTab === 'cover' ? 'Studio Cover' : 'Form Lagu' },
+            { id: 'songs', label: `Riwayat Lagu${historyList.length ? ` (${historyList.length})` : ''}` },
+          ].map((p) => (
+            <button key={p.id} type="button" onClick={() => setMobilePane(p.id)}
+              className={`touch-hit flex-1 py-2.5 text-[13px] font-semibold transition ${
+                mobilePane === p.id ? 'border-b-2 border-cyan text-cyan' : 'text-white/55 hover:text-white'
+              }`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* 3 panes: Create dock | Song list | Inspector */}
+      {/* Spacious 2-card layout (Create/Cover Dock | Library & Takes) — media player is a draggable pop-up */}
       <div className="flex flex-col xl:flex-row">
-        <section className={`${mobilePane === 'create' ? 'block' : 'hidden'} xl:block xl:w-[390px] xl:shrink-0 xl:border-r xl:border-border-soft`}>
-          <div className="xl:sticky xl:top-[62px] xl:max-h-[calc(100vh-136px)] xl:overflow-y-auto">
+        {studioTab !== 'history' && (
+          <section className={`${mobilePane === 'create' ? 'block' : 'hidden'} xl:block xl:w-[460px] 2xl:w-[520px] xl:shrink-0 xl:border-r xl:border-border-soft`}>
+            <div className="xl:sticky xl:top-[62px] xl:max-h-[calc(100vh-136px)] xl:overflow-y-auto">
           {/* Mode switch */}
           <div className="flex items-center justify-between gap-2 px-4 pt-4">
             {studioTab !== 'history' ? (
@@ -3398,10 +3437,15 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             </>)}
           </div>
           </div>
-        </section>
+          </section>
+        )}
 
-                {/* Pane 2 (Center): Song List, Active Takes & Inspire */}
-        <section className={`min-w-0 flex-1 p-4 ${mobilePane === 'songs' ? 'block' : 'hidden'} xl:block`}>
+        {/* Right / Main Panel: Live Takes, Library & Inspire (expands wide when tab is Library) */}
+        <section className={`min-w-0 flex-1 p-4 sm:p-5 ${
+          studioTab === 'history'
+            ? 'mx-auto w-full max-w-5xl'
+            : `${mobilePane === 'songs' ? 'block' : 'hidden'} xl:block`
+        }`}>
           {/* Active Render / Live Takes Card */}
           {(running || working || takes.length > 1 || jobError) && (
             <div className="mb-4 rounded-xl border border-[#2c2c35] bg-[#141418] p-3.5">
@@ -3501,7 +3545,9 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 Belum ada lagu. Buat take pertama untuk melihat hasilnya di sini.
               </p>
             ) : (
-              <div className="max-h-[640px] space-y-1.5 overflow-y-auto pr-1">
+              <div className={studioTab === 'history'
+                ? 'grid max-h-[720px] gap-2 overflow-y-auto pr-1 md:grid-cols-2'
+                : 'max-h-[680px] space-y-1.5 overflow-y-auto pr-1'}>
                 {historyList.map((entry) => {
                   const meta = STATUS_META[entry.status] || null
                   const label = entry.metadata?.genre_label || entry.genre || '—'
@@ -3639,169 +3685,6 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               </div>
             </div>
           )}
-        </section>
-
-        {/* Pane 3 (Right): Selected Song Inspector, Cover Art & Lyrics */}
-        <section className={`w-full shrink-0 border-t border-border-soft p-4 xl:block xl:w-[350px] xl:border-l xl:border-t-0 ${mobilePane === 'songs' ? 'block' : 'hidden'}`}>
-          <div className="space-y-4 xl:sticky xl:top-[62px] xl:max-h-[calc(100vh-136px)] xl:overflow-y-auto">
-            <div className="rounded-xl border border-border bg-navy-1 p-3.5">
-              <div className="flex items-start gap-3">
-                <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[#26262e]">
-                  {coverSrc ? (
-                    <img src={coverSrc} alt="Cover art" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-[#71717a]">
-                      <Icon name="music" className="h-6 w-6" />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-[9px] uppercase tracking-wider text-[#71717a]">
-                      {running ? 'Memproses' : job?.status === 'completed' ? 'Aktif' : 'Detail'}
-                    </span>
-                    {statusMeta && (
-                      <span className={`rounded px-1.5 py-0.5 font-mono text-[9px] uppercase ${statusMeta.className}`}>
-                        {statusMeta.label}
-                      </span>
-                    )}
-                  </div>
-                  <h2 className="mt-1 truncate text-sm font-semibold text-[#f4f4f6]">
-                    {job?.title || title || 'Belum ada lagu'}
-                  </h2>
-                  <p className="mt-0.5 truncate text-[11px] text-[#71717a]">
-                    {(job?.metadata?.genre_label || job?.genre_label || job?.genre) || genre} · {job?.provider || 'engine'}
-                  </p>
-                  {job?.metadata?.lyrics_source && (
-                    <p className="mt-1 font-mono text-[10px] text-[#10b981]">
-                      Sumber lirik: {job.metadata.lyrics_source === 'groq-whisper-large-v3-turbo' ? 'Groq Whisper' : job.metadata.lyrics_source === 'user' ? 'Manual pengguna' : job.metadata.lyrics_source === 'source_vocal_stem' ? 'Vokal lagu asli' : 'Whisper ASR'}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-1 border-t border-[#26262e] pt-3">
-                <button type="button" onClick={() => regenerateCover()}
-                  disabled={coverBusy || job?.status !== 'completed'}
-                  className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
-                  {coverBusy ? 'Mencari…' : 'Ganti cover'}
-                </button>
-                {job?.audio_path && (
-                  <a href={resolveDownloadAsset(job.audio_path, `${job.title || 'klipin-music'}.mp3`)} download={`${job.title || 'klipin-music'}.mp3`}
-                    className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6]">
-                    Unduh MP3
-                  </a>
-                )}
-                {job?.lyrics_path && (
-                  <a href={resolveDownloadAsset(job.lyrics_path, `${job.title || 'lyrics'}.lrc`)} download={`${job.title || 'lyrics'}.lrc`}
-                    className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6]">
-                    .LRC
-                  </a>
-                )}
-                {wavUrl && (
-                  <a href={resolveDownloadAsset(job?.metadata?.wav_path || `/videos/${job.job_id}/song.wav`, `${job.title || 'klipin-music'}.wav`)} download={`${job.title || 'klipin-music'}.wav`}
-                    className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6]">
-                    WAV
-                  </a>
-                )}
-                {job?.status === 'completed' && (
-                  <>
-                    <button type="button" onClick={extendSong} disabled={extendBusy}
-                      className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
-                      {extendBusy ? '…' : '+60s'}
-                    </button>
-                    <button type="button" onClick={loadStems} disabled={stemsBusy}
-                      className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
-                      {stemsBusy ? '…' : 'Stems'}
-                    </button>
-                    <button type="button" onClick={toggleShare} disabled={shareBusy}
-                      title="Bagikan lagu ini ke Feed Publik"
-                      className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
-                      {shareBusy ? '…' : (job?.is_public ? 'Shared' : 'Share')}
-                    </button>
-                    <button type="button" onClick={savePersona}
-                      className="rounded-md border border-[#26262e] bg-[#1c1c22] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] transition hover:text-[#f4f4f6] disabled:opacity-40">
-                      Simpan persona
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.location.hash = `#/studio/${job.job_id}`
-                      }}
-                      className="rounded-md border border-[#10b981]/50 bg-[#10b981]/15 px-2.5 py-1 text-[10px] font-semibold text-[#6ee7b7] transition hover:bg-[#10b981]/25"
-                    >
-                      🎚️ Buka di Studio EQ
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {stemsInfo && <p className="mt-2 font-mono text-[10px] text-[#71717a]">{stemsInfo}</p>}
-
-              {job?.status === 'completed' ? (
-                <div className="mt-3 space-y-2.5 border-t border-border-soft pt-3">
-                  <MusicWaveform
-                    src={audioUrl}
-                    audioRef={audioRef}
-                    playing={playing}
-                    currentTime={currentTime}
-                    duration={songDuration || job?.duration || duration}
-                  />
-                  <div className="flex items-center justify-between">
-                    <button type="button" onClick={togglePlay}
-                      className="touch-hit inline-flex items-center gap-1.5 rounded-lg bg-cyan px-3.5 py-2 text-xs font-semibold text-navy transition hover:bg-cyan-soft">
-                      <Icon name={playing ? 'pause' : 'play'} className="h-3.5 w-3.5" />
-                      {playing ? 'Jeda' : 'Putar'}
-                    </button>
-                    <span className="font-mono text-[11px] tabular-nums text-white/60">
-                      {formatTime(currentTime)} / {formatTime(songDuration || job?.duration || duration)}
-                    </span>
-                  </div>
-                  <input type="range" min={0}
-                    max={Math.max(1, songDuration || job?.duration || duration)} step={0.1}
-                    value={Math.min(currentTime, songDuration || job?.duration || duration)}
-                    onChange={(e) => seekTo(Number(e.target.value))}
-                    aria-label="Seek" className="w-full accent-cyan" />
-                </div>
-              ) : (
-                <div className="mt-3 border-t border-border-soft pt-3">
-                  <Equalizer playing={running} bars={24} className="h-8" />
-                </div>
-              )}
-            </div>
-
-            {/* Karaoke Lyrics Timeline */}
-            <div className="rounded-xl border border-border bg-navy-1 p-3.5">
-              <div className="mb-2.5 flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-white/85">Lirik Timeline</h3>
-                {job?.status === 'completed' && lyricsLines.length > 0 && (
-                  <button type="button" onClick={realignTimeline} disabled={realignBusy}
-                    className="font-mono text-[10px] text-cyan hover:underline disabled:opacity-40">
-                    {realignBusy ? 'Aligning…' : 'Align ulang'}
-                  </button>
-                )}
-              </div>
-              {lyricsLines.length ? (
-                <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
-                  {lyricsLines.map((line, i) => {
-                    const active = i === activeIndex
-                    return (
-                      <button key={`${line.start}-${i}`} type="button"
-                        ref={active ? activeLineRef : undefined}
-                        onClick={() => seekTo(line.start)}
-                        className={`flex w-full gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition ${
-                          active ? 'bg-navy-2 font-medium text-cyan' : 'text-white/65 hover:bg-navy-2/70 hover:text-white'}`}>
-                        <span className="w-9 shrink-0 font-mono text-[10px] text-white/45">{formatTime(line.start)}</span>
-                        <span className="flex-1 leading-5">{line.text}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-white/45">Lirik dengan timestamp karaoke akan tampil di sini setelah lagu selesai.</p>
-              )}
-            </div>
-          </div>
         </section>
       </div>
     </div>

@@ -167,6 +167,16 @@ li {
   contain-intrinsic-size: auto 68px;
 }
 
+/* Non-modal top-layer floating draggable player dialog (never sets display unconditionally) */
+dialog.floating-player:is([open], :popover-open, .\:popover-open) {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 24px);
+  overscroll-behavior: contain;
+}
+
 /* ── Studio visual helpers ──────────────────────────────────────────────── */
 
 /* Subtle horizon backdrop for marketing/hero panels (no distracting infinite glare) */

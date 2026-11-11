@@ -15,6 +15,7 @@ export function PlayerProvider({ children }) {
   const [duration, setDuration] = useState(0)
   const [error, setError] = useState('')
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [trackActions, setTrackActions] = useState(null)
 
   const retryKeyRef = useRef('')
   const trackRef = useRef(null)
@@ -59,7 +60,7 @@ export function PlayerProvider({ children }) {
   )
 
   const loadTrack = useCallback(
-    (nextTrack, { autoPlay = false } = {}) => {
+    (nextTrack, { autoPlay = false, openPopup } = {}) => {
       if (!nextTrack?.audioUrl) {
         setTrack(null)
         setPlaying(false)
@@ -76,6 +77,7 @@ export function PlayerProvider({ children }) {
         setCurrentTime(0)
         setDuration(Number(nextTrack.duration) || 0)
       }
+      if (typeof openPopup === 'boolean') setSheetOpen(openPopup)
       if (autoPlay) {
         requestAnimationFrame(() => startPlayback())
       }
@@ -159,6 +161,10 @@ export function PlayerProvider({ children }) {
         setError,
         sheetOpen,
         setSheetOpen,
+        popupOpen: sheetOpen,
+        setPopupOpen: setSheetOpen,
+        trackActions,
+        setTrackActions,
         loadTrack,
         updateTrackMeta,
         play: startPlayback,
