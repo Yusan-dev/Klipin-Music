@@ -73,27 +73,27 @@ export function VUMeter({ className = '', bars = 5 }) {
 
 const VARIANTS = {
   primary:
-    'bg-gold text-navy font-bold tracking-wide hover:bg-gold-soft shadow-neon-gold disabled:opacity-40 disabled:hover:bg-gold',
+    'bg-cyan text-navy font-semibold hover:bg-cyan-soft shadow-sm disabled:opacity-40 disabled:hover:bg-cyan',
   cyan:
-    'bg-cyan text-navy font-bold tracking-wide hover:bg-cyan-soft shadow-neon-cyan disabled:opacity-40 disabled:hover:bg-cyan',
+    'bg-cyan text-navy font-semibold hover:bg-cyan-soft shadow-sm disabled:opacity-40 disabled:hover:bg-cyan',
   ghost:
-    'border border-cyan/35 bg-transparent text-cyan-soft hover:border-cyan/70 hover:text-white hover:shadow-neon-cyan disabled:opacity-40',
+    'border border-border bg-navy-2/70 text-white/85 hover:border-cyan/60 hover:text-white disabled:opacity-40',
   danger:
     'border border-danger/40 bg-danger/10 text-danger hover:bg-danger/20 disabled:opacity-40',
   magenta:
-    'bg-magenta text-navy font-bold tracking-wide hover:bg-magenta-soft shadow-neon-magenta disabled:opacity-40 disabled:hover:bg-magenta',
+    'bg-magenta text-white-solid font-semibold hover:bg-magenta-soft shadow-sm disabled:opacity-40 disabled:hover:bg-magenta',
 }
 
 export function Button({ variant = 'primary', size = 'md', className = '', ...props }) {
   const sizes = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-base',
-    lg: 'px-6 py-3 text-lg',
+    sm: 'px-3 py-1.5 text-xs',
+    md: 'px-4 py-2 text-sm',
+    lg: 'px-6 py-3 text-base',
   }
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-md uppercase font-mono tracking-wider transition-all ${sizes[size]} ${VARIANTS[variant]} ${className}`}
+      className={`touch-hit inline-flex items-center justify-center gap-2 rounded-lg font-medium tracking-tight transition-all ${sizes[size]} ${VARIANTS[variant]} ${className}`}
     />
   )
 }
@@ -131,7 +131,7 @@ export function Select({ className = '', ...props }) {
   return (
     <select
       {...props}
-      className={`w-full rounded-md border border-cyan/25 bg-navy-2 px-2.5 py-2 text-base text-white outline-none transition focus:border-cyan ${className}`}
+      className={`w-full rounded-lg border border-border bg-navy-2 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan focus:ring-2 focus:ring-cyan/20 ${className}`}
     />
   )
 }
@@ -140,7 +140,7 @@ export function TextInput({ className = '', ...props }) {
   return (
     <input
       {...props}
-      className={`w-full rounded-md border border-cyan/25 bg-navy-2 px-3 py-2 text-base text-white outline-none transition placeholder:text-white/30 focus:border-cyan ${className}`}
+      className={`w-full rounded-lg border border-border bg-navy-2 px-3 py-2 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-cyan focus:ring-2 focus:ring-cyan/20 ${className}`}
     />
   )
 }

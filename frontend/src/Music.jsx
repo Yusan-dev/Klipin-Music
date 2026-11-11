@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { usePlayer } from './playerStore.jsx'
 import Icon from './components/Icon.jsx'
 import VoiceDesigner, { PrivateVoicePlayer } from './components/VoiceDesigner.jsx'
 import CoverCreate from './CoverCreate.jsx'
@@ -308,12 +309,21 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   })
   const [durationRange, setDurationRange] = useState('2-3')
   const [duration, setDuration] = useState(165)
-  // Sidebar "Buat Lagu" / "Buat Cover" share the same route; keep the tab in
-  // sync with the hash so clicking either link switches the studio panel.
+  // Sidebar & MobileBottomNav "Buat Lagu" / "Cover" / "Riwayat" share the same route;
+  // keep studioTab + mobilePane synced with the active hash.
   useEffect(() => {
     const onHash = () => {
       const seg = window.location.hash.replace(/^#\/?/, '').split(/[?/]/)[0]
-      setStudioTab(seg === 'cover' ? 'cover' : seg === 'history' ? 'history' : 'create')
+      if (seg === 'cover') {
+        setStudioTab('cover')
+        setMobilePane('create')
+      } else if (seg === 'history') {
+        setStudioTab('history')
+        setMobilePane('songs')
+      } else {
+        setStudioTab('create')
+        if (seg === 'music') setMobilePane('create')
+      }
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
@@ -390,16 +400,28 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const [remixVoicePreviewUrl, setRemixVoicePreviewUrl] = useState('')
   const [feedFilter, setFeedFilter] = useState('all')
   const [libraryFilter, setLibraryFilter] = useState('all')
-  const [mobilePane, setMobilePane] = useState('create')
+  const [mobilePane, setMobilePane] = useState(() => {
+    if (typeof window === 'undefined') return 'create'
+    const seg = window.location.hash.replace(/^#\/?/, '').split(/[?/]/)[0]
+    return seg === 'history' ? 'songs' : 'create'
+  })
 
-  const [playing, setPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [songDuration, setSongDuration] = useState(0)
+  const {
+    audioRef,
+    track: playerTrack,
+    playing,
+    currentTime,
+    duration: songDuration,
+    error: playerError,
+    setError: setPlayerError,
+    loadTrack,
+    updateTrackMeta,
+    togglePlay,
+    seek: seekTo,
+  } = usePlayer()
   const [coverBusy, setCoverBusy] = useState(false)
   const [coverUrl, setCoverUrl] = useState('')
   const [coverBust, setCoverBust] = useState(0)
-
-  const audioRef = useRef(null)
   const selectedPersonaObj = personas.find((p) => p.persona_id === personaId) || null
   const identityPersona = selectedPersonaObj && (selectedPersonaObj.has_voice_sample || selectedPersonaObj.vocal_gender === 'female' || selectedPersonaObj.vocal_gender === 'male')
     ? selectedPersonaObj
@@ -549,14 +571,13 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         } else {
           const current = jobRef.current
           if (!current && !autoPickedRef.current) {
-            // First load with nothing selected: put the newest finished song
-            // in the player ONCE so it is playable right away. Only the
-            // inspector/player is filled (takes stays empty → no "Memproses"
-            // card), and it never overrides a song the user picked later.
             autoPickedRef.current = true
-            const latestCompleted = jobs.find((item) => item.status === 'completed')
-            if (latestCompleted) {
-              setJob(latestCompleted)
+            const playingMatch = playerTrack?.jobId
+              ? jobs.find((item) => item.job_id === playerTrack.jobId)
+              : null
+            const initialPick = playingMatch || jobs.find((item) => item.status === 'completed')
+            if (initialPick) {
+              setJob(initialPick)
               setTakes([])
               setGroupId('')
             }
@@ -1656,80 +1677,34 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     reader.readAsDataURL(file)
   }
 
-  // `playing` follows the element's real play/pause events instead of being
-  // flipped optimistically: play() can reject (autoplay policy, 401/expired
-  // link, unsupported source) and the button used to show "Pause" while
-  // nothing was playing, with an unhandled promise rejection.
-  const startPlayback = () => {
-    const el = audioRef.current
-    if (!el || !el.getAttribute('src')) return
-    const p = el.play()
-    if (p && typeof p.catch === 'function') {
-      p.catch((e) => {
-        setPlaying(false)
-        // AbortError = src changed / pause() raced the play request — benign.
-        if (e?.name !== 'AbortError') {
-          setRequestError(`Lagu gagal diputar: ${e?.message || e}`)
-        }
-      })
-    }
-  }
-
-  const togglePlay = () => {
-    const el = audioRef.current
-    if (!el) return
-    if (!el.paused) el.pause()
-    else startPlayback()
-  }
-
-  const onTimeUpdate = () => {
-    if (audioRef.current) setCurrentTime(audioRef.current.currentTime || 0)
-  }
-
-  const onLoadedMetadata = () => {
-    if (audioRef.current) {
-      setSongDuration(audioRef.current.duration || 0)
-      setCurrentTime(0)
-    }
-  }
-
-  // A signed link can expire (MEDIA_TTL) or the file can be re-rendered.
-  // On a load error, fetch the job once more for a freshly signed URL.
-  const mediaRetryRef = useRef('')
-  const onAudioError = () => {
-    setPlaying(false)
-    const id = job?.job_id
-    if (!id) return
-    const attempt = `${id}|${mediaBust}`
-    if (mediaRetryRef.current === attempt) {
-      setRequestError('Audio lagu gagal dimuat dari server. Coba buka ulang lagu dari Riwayat.')
-      return
-    }
-    mediaRetryRef.current = attempt
-    getMusicStatus(id)
-      .then((fresh) => {
-        if (jobRef.current?.job_id !== id) return
-        setJob(fresh)
-        setMediaNonce((n) => n + 1)
-      })
-      .catch((e) => setRequestError(`Audio lagu gagal dimuat: ${e.message}`))
-  }
-
-  const seekTo = (seconds) => {
-    const el = audioRef.current
-    if (!el) return
-    el.currentTime = Math.max(0, Number(seconds) || 0)
-    setCurrentTime(el.currentTime)
-    if (el.paused) startPlayback()
-  }
-
-  // New song/URL: reset the transport so the lyric highlight and seek bar do
-  // not carry the previous song's duration/position.
+  // Keep persistent global audio player synchronized with the active completed job.
+  const activeJobIdRef = useRef('')
   useEffect(() => {
-    setCurrentTime(0)
-    setSongDuration(0)
-    if (!audioUrl) setPlaying(false)
-  }, [audioUrl])
+    if (job?.status === 'completed' && audioUrl) {
+      const meta = {
+        jobId: job.job_id,
+        title: job.title || 'Klipin Song',
+        genreLabel: job?.metadata?.genre_label || job?.genre_label || job?.genre || genre,
+        provider: job?.provider || 'heartmula',
+        coverUrl: coverSrc,
+        audioUrl,
+        audioPath: job.audio_path,
+        wavUrl: wavUrl || '',
+        lyricsLines,
+        duration: Number(job?.duration) || Number(duration) || 0,
+      }
+      if (playerTrack?.jobId === job.job_id && playerTrack?.audioUrl === audioUrl) {
+        updateTrackMeta({ coverUrl: coverSrc, lyricsLines, wavUrl: wavUrl || '' })
+      } else {
+        loadTrack(meta, { autoPlay: false })
+      }
+      activeJobIdRef.current = job.job_id
+    }
+  }, [job?.job_id, job?.status, audioUrl, coverSrc, wavUrl, lyricsLines]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (playerError) setRequestError(playerError)
+  }, [playerError])
 
   const realignTimeline = async () => {
     if (!job?.job_id || realignBusy) return
@@ -1792,8 +1767,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     setCoverUrl('')
     setCoverBust(Date.now())
     setStemsInfo('')
-    setPlaying(false)
-    setCurrentTime(0)
+    setPlayerError('')
     setJob(take)
   }
 
@@ -2390,14 +2364,13 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   }
 
   return (
-    <div className="min-h-[calc(100vh-57px)] bg-[#0e0e11] pb-24 text-[#f4f4f6]">
-      {/* Studio toolbar — one flat row, no nested cards */}
-      <div className="sticky top-[57px] z-20 flex h-12 items-center gap-3 border-b border-[#26262e] bg-[#0e0e11]/95 px-4 backdrop-blur sm:px-5">
-        <span className="text-[15px] font-semibold tracking-tight">Klipin Music</span>
-        <nav className="ml-2 flex items-center gap-0.5" aria-label="Bagian studio musik">
+    <div className="min-h-[calc(100vh-54px)] bg-navy text-white">
+      {/* Studio workspace sub-bar — non-sticky so we never stack multiple fixed bars */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border-soft bg-navy-1/75 px-3.5 py-2 sm:px-5">
+        <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Bagian studio musik">
           {[
-            { id: 'create', label: 'Create', action: () => setStudioTab('create') },
-            { id: 'cover', label: 'Cover', action: () => setStudioTab('cover') },
+            { id: 'create', label: 'Buat Lagu', action: () => { setStudioTab('create'); setMobilePane('create'); window.location.hash = '#/music' } },
+            { id: 'cover', label: 'Cover', action: () => { setStudioTab('cover'); setMobilePane('create'); window.location.hash = '#/cover' } },
             {
               id: 'studio',
               label: '🎚️ Studio EQ',
@@ -2405,32 +2378,35 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 window.location.hash = job?.job_id ? `#/studio/${job.job_id}` : '#/studio'
               },
             },
-            { id: 'history', label: `Library${historyList.length ? ` · ${historyList.length}` : ''}`, action: () => setStudioTab('history') },
+            { id: 'history', label: `Library${historyList.length ? ` · ${historyList.length}` : ''}`, action: () => { setStudioTab('history'); setMobilePane('songs'); window.location.hash = '#/history' } },
           ].map((tab) => (
             <button key={tab.id} type="button" onClick={tab.action}
               aria-pressed={studioTab === tab.id}
-              className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition ${
-                studioTab === tab.id ? 'bg-[#1f1f26] text-[#f4f4f6]' : 'text-[#8e8e99] hover:text-[#f4f4f6]'}`}>
+              className={`touch-hit shrink-0 rounded-lg px-3 py-1.5 text-[13px] font-medium transition ${
+                studioTab === tab.id
+                  ? 'bg-cyan/15 text-cyan ring-1 ring-cyan/35'
+                  : 'text-white/60 hover:bg-white/5 hover:text-white'
+              }`}>
               {tab.label}
             </button>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-3 text-[12px] text-[#8e8e99]">
+        <div className="ml-auto flex items-center gap-2.5 text-xs text-white/60">
           <span className="hidden truncate md:inline">{engineLabel}</span>
-          <span className="flex items-center gap-1.5">
-            <span className={`h-1.5 w-1.5 rounded-full ${
-              engineBusy || engineReady === null ? 'bg-[#71717a]' : engineReady ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-            {engineBusy ? 'Memeriksa…' : engineReady === null ? 'Status worker' : engineReady ? 'Siap' : 'Belum siap'}
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-navy-2/80 px-2.5 py-1 text-[11px]">
+            <span className={`h-2 w-2 rounded-full ${
+              engineBusy || engineReady === null ? 'bg-white/40' : engineReady ? 'bg-signal' : 'bg-warn'}`} />
+            {engineBusy ? 'Memeriksa…' : engineReady === null ? 'Status worker' : engineReady ? 'GPU Siap' : 'Menyiapkan'}
           </span>
           <button type="button" onClick={refreshEngine} disabled={engineBusy} title="Cek ulang worker"
-            className="rounded-md p-1.5 text-[#8e8e99] transition hover:bg-[#1c1c22] hover:text-[#f4f4f6] disabled:opacity-40">
+            className="touch-hit rounded-lg border border-border bg-navy-2/80 p-1.5 text-white/60 transition hover:border-cyan/45 hover:text-white disabled:opacity-40">
             <StudioIcon name="refresh" className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>
 
       {(catalogError || (engine && !engine.ready) || (authChecked && !user)) && (
-        <div className="space-y-2 border-b border-[#26262e] px-4 py-3 sm:px-5">
+        <div className="space-y-2 border-b border-border-soft px-4 py-3 sm:px-5">
           {catalogError && (
             <Notice tone="err" title="Katalog musik gagal dimuat" text={catalogError}
               action={{ label: 'Coba lagi', onClick: () => loadCatalog(true) }} />
@@ -2448,21 +2424,24 @@ export default function Music({ user, authChecked = false, onSignIn }) {
       )}
 
       {/* Mobile pane switcher (desktop shows panes side by side) */}
-      <div className="flex border-b border-[#26262e] xl:hidden">
-        {[{ id: 'create', label: studioTab === 'cover' ? 'Cover' : 'Create' }, { id: 'songs', label: 'Lagu' }].map((p) => (
+      <div className="flex border-b border-border-soft bg-navy-1/50 xl:hidden">
+        {[
+          { id: 'create', label: studioTab === 'cover' ? 'Studio Cover' : 'Form Lagu' },
+          { id: 'songs', label: `Player & Riwayat${historyList.length ? ` (${historyList.length})` : ''}` },
+        ].map((p) => (
           <button key={p.id} type="button" onClick={() => setMobilePane(p.id)}
-            className={`flex-1 py-2.5 text-[13px] font-medium ${mobilePane === p.id ? 'border-b-2 border-[#f59e0b] text-[#f4f4f6]' : 'text-[#8e8e99]'}`}>
+            className={`touch-hit flex-1 py-2.5 text-[13px] font-semibold transition ${
+              mobilePane === p.id ? 'border-b-2 border-cyan text-cyan' : 'text-white/55 hover:text-white'
+            }`}>
             {p.label}
           </button>
         ))}
       </div>
 
-      {/* 3 panes: Create dock | Song list | Inspector. Fixed widths only on
-          screens wide enough; below 2xl the inspector drops under the list so
-          nothing is ever squeezed or overlapped. */}
+      {/* 3 panes: Create dock | Song list | Inspector */}
       <div className="flex flex-col xl:flex-row">
-        <section className={`${mobilePane === 'create' ? 'block' : 'hidden'} xl:block xl:w-[380px] xl:shrink-0 xl:border-r xl:border-[#26262e]`}>
-          <div className="xl:sticky xl:top-[105px] xl:max-h-[calc(100vh-105px)] xl:overflow-y-auto">
+        <section className={`${mobilePane === 'create' ? 'block' : 'hidden'} xl:block xl:w-[390px] xl:shrink-0 xl:border-r xl:border-border-soft`}>
+          <div className="xl:sticky xl:top-[62px] xl:max-h-[calc(100vh-136px)] xl:overflow-y-auto">
           {/* Mode switch */}
           <div className="flex items-center justify-between gap-2 px-4 pt-4">
             {studioTab !== 'history' ? (
@@ -2510,6 +2489,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         label: 'Muat Ulang Lagu',
                         onClick: () => {
                           setRequestError('')
+                          setPlayerError('')
                           getMusicStatus(job.job_id)
                             .then((fresh) => {
                               if (fresh?.job_id) {
@@ -3407,8 +3387,8 @@ export default function Music({ user, authChecked = false, onSignIn }) {
 
             <div className="space-y-2 pt-1">
               <button type="button" onClick={create} disabled={createBlocked}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#ff5a1f] via-[#ff2d78] to-[#b829ff] px-4 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
-                {working ? <><Spinner className="h-4 w-4" /> Merender 2 versi lagu paralel…</> : '🎵 Buat 2 Versi Lagu (Take 1 & Take 2)'}
+                className="touch-hit flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#f59e0b] via-[#f97316] to-[#fb7185] px-4 py-3 text-sm font-bold text-[#0b0c10] shadow-lg transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50">
+                {working ? <><Spinner className="h-4 w-4 border-[#0b0c10]" /> Merender 2 versi lagu paralel…</> : '🎵 Buat 2 Versi Lagu (Take 1 & Take 2)'}
               </button>
               <p className={`text-center font-mono text-[10px] ${
                 engineReady === false || missing.length ? 'text-warn' : 'text-white/40'}`}>
@@ -3538,10 +3518,10 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                           openHistoryJob(entry)
                         }
                       }}
-                      className={`group flex items-center gap-3 rounded-lg border p-2 text-left transition ${
+                      className={`library-row-deferred group flex items-center gap-3 rounded-xl border p-2.5 text-left transition ${
                         isSelected
-                          ? 'border-[#f59e0b]/50 bg-[#1c1c22]'
-                          : 'border-transparent bg-[#18181d] hover:border-[#26262e] hover:bg-[#1c1c22]'}`}>
+                          ? 'border-cyan/60 bg-navy-2 ring-1 ring-cyan/25'
+                          : 'border-transparent bg-navy-2/70 hover:border-border hover:bg-navy-2'}`}>
                       <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md bg-[#26262e]">
                         {thumb ? (
                           <img src={resolveMediaAsset(thumb)} alt="" loading="lazy"
@@ -3662,9 +3642,9 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         </section>
 
         {/* Pane 3 (Right): Selected Song Inspector, Cover Art & Lyrics */}
-        <section className="w-full shrink-0 border-t border-[#26262e] p-4 xl:w-[350px] xl:border-l xl:border-t-0">
-          <div className="space-y-4 xl:sticky xl:top-[105px] xl:max-h-[calc(100vh-105px)] xl:overflow-y-auto">
-            <div className="rounded-xl border border-[#26262e] bg-[#141418] p-3.5">
+        <section className={`w-full shrink-0 border-t border-border-soft p-4 xl:block xl:w-[350px] xl:border-l xl:border-t-0 ${mobilePane === 'songs' ? 'block' : 'hidden'}`}>
+          <div className="space-y-4 xl:sticky xl:top-[62px] xl:max-h-[calc(100vh-136px)] xl:overflow-y-auto">
+            <div className="rounded-xl border border-border bg-navy-1 p-3.5">
               <div className="flex items-start gap-3">
                 <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[#26262e]">
                   {coverSrc ? (
@@ -3759,12 +3739,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               {stemsInfo && <p className="mt-2 font-mono text-[10px] text-[#71717a]">{stemsInfo}</p>}
 
               {job?.status === 'completed' ? (
-                <div className="mt-3 space-y-2.5 border-t border-[#26262e] pt-3">
-                  <audio ref={audioRef} src={audioUrl || undefined} preload="metadata"
-                    onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
-                    onEnded={() => setPlaying(false)} onEmptied={() => setPlaying(false)}
-                    onError={onAudioError}
-                    onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} className="hidden" />
+                <div className="mt-3 space-y-2.5 border-t border-border-soft pt-3">
                   <MusicWaveform
                     src={audioUrl}
                     audioRef={audioRef}
@@ -3774,11 +3749,11 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                   />
                   <div className="flex items-center justify-between">
                     <button type="button" onClick={togglePlay}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-[#f4f4f6] px-3 py-1.5 text-xs font-semibold text-[#0e0e11] transition hover:bg-white">
+                      className="touch-hit inline-flex items-center gap-1.5 rounded-lg bg-cyan px-3.5 py-2 text-xs font-semibold text-navy transition hover:bg-cyan-soft">
                       <Icon name={playing ? 'pause' : 'play'} className="h-3.5 w-3.5" />
-                      {playing ? 'Pause' : 'Play'}
+                      {playing ? 'Jeda' : 'Putar'}
                     </button>
-                    <span className="font-mono text-[11px] tabular-nums text-[#71717a]">
+                    <span className="font-mono text-[11px] tabular-nums text-white/60">
                       {formatTime(currentTime)} / {formatTime(songDuration || job?.duration || duration)}
                     </span>
                   </div>
@@ -3786,22 +3761,22 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                     max={Math.max(1, songDuration || job?.duration || duration)} step={0.1}
                     value={Math.min(currentTime, songDuration || job?.duration || duration)}
                     onChange={(e) => seekTo(Number(e.target.value))}
-                    aria-label="Seek" className="w-full accent-[#f59e0b]" />
+                    aria-label="Seek" className="w-full accent-cyan" />
                 </div>
               ) : (
-                <div className="mt-3 border-t border-[#26262e] pt-3">
+                <div className="mt-3 border-t border-border-soft pt-3">
                   <Equalizer playing={running} bars={24} className="h-8" />
                 </div>
               )}
             </div>
 
             {/* Karaoke Lyrics Timeline */}
-            <div className="rounded-xl border border-[#26262e] bg-[#141418] p-3.5">
+            <div className="rounded-xl border border-border bg-navy-1 p-3.5">
               <div className="mb-2.5 flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-[#d4d4d8]">Lirik Timeline</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-white/85">Lirik Timeline</h3>
                 {job?.status === 'completed' && lyricsLines.length > 0 && (
                   <button type="button" onClick={realignTimeline} disabled={realignBusy}
-                    className="font-mono text-[10px] text-[#f59e0b] hover:underline disabled:opacity-40">
+                    className="font-mono text-[10px] text-cyan hover:underline disabled:opacity-40">
                     {realignBusy ? 'Aligning…' : 'Align ulang'}
                   </button>
                 )}
@@ -3814,84 +3789,21 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                       <button key={`${line.start}-${i}`} type="button"
                         ref={active ? activeLineRef : undefined}
                         onClick={() => seekTo(line.start)}
-                        className={`flex w-full gap-2 rounded px-2 py-1.5 text-left text-xs transition ${
-                          active ? 'bg-[#26262e] font-medium text-[#f59e0b]' : 'text-[#a1a1aa] hover:bg-[#18181d] hover:text-[#f4f4f6]'}`}>
-                        <span className="w-9 shrink-0 font-mono text-[10px] text-[#71717a]">{formatTime(line.start)}</span>
+                        className={`flex w-full gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition ${
+                          active ? 'bg-navy-2 font-medium text-cyan' : 'text-white/65 hover:bg-navy-2/70 hover:text-white'}`}>
+                        <span className="w-9 shrink-0 font-mono text-[10px] text-white/45">{formatTime(line.start)}</span>
                         <span className="flex-1 leading-5">{line.text}</span>
                       </button>
                     )
                   })}
                 </div>
               ) : (
-                <p className="text-xs text-[#52525b]">Lirik dengan timestamp karaoke akan tampil di sini setelah lagu selesai.</p>
+                <p className="text-xs text-white/45">Lirik dengan timestamp karaoke akan tampil di sini setelah lagu selesai.</p>
               )}
             </div>
           </div>
         </section>
       </div>
-
-
-
-      {/* Sticky Bottom Suno Transport Bar */}
-      {job?.status === 'completed' && audioUrl && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/15 bg-[#0c0e15]/95 px-4 py-2.5 shadow-2xl backdrop-blur-xl">
-          <div className="mx-auto flex max-w-[1680px] flex-wrap items-center justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/15 bg-black/40">
-                {coverSrc ? (
-                  <img src={coverSrc} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center">
-                    <Icon name="music" className="h-5 w-5 text-white/50" />
-                  </span>
-                )}
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-bold text-white">{job.title || 'Klipin Song'}</div>
-                <div className="truncate font-mono text-[10px] text-white/45">
-                  {job?.metadata?.genre_label || job?.genre} · {job?.provider || 'heartmula'}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex min-w-[260px] flex-1 max-w-2xl items-center gap-3">
-              <button type="button" onClick={togglePlay}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-[#ff5a1f] to-[#ff2d78] text-white shadow-md transition hover:scale-105">
-                <Icon name={playing ? 'pause' : 'play'} className="h-4 w-4" />
-              </button>
-              <span className="w-10 text-right font-mono text-[10px] text-white/55">{formatTime(currentTime)}</span>
-              <input type="range" min={0}
-                max={Math.max(1, songDuration || job?.duration || duration)} step={0.1}
-                value={Math.min(currentTime, songDuration || job?.duration || duration)}
-                onChange={(e) => seekTo(Number(e.target.value))}
-                aria-label="Seek bottom player" className="flex-1 accent-[#ff2d78]" />
-              <span className="w-10 font-mono text-[10px] text-white/55">{formatTime(songDuration || job?.duration || duration)}</span>
-            </div>
-
-            <div className="hidden items-center gap-1.5 sm:flex">
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.hash = `#/studio/${job.job_id}`
-                }}
-                className="rounded-full border border-[#10b981]/50 bg-[#10b981]/15 px-3 py-1 text-[10px] font-bold text-[#6ee7b7] transition hover:bg-[#10b981]/25"
-              >
-                🎚️ Buka di Studio EQ
-              </button>
-              <a href={resolveDownloadAsset(job.audio_path, `${job.title || 'klipin-music'}.mp3`)} download={`${job.title || 'klipin-music'}.mp3`}
-                className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] font-bold text-white/80 hover:border-cyan/50">
-                ⬇ MP3
-              </a>
-              {wavUrl && (
-                <a href={resolveDownloadAsset(job?.metadata?.wav_path || `/videos/${job.job_id}/song.wav`, `${job.title || 'klipin-music'}.wav`)} download={`${job.title || 'klipin-music'}.wav`}
-                  className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-[10px] font-bold text-cyan-soft hover:border-cyan">
-                  ⬇ WAV -14 LUFS
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

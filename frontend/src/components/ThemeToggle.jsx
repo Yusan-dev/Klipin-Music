@@ -2,8 +2,7 @@ import Icon from './Icon.jsx'
 import { useTheme } from '../theme.jsx'
 
 /**
- * Sun/moon switch for light/dark mode. A retro pill with a sliding knob —
- * matches the machine styling of the rest of the app.
+ * Sun/moon switch for light/dark mode — Obsidian Vinyl studio toggle.
  */
 export default function ThemeToggle({ compact = false }) {
   const { theme, toggle } = useTheme()
@@ -16,16 +15,16 @@ export default function ThemeToggle({ compact = false }) {
       aria-checked={light}
       aria-label={light ? 'Mode terang — klik untuk mode gelap' : 'Mode gelap — klik untuk mode terang'}
       onClick={toggle}
-      className={`relative inline-flex items-center rounded-full border font-mono text-[10px] uppercase tracking-widest transition-colors ${
+      className={`touch-hit relative inline-flex items-center rounded-full border font-mono text-[10px] uppercase tracking-wider transition-colors ${
         light
-          ? 'border-cyan/50 bg-cyan/15 text-cyan-soft'
-          : 'border-border bg-navy-2/70 text-cyan-soft/80'
-      } ${compact ? 'h-6 px-2' : 'h-7 gap-1.5 px-2.5'}`}
+          ? 'border-cyan/40 bg-cyan/10 text-cyan-soft hover:bg-cyan/15'
+          : 'border-border bg-navy-2/80 text-white/80 hover:border-cyan/40 hover:text-white'
+      } ${compact ? 'h-8 px-2.5' : 'h-8 gap-1.5 px-3'}`}
       title="Ganti mode terang/gelap"
     >
       <span
         className={`inline-flex h-4 w-4 items-center justify-center rounded-full transition-transform ${
-          light ? 'translate-x-0 text-gold' : 'text-magenta-soft'
+          light ? 'text-cyan' : 'text-gold'
         }`}
       >
         <Icon name={light ? 'sun' : 'moon'} className="h-3.5 w-3.5" />

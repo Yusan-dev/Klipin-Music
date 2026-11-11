@@ -1,4 +1,5 @@
 import {
+  AdjustmentsHorizontalIcon,
   ArrowDownTrayIcon, ArrowPathIcon, ArrowPathRoundedSquareIcon,
   ArrowTopRightOnSquareIcon, ArrowUturnLeftIcon, ArrowsRightLeftIcon,
   ArchiveBoxIcon, Bars3Icon, BeakerIcon, BoltIcon, BookOpenIcon, BriefcaseIcon,
@@ -74,6 +75,7 @@ const MAP = {
   cloud: CloudIcon,
   chart: ChartBarIcon,
   analytics: ChartBarIcon,
+  sliders: AdjustmentsHorizontalIcon,
   eye: EyeIcon,
   views: EyeIcon,
   heart: HeartIcon,

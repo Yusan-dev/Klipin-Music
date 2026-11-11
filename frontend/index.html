@@ -2,16 +2,17 @@
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
 
     <!-- Primary Meta Tags -->
-    <title>Klip-in — Ubah Video Panjang Jadi Klip Viral 9:16 dengan AI</title>
-    <meta name="title" content="Klip-in — Ubah Video Panjang Jadi Klip Viral 9:16 dengan AI" />
-    <meta name="description" content="Klip-in adalah AI video clipper untuk kreator Indonesia. Tempel link YouTube/TikTok, AI memilih momen terbaik, subtitle karaoke Bahasa Indonesia otomatis, siap upload ke TikTok, Reels & Shorts. Kredit prabayar, tidak hangus." />
-    <meta name="keywords" content="klip video, ai video clipper, klip youtube, subtitle karaoke, video pendek, tiktok, reels, shorts, klipin, klip-in, ai clipper indonesia, potong video otomatis" />
+    <title>Klip-in Music Studio — Buat &amp; Cover Lagu AI</title>
+    <meta name="title" content="Klip-in Music Studio — Buat &amp; Cover Lagu AI" />
+    <meta name="description" content="Studio musik AI &amp; video kreator Indonesia: buat lagu orisinal berbagai genre, cover lagu dengan clone suara jernih, karaoke lirik realtime, dan Studio EQ." />
+    <meta name="keywords" content="ai music generator indonesia, cover lagu ai, klip-in music, suno alternatif, pop jawa, koplo, karaoke lirik, studio eq" />
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <meta name="author" content="Klip-in" />
-    <meta name="theme-color" content="#0B0C0E" />
+    <meta name="theme-color" content="#0B0C10" />
     <link rel="canonical" href="https://klip-in.id/" />
 
     <!-- Open Graph / Facebook -->
@@ -74,14 +75,18 @@
               window.matchMedia('(prefers-color-scheme: light)').matches
               ? 'light' : 'dark'
           }
-          if (t === 'light') document.documentElement.classList.add('light')
+          if (t === 'light') {
+            document.documentElement.classList.add('light')
+            var meta = document.querySelector('meta[name="theme-color"]')
+            if (meta) meta.setAttribute('content', '#F7F5F0')
+          }
         } catch (e) {}
       })()
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap"
       rel="stylesheet"
     />
   </head>

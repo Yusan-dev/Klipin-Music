@@ -91,6 +91,7 @@ export default function MusicWaveform({
       const peaks = peaksRef.current
       const progress = total > 0 ? Math.max(0, Math.min(1, now / total)) : 0
 
+      const isLight = typeof document !== 'undefined' && document.documentElement.classList.contains('light')
       if (peaks && peaks.length) {
         const gap = 1.5
         const barW = Math.max(1, (w - gap * peaks.length) / peaks.length)
@@ -100,23 +101,23 @@ export default function MusicWaveform({
           const played = (i + 1) / peaks.length <= progress
           if (played) {
             const g = ctx2d.createLinearGradient(0, h, 0, 0)
-            g.addColorStop(0, 'rgba(0,240,255,0.9)')
-            g.addColorStop(0.6, 'rgba(255,46,174,0.8)')
-            g.addColorStop(1, 'rgba(255,212,0,0.7)')
+            g.addColorStop(0, 'rgba(245,158,11,0.95)')
+            g.addColorStop(0.55, 'rgba(251,113,133,0.9)')
+            g.addColorStop(1, 'rgba(253,230,138,0.85)')
             ctx2d.fillStyle = g
           } else {
-            ctx2d.fillStyle = 'rgba(255,255,255,0.22)'
+            ctx2d.fillStyle = isLight ? 'rgba(20,22,28,0.18)' : 'rgba(255,255,255,0.2)'
           }
           ctx2d.fillRect(x, (h - bh) / 2, barW, bh)
         }
       } else {
-        ctx2d.fillStyle = 'rgba(255,255,255,0.12)'
+        ctx2d.fillStyle = isLight ? 'rgba(20,22,28,0.12)' : 'rgba(255,255,255,0.12)'
         ctx2d.fillRect(0, h / 2 - 1, w, 2)
       }
 
       if (total > 0) {
         const px = progress * w
-        ctx2d.strokeStyle = 'rgba(255,255,255,0.95)'
+        ctx2d.strokeStyle = isLight ? 'rgba(180,83,9,0.95)' : 'rgba(252,211,77,0.95)'
         ctx2d.lineWidth = 1.5
         ctx2d.beginPath()
         ctx2d.moveTo(px, 0)
@@ -132,10 +133,10 @@ export default function MusicWaveform({
   }, [status, playing, currentTime, duration, audioRef])
 
   return (
-    <div className={`music-waveform-wrap ${playing ? 'playing' : ''} relative h-16 w-full overflow-hidden rounded-xl border border-white/10 bg-black/30 ${className}`}>
+    <div className={`music-waveform-wrap ${playing ? 'playing' : ''} relative h-16 w-full overflow-hidden rounded-xl border border-border bg-navy-3/70 ${className}`}>
       <canvas ref={canvasRef} className="absolute inset-0 block h-full w-full" />
       {status === 'loading' && (
-        <div className="absolute inset-0 flex items-center justify-center font-mono text-[10px] text-white/30">
+        <div className="absolute inset-0 flex items-center justify-center font-mono text-[10px] text-white/40">
           Menyiapkan waveform…
         </div>
       )}

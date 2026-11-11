@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { usePlayer } from './playerStore.jsx'
 import {
   equalizeMusicJob,
   getMusicStatus,
@@ -57,6 +58,7 @@ export default function StudioWorkstation({
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [audioError, setAudioError] = useState('')
+  const { pause: pauseGlobalPlayer } = usePlayer()
 
   const audioRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -251,6 +253,7 @@ export default function StudioWorkstation({
     if (!el.paused) {
       el.pause()
     } else {
+      pauseGlobalPlayer()
       const p = el.play()
       if (p && typeof p.catch === 'function') {
         p.catch((err) => {
@@ -343,11 +346,10 @@ export default function StudioWorkstation({
   const effectiveDuration = duration || selectedJob?.duration || selectedJob?.metadata?.duration || 0
 
   return (
-    <div className="min-h-[calc(100vh-57px)] bg-[#0e0e11] pb-20 text-[#f4f4f6]">
-      {/* Top Suno Studio Navigation Bar */}
-      <div className="sticky top-[57px] z-20 flex h-12 items-center gap-3 border-b border-[#26262e] bg-[#0e0e11]/95 px-4 backdrop-blur sm:px-5">
-        <span className="text-[15px] font-semibold tracking-tight">Klipin Music</span>
-        <nav className="ml-2 flex items-center gap-0.5" aria-label="Bagian studio musik">
+    <div className="min-h-[calc(100vh-54px)] bg-navy text-white">
+      {/* Studio Workstation toolbar — non-sticky so it never stacks under Topbar */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border-soft bg-navy-1/75 px-3.5 py-2 sm:px-5">
+        <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Bagian studio musik">
           {[
             { id: 'create', label: 'Create', path: '#/music' },
             { id: 'cover', label: 'Cover', path: '#/cover' },
@@ -418,8 +420,8 @@ export default function StudioWorkstation({
       {/* Main 3-Pane Suno Studio Workstation Layout */}
       <div className="flex flex-col xl:flex-row">
         {/* Left Pane: Song Library & Local File Selector */}
-        <aside className="w-full shrink-0 border-b border-[#26262e] bg-[#121216] p-4 xl:w-[320px] xl:border-b-0 xl:border-r">
-          <div className="space-y-3 xl:sticky xl:top-[105px] xl:max-h-[calc(100vh-120px)] xl:overflow-y-auto">
+        <aside className="w-full shrink-0 border-b border-border-soft bg-navy-1/50 p-4 xl:w-[320px] xl:border-b-0 xl:border-r">
+          <div className="space-y-3 xl:sticky xl:top-[62px] xl:max-h-[calc(100vh-136px)] xl:overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xs font-bold uppercase tracking-wider text-[#e4e4e7]">
@@ -475,10 +477,10 @@ export default function StudioWorkstation({
                       key={item.job_id}
                       type="button"
                       onClick={() => selectJob(item)}
-                      className={`flex w-full items-center gap-2.5 rounded-xl border p-2 text-left transition ${
+                      className={`library-row-deferred flex w-full items-center gap-2.5 rounded-xl border p-2 text-left transition ${
                         isSelected
-                          ? 'border-[#10b981]/60 bg-[#1c1c24] shadow-[0_0_20px_rgba(16,185,129,0.12)]'
-                          : 'border-transparent bg-[#16161b] hover:border-[#26262e] hover:bg-[#1c1c22]'
+                          ? 'border-[#10b981]/60 bg-navy-2 ring-1 ring-[#10b981]/25'
+                          : 'border-transparent bg-navy-2/70 hover:border-border hover:bg-navy-2'
                       }`}
                     >
                       <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-[#26262e]">

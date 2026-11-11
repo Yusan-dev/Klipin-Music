@@ -8,9 +8,9 @@ import { IS_MUSIC_STANDALONE } from '../router.js'
 // Indonesian users) — mirroring the Pricing page language toggle.
 function menuLabels() {
   const en = {
-    grp_workspace: 'Workspace', grp_explore: 'Explore', grp_system: 'System',
-    home: 'Dashboard', clip: 'Create Clip', music: 'Music', cover: 'Cover Create', music_create: 'Create',
-    studio: 'Studio EQ',
+    grp_workspace: 'Studio', grp_explore: 'Explore', grp_system: 'System',
+    home: 'Dashboard', clip: 'Create Clip', music: 'Music', cover: 'Cover Song', music_create: 'Create Song',
+    history: 'Library', studio: 'Studio EQ',
     library: 'Library', ideas: 'Ideas',
     favorites: 'Favorites', features: 'Features', pricing: 'Pricing',
     billing: 'Billing', settings: 'Settings',
@@ -18,9 +18,9 @@ function menuLabels() {
     expand: 'Expand menu', collapse: 'Collapse menu',
   }
   const id = {
-    grp_workspace: 'Workspace', grp_explore: 'Jelajah', grp_system: 'Sistem',
-    home: 'Dashboard', clip: 'Buat Klip', music: 'Music', cover: 'Buat Cover', music_create: 'Buat Lagu',
-    studio: 'Studio EQ',
+    grp_workspace: 'Studio', grp_explore: 'Jelajah', grp_system: 'Sistem',
+    home: 'Dashboard', clip: 'Buat Klip', music: 'Musik', cover: 'Cover Lagu', music_create: 'Buat Lagu',
+    history: 'Riwayat', studio: 'Studio EQ',
     library: 'Library', ideas: 'Ideas',
     favorites: 'Favorit', features: 'Fitur', pricing: 'Harga',
     billing: 'Tagihan', settings: 'Pengaturan',
@@ -47,8 +47,9 @@ function SidebarBody({ route, collapsed, onNavigate, onToggle }) {
       label: L.grp_workspace,
       items: [
         { key: 'music', route: 'music', label: L.music_create, path: '#/music', icon: 'music' },
-        { key: 'cover', route: 'music', label: L.cover, path: '#/cover', icon: 'features' },
-        { key: 'studio', route: 'studio', label: L.studio, path: '#/studio', icon: 'library' },
+        { key: 'cover', route: 'music', label: L.cover, path: '#/cover', icon: 'mic' },
+        { key: 'history', route: 'music', label: L.history, path: '#/history', icon: 'folder' },
+        { key: 'studio', route: 'studio', label: L.studio, path: '#/studio', icon: 'sliders' },
       ],
     },
     {
@@ -119,7 +120,11 @@ function SidebarBody({ route, collapsed, onNavigate, onToggle }) {
               {g.items.map((it) => {
                 const hashSeg = (typeof window !== 'undefined' ? window.location.hash : '').replace(/^#\/?/, '').split(/[?/]/)[0]
                 const active = IS_MUSIC_STANDALONE && it.route === 'music'
-                  ? route.name === 'music' && ((it.key === 'cover') === (hashSeg === 'cover'))
+                  ? route.name === 'music' && (
+                      it.key === 'cover' ? hashSeg === 'cover'
+                        : it.key === 'history' ? hashSeg === 'history'
+                        : hashSeg !== 'cover' && hashSeg !== 'history'
+                    )
                   : route.name === it.route
                 return (
                   <a
@@ -131,19 +136,19 @@ function SidebarBody({ route, collapsed, onNavigate, onToggle }) {
                     }}
                     aria-current={active ? 'page' : undefined}
                     title={collapsed ? it.label : undefined}
-                    className={`group relative flex items-center rounded-lg border-l-2 transition-all ${
+                    className={`group relative flex items-center rounded-xl transition-all ${
                       collapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5'
                     } ${
                       active
-                        ? 'border-cyan bg-cyan/10 text-cyan-soft shadow-neon-cyan'
-                        : 'border-transparent text-white/60 hover:bg-white/5 hover:text-white'
+                        ? 'bg-cyan/15 text-cyan ring-1 ring-cyan/35'
+                        : 'text-white/65 hover:bg-white/5 hover:text-white'
                     }`}
                   >
-                    <span className={`shrink-0 ${active ? 'text-cyan' : 'text-white/45 group-hover:text-white'}`}>
+                    <span className={`shrink-0 ${active ? 'text-cyan' : 'text-white/50 group-hover:text-white'}`}>
                       <Icon name={it.icon} className="h-5 w-5" />
                     </span>
-                    {!collapsed && <span className="flex-1 text-sm font-medium tracking-wide">{it.label}</span>}
-                    {!collapsed && active && <StatusDot tone="brand" pulse className="!m-0" />}
+                    {!collapsed && <span className="flex-1 text-sm font-medium">{it.label}</span>}
+                    {!collapsed && active && <StatusDot tone="brand" className="!m-0" />}
                   </a>
                 )
               })}
@@ -190,7 +195,7 @@ export default function Sidebar({ route, collapsed, open, onClose, onToggle, onN
           onClick={onClose}
         />
         <aside
-          className={`absolute inset-y-0 left-0 w-72 border-r border-border-soft bg-navy shadow-neon-cyan transition-transform ${open ? 'translate-x-0' : '-translate-x-full'}`}
+          className={`absolute inset-y-0 left-0 w-72 border-r border-border bg-navy-1 shadow-2xl transition-transform ${open ? 'translate-x-0' : '-translate-x-full'}`}
         >
           <SidebarBody route={route} collapsed={false} onNavigate={onNavigate} onToggle={onClose} />
         </aside>

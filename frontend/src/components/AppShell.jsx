@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
+import { usePlayer } from '../playerStore.jsx'
 import Sidebar from './Sidebar.jsx'
 import Topbar from './Topbar.jsx'
+import MiniPlayer from './MiniPlayer.jsx'
+import MobileBottomNav from './MobileBottomNav.jsx'
 import CommandPalette from './CommandPalette.jsx'
 import HelpModal from './HelpModal.jsx'
 
@@ -42,19 +45,17 @@ export default function AppShell({ route, navigate, onNewClip, user, authChecked
     else navigate(path)
   }
 
+  const { track } = usePlayer()
+  const hasTrack = Boolean(track?.audioUrl)
   const isMusicStudio = route?.name === 'music' || route?.name === 'studio'
   const effectiveCollapsed = isMusicStudio ? true : collapsed
 
   return (
-    <div className={`relative isolate min-h-screen overflow-x-hidden text-white ${isMusicStudio ? 'bg-[#0e0e11]' : 'bg-navy'}`}>
-      {/* Brand retro-futurism backdrop: hidden in Music Studio to keep a clean matte Suno surface */}
-      {!isMusicStudio && (
-        <>
-          <div className="klip-bg-lines" aria-hidden="true" />
-          <div className="klip-bg-circuit" aria-hidden="true" />
-          <div className="klip-bg-vignette" aria-hidden="true" />
-        </>
-      )}
+    <div className="relative isolate min-h-screen overflow-x-hidden bg-navy text-white">
+      {/* Ambient Obsidian Vinyl studio backdrop */}
+      <div className="klip-bg-lines" aria-hidden="true" />
+      <div className="klip-bg-circuit" aria-hidden="true" />
+      <div className="klip-bg-vignette" aria-hidden="true" />
 
       <Sidebar
         route={route}
@@ -78,9 +79,17 @@ export default function AppShell({ route, navigate, onNewClip, user, authChecked
           onOpenPalette={() => setPaletteOpen(true)}
           onOpenHelp={() => setHelpOpen(true)}
         />
-        <main className="flex-1">{children}</main>
+        <main
+          className={`flex-1 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] ${
+            hasTrack ? 'lg:pb-20' : 'lg:pb-6'
+          }`}
+        >
+          {children}
+        </main>
       </div>
 
+      <MiniPlayer sidebarCollapsed={effectiveCollapsed} onNavigate={go} />
+      <MobileBottomNav route={route} onNavigate={go} onOpenMenu={() => setDrawerOpen(true)} />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onNavigate={go} />
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>

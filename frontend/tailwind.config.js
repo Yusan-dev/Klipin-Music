@@ -34,15 +34,15 @@ export default {
         white: 'rgb(var(--c-ink) / <alpha-value>)',
       },
       fontFamily: {
-        display: ['Orbitron', '"Chakra Petch"', 'ui-sans-serif', 'sans-serif'],
-        sans: ['Rajdhani', '"Segoe UI"', 'system-ui', 'sans-serif'],
-        mono: ['"Share Tech Mono"', '"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        display: ['"Plus Jakarta Sans"', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       boxShadow: {
-        'neon-cyan': '0 0 12px rgba(var(--c-cyan), 0.45), 0 0 32px rgba(var(--c-cyan), 0.18)',
-        'neon-magenta': '0 0 12px rgba(var(--c-magenta), 0.45), 0 0 32px rgba(var(--c-magenta), 0.18)',
-        'neon-gold': '0 0 12px rgba(var(--c-gold), 0.4), 0 0 32px rgba(var(--c-gold), 0.15)',
-        'glow-card': '0 0 0 1px rgba(var(--c-cyan), 0.12), 0 8px 32px rgba(var(--c-shadow), 0.55)',
+        'neon-cyan': '0 0 0 1px rgba(var(--c-cyan), 0.35), 0 8px 24px rgba(var(--c-cyan), 0.14)',
+        'neon-magenta': '0 0 0 1px rgba(var(--c-magenta), 0.35), 0 8px 24px rgba(var(--c-magenta), 0.14)',
+        'neon-gold': '0 0 0 1px rgba(var(--c-gold), 0.35), 0 8px 24px rgba(var(--c-gold), 0.14)',
+        'glow-card': '0 1px 0 0 rgba(var(--c-ink), 0.04) inset, 0 12px 32px rgba(var(--c-shadow), 0.45)',
       },
       backgroundImage: {
         'chrome':

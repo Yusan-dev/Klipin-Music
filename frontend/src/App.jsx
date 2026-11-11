@@ -1,22 +1,34 @@
-import { useEffect, useState } from 'react'
-import React from 'react'
+import React, { Suspense, lazy, useEffect, useState } from 'react'
 import AppShell from './components/AppShell.jsx'
-import Landing from './Landing.jsx'
-import Features from './Features.jsx'
-import Pricing from './Pricing.jsx'
-import Billing from './Billing.jsx'
-import Workbench from './Workbench.jsx'
-import Library from './Library.jsx'
-import Ideas from './Ideas.jsx'
-import Favorites from './Favorites.jsx'
-import Settings from './Settings.jsx'
-import Music from './Music.jsx'
-import StudioWorkstation from './StudioWorkstation.jsx'
+import { Spinner } from './components/ui.jsx'
 import SignInModal from './components/SignInModal.jsx'
 import Toasts from './components/Toasts.jsx'
+import { PlayerProvider } from './playerStore.jsx'
 import { resumePendingRetries } from './criteriaStore.js'
 import { getAuthToken, getMe, logout, setAuthToken } from './api.js'
 import { parseHash, toPath } from './router.js'
+
+// Route-level code splitting keeps mobile first load light & responsive.
+const Landing = lazy(() => import('./Landing.jsx'))
+const Features = lazy(() => import('./Features.jsx'))
+const Pricing = lazy(() => import('./Pricing.jsx'))
+const Billing = lazy(() => import('./Billing.jsx'))
+const Workbench = lazy(() => import('./Workbench.jsx'))
+const Library = lazy(() => import('./Library.jsx'))
+const Ideas = lazy(() => import('./Ideas.jsx'))
+const Favorites = lazy(() => import('./Favorites.jsx'))
+const Settings = lazy(() => import('./Settings.jsx'))
+const Music = lazy(() => import('./Music.jsx'))
+const StudioWorkstation = lazy(() => import('./StudioWorkstation.jsx'))
+
+function PageLoader() {
+  return (
+    <div className="flex min-h-[45vh] items-center justify-center gap-3 text-sm text-white/60">
+      <Spinner className="h-5 w-5" />
+      <span>Memuat studio…</span>
+    </div>
+  )
+}
 
 // Minimal error boundary — a failing module renders a visible message instead
 // of unmounting the whole tree into a blank page (dev-mode silent crash).
@@ -147,98 +159,102 @@ export default function App() {
   const workbenchKey = `${route.jobId || 'new'}-${navNonce}`
 
   return (
-    <AppShell
-      route={route}
-      navigate={navigate}
-      onNewClip={() => startNew(null)}
-      user={user}
-      authChecked={authChecked}
-      onSignIn={() => setSignInOpen(true)}
-      onSignOut={handleSignOut}
-    >
-      <Boundary key={`${route.name}-${route.jobId || ''}-${navNonce}`}>
-      {route.name === 'home' && (
-        <Landing
-          onStart={startNew}
-          onStartFile={() => startNew(null)}
-          onOpen={openProject}
-          onOpenLibrary={openLibrary}
-          onOpenFeatures={openFeatures}
-          onOpenPricing={openPricing}
+    <PlayerProvider>
+      <AppShell
+        route={route}
+        navigate={navigate}
+        onNewClip={() => startNew(null)}
+        user={user}
+        authChecked={authChecked}
+        onSignIn={() => setSignInOpen(true)}
+        onSignOut={handleSignOut}
+      >
+        <Boundary key={`${route.name}-${route.jobId || ''}-${navNonce}`}>
+          <Suspense fallback={<PageLoader />}>
+            {route.name === 'home' && (
+              <Landing
+                onStart={startNew}
+                onStartFile={() => startNew(null)}
+                onOpen={openProject}
+                onOpenLibrary={openLibrary}
+                onOpenFeatures={openFeatures}
+                onOpenPricing={openPricing}
+              />
+            )}
+            {route.name === 'features' && (
+              <Features onStart={startNewSafe} />
+            )}
+            {route.name === 'pricing' && (
+              <Pricing onStart={startNewSafe} />
+            )}
+            {route.name === 'billing' && (
+              <Billing
+                user={user}
+                onSignIn={() => setSignInOpen(true)}
+              />
+            )}
+            {route.name === 'clip' && (
+              <Workbench
+                key={workbenchKey}
+                onOpenLibrary={openLibrary}
+                onOpenProject={openProject}
+                initialJobId={route.jobId}
+                initialUrl={workbenchUrl}
+                user={user}
+                authChecked={authChecked}
+                onSignIn={() => setSignInOpen(true)}
+              />
+            )}
+            {route.name === 'library' && (
+              <Library
+                onHome={startNew}
+                onOpen={openProject}
+                user={user}
+                onSignIn={() => setSignInOpen(true)}
+              />
+            )}
+            {route.name === 'ideas' && (
+              <Ideas
+                onOpenProject={openProject}
+                user={user}
+                onSignIn={() => setSignInOpen(true)}
+              />
+            )}
+            {route.name === 'favorites' && (
+              <Favorites
+                user={user}
+                onSignIn={() => setSignInOpen(true)}
+              />
+            )}
+            {route.name === 'settings' && (
+              <Settings
+                user={user}
+                authChecked={authChecked}
+                onSignIn={() => setSignInOpen(true)}
+                onSignOut={handleSignOut}
+              />
+            )}
+            {route.name === 'music' && (
+              <Music user={user} authChecked={authChecked} onSignIn={() => setSignInOpen(true)} />
+            )}
+            {route.name === 'studio' && (
+              <StudioWorkstation
+                user={user}
+                authChecked={authChecked}
+                onSignIn={() => setSignInOpen(true)}
+                initialJobId={route.jobId}
+                navigate={navigate}
+              />
+            )}
+          </Suspense>
+        </Boundary>
+        <SignInModal
+          open={signInOpen}
+          onClose={() => setSignInOpen(false)}
+          onSuccess={onAuthSuccess}
         />
-      )}
-      {route.name === 'features' && (
-        <Features onStart={startNewSafe} />
-      )}
-      {route.name === 'pricing' && (
-        <Pricing onStart={startNewSafe} />
-      )}
-      {route.name === 'billing' && (
-        <Billing
-          user={user}
-          onSignIn={() => setSignInOpen(true)}
-        />
-      )}
-      {route.name === 'clip' && (
-        <Workbench
-          key={workbenchKey}
-          onOpenLibrary={openLibrary}
-          onOpenProject={openProject}
-          initialJobId={route.jobId}
-          initialUrl={workbenchUrl}
-          user={user}
-          authChecked={authChecked}
-          onSignIn={() => setSignInOpen(true)}
-        />
-      )}
-      {route.name === 'library' && (
-        <Library
-          onHome={startNew}
-          onOpen={openProject}
-          user={user}
-          onSignIn={() => setSignInOpen(true)}
-        />
-      )}
-      {route.name === 'ideas' && (
-        <Ideas
-          onOpenProject={openProject}
-          user={user}
-          onSignIn={() => setSignInOpen(true)}
-        />
-      )}
-      {route.name === 'favorites' && (
-        <Favorites
-          user={user}
-          onSignIn={() => setSignInOpen(true)}
-        />
-      )}
-      {route.name === 'settings' && (
-        <Settings
-          user={user}
-          authChecked={authChecked}
-          onSignIn={() => setSignInOpen(true)}
-          onSignOut={handleSignOut}
-        />
-      )}
-      {route.name === 'music' && (
-        <Music user={user} authChecked={authChecked} onSignIn={() => setSignInOpen(true)} />
-      )}
-      {route.name === 'studio' && (
-        <StudioWorkstation
-          user={user}
-          authChecked={authChecked}
-          onSignIn={() => setSignInOpen(true)}
-          initialJobId={route.jobId}
-          navigate={navigate}
-        />
-      )}
-      </Boundary>
-      <SignInModal
-        open={signInOpen}
-        onClose={() => setSignInOpen(false)}
-        onSuccess={onAuthSuccess}
-      />
-      <Toasts />
-    </AppShell>
+        <Toasts />
+      </AppShell>
+    </PlayerProvider>
   )
 }
