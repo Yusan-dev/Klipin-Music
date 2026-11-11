@@ -45,6 +45,21 @@ GENRE_STYLE_MAP: dict[str, str] = {
     "jpop": "vibrant j-pop, dynamic chord progressions, melodic lead guitar, upbeat anime-style drums, bright keyboard arrangements",
     "arab": "middle eastern oriental pop, rhythmic darbuka and riq percussions, expressive oud strings, soulful qanun melodies",
     "afrobeats": "infectious west african afrobeats, buoyant log drum rhythms, syncopated percussion, warm guitar licks, sunny brass chords",
+    "pop-indo": "indonesian emotional pop ballad, warm grand piano, lush strings, heartfelt expressive production",
+    "synth-pop": "1980s synth-pop, analog Juno pads, gated reverb snare, punchy synth bass, nostalgic chorus",
+    "city-pop": "80s japanese city pop groove, funk slap bass, lush rhodes electric piano, brass stabs",
+    "bossa-nova": "smooth brazilian bossa nova, nylon acoustic guitar syncopation, soft brushed drums, warm flute and rhodes",
+    "ska": "upbeat horn-driven ska groove, crisp offbeat guitar chops, walking bass, brass horn hooks",
+    "funkot": "high-energy indonesian funkot breakbeat, bouncy offbeat bass, fast club percussion",
+    "house": "warm deep and tropical house, four-on-the-floor kick, marimba plucks, lush piano chords",
+    "trap": "modern melodic trap, booming 808 sub bass, rapid rolling hi-hats, moody synth bells",
+    "disco": "groovy nu-disco and funk, slap bassline, rhythmic wah electric guitar, crisp hi-hats, bright brass",
+    "country": "warm modern country, acoustic guitar strumming, pedal steel guitar licks, upright bass, heartfelt rhythm",
+    "country-pop": "modern country pop, bright acoustic guitar, banjo picking, catchy crossover live drums",
+    "anak-ceria": "cheerful children song, playful xylophone and marimba, bright acoustic guitar, happy clapping rhythm",
+    "anak-edukasi": "educational children song, cheerful ukulele, upright piano, soft tambourine, simple singalong feel",
+    "anak-tidur": "gentle children lullaby, music box, soft kalimba and warm harp, soothing peaceful strings",
+    "anak-islami": "cheerful Islamic children song, playful acoustic guitar, soft rebana frame drum, joyful kids melody",
 }
 
 

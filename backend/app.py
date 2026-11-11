@@ -1262,9 +1262,9 @@ async def music_generate(req: MusicGenerateRequest, _user: dict = Depends(requir
             "Bagian berikut belum lengkap: " + "; ".join(missing) + "."))
     req.duration = max(15.0, min(float(req.duration or 120), max_create_dur))
     req.vocal_gender = (req.vocal_gender or "auto").strip().lower()
-    if req.vocal_gender not in ("auto", "male", "female", "duet"):
+    if req.vocal_gender not in ("auto", "male", "female", "child-female", "child-male", "duet"):
         raise HTTPException(status_code=400, detail=(
-            "Gender vokal tidak dikenal. Pilih: auto, female, male, atau duet."))
+            "Gender vokal tidak dikenal. Pilih: auto, female, male, child-female, child-male, atau duet."))
     # Persona lock: ciri suara/gaya dari lagu tersimpan (bila dipilih).
     persona = None
     if (req.persona_id or "").strip():
@@ -1772,8 +1772,8 @@ async def music_persona_voice_create(
             "Centang persetujuan bahwa rekaman adalah suara Anda atau Anda "
             "memiliki izin, dan setuju audio diproses untuk membuat lagu."))
     vocal_gender = (vocal_gender or "auto").strip().lower()
-    if vocal_gender not in ("auto", "male", "female"):
-        raise HTTPException(status_code=400, detail="Pilih tipe suara auto, pria, atau wanita.")
+    if vocal_gender not in ("auto", "male", "female", "child-female", "child-male"):
+        raise HTTPException(status_code=400, detail="Pilih tipe suara auto, pria, wanita, anak cowok, atau anak cewek.")
     temp_root = Path(tempfile.mkdtemp(prefix="voice-persona-", dir=str(db.DATA_DIR)))
     try:
         upload_path = temp_root / "source-audio"
@@ -1814,7 +1814,8 @@ async def music_persona_voice_create(
         converted = await asyncio.to_thread(
             subprocess.run,
             [ffmpeg, "-y", "-v", "error", "-i", str(upload_path), "-t", "30",
-             "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", str(canonical)],
+             "-vn", "-ac", "1", "-ar", "24000", "-af", "highpass=f=85",
+             "-c:a", "pcm_s16le", str(canonical)],
             capture_output=True, text=True, timeout=60)
         if converted.returncode != 0 or not canonical.exists():
             raise HTTPException(status_code=400, detail="Audio gagal dinormalisasi.")
@@ -1858,8 +1859,8 @@ async def music_persona_design(req: MusicDesignedPersonaRequest,
     texture = (req.texture or "smooth").strip().lower()
     energy = (req.energy or "balanced").strip().lower()
     register = (req.vocal_register or "mid").strip().lower()
-    if gender not in ("auto", "male", "female"):
-        raise HTTPException(status_code=400, detail="Pilih suara otomatis, pria, atau wanita.")
+    if gender not in ("auto", "male", "female", "child-female", "child-male"):
+        raise HTTPException(status_code=400, detail="Pilih suara otomatis, pria, wanita, anak cowok, atau anak cewek.")
     if texture not in ("smooth", "breathy", "raspy"):
         raise HTTPException(status_code=400, detail="Tekstur vokal tidak valid.")
     if energy not in ("soft", "balanced", "powerful"):
@@ -1870,8 +1871,13 @@ async def music_persona_design(req: MusicDesignedPersonaRequest,
     brightness = max(-100, min(100, int(req.brightness)))
     warmth_label = "warm rich" if warmth >= 20 else "cool rounded" if warmth <= -20 else "neutral"
     brightness_label = "bright forward" if brightness >= 20 else "dark intimate" if brightness <= -20 else "balanced brightness"
+    _gender_tag = {
+        "child-female": "young girl child vocal",
+        "child-male": "young boy child vocal",
+        "auto": "natural vocal",
+    }.get(gender, f"{gender} vocal")
     tags = ", ".join((
-        f"{gender} vocal" if gender != "auto" else "natural vocal",
+        _gender_tag,
         f"{warmth_label} vocal tone", brightness_label,
         {"smooth": "smooth clear texture", "breathy": "airy breathy texture",
          "raspy": "light husky texture"}[texture],
@@ -1925,8 +1931,8 @@ async def music_persona_update(persona_id: str, req: MusicPersonaUpdateRequest,
         raise HTTPException(status_code=404, detail="Persona tidak ditemukan")
     if req.vocal_gender is not None:
         g = req.vocal_gender.strip().lower()
-        if g not in ("female", "male", "auto"):
-            raise HTTPException(status_code=400, detail="Kategori suara harus female (Cewek), male (Cowok), atau auto.")
+        if g not in ("female", "male", "child-female", "child-male", "auto"):
+            raise HTTPException(status_code=400, detail="Kategori suara harus female (Cewek), male (Cowok), child-female (Anak Cewek), child-male (Anak Cowok), atau auto.")
     updated = db.update_music_persona(persona_id, user_id, name=req.name, vocal_gender=req.vocal_gender)
     if not updated:
         raise HTTPException(status_code=404, detail="Persona tidak ditemukan")
@@ -2220,9 +2226,9 @@ async def music_cover_upload(
         raise HTTPException(status_code=503,
                             detail=f"Engine '{engine}' belum aktif di server ini.")
     gender = (vocal_gender or "auto").strip().lower()
-    if gender not in ("auto", "male", "female", "duet"):
+    if gender not in ("auto", "male", "female", "child-female", "child-male", "duet"):
         raise HTTPException(status_code=400,
-                            detail="Gender vokal harus auto, male, female, atau duet.")
+                            detail="Gender vokal harus auto, male, female, child-female, child-male, atau duet.")
 
     raw = await file.read()
     if len(raw) < 1024:
@@ -2256,7 +2262,8 @@ async def music_cover_upload(
             conv = await asyncio.to_thread(
                 subprocess.run,
                 [ffmpeg_bin, "-y", "-v", "error", "-i", str(raw_voice_path), "-t", "30",
-                 "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", str(norm_voice_path)],
+                 "-vn", "-ac", "1", "-ar", "24000", "-af", "highpass=f=85",
+                 "-c:a", "pcm_s16le", str(norm_voice_path)],
                 capture_output=True, text=True, timeout=60)
             if conv.returncode != 0 or not norm_voice_path.is_file():
                 raise HTTPException(status_code=400, detail="File suara target tidak valid atau gagal diproses.")
@@ -2473,9 +2480,9 @@ async def music_remix_url(req: MusicRemixUrlRequest,
     needs_ref = cover_engine in ("ace-step", "mulacover", "yue2", "yue2_comfy", "yue2_native")
     needs_audio = needs_ref or cover_engine in ("voice", "arrangement")
     vocal_gender = (req.vocal_gender or "female").strip().lower()
-    if vocal_gender not in ("auto", "male", "female", "duet"):
+    if vocal_gender not in ("auto", "male", "female", "child-female", "child-male", "duet"):
         raise HTTPException(status_code=400, detail=(
-            "Gender vokal tidak dikenal. Pilih: auto, female, male, atau duet."))
+            "Gender vokal tidak dikenal. Pilih: auto, female, male, child-female, child-male, atau duet."))
     pitch_raw = str(req.pitch_shift or "auto").strip().lower()
     if pitch_raw in ("", "auto"):
         if cover_engine == "arrangement" or req.keep_original_vocal:

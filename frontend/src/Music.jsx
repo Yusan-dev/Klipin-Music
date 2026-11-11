@@ -58,6 +58,8 @@ const VOCAL_GENDERS = [
   { id: 'auto', label: 'Auto' },
   { id: 'female', label: 'Wanita' },
   { id: 'male', label: 'Pria' },
+  { id: 'child-female', label: '👧 Anak Cewek' },
+  { id: 'child-male', label: '👦 Anak Cowok' },
   { id: 'duet', label: 'Duet' },
 ]
 const VOCAL_STYLES = [
@@ -92,7 +94,8 @@ const TAKE_MODES = [
 // Adaptasi Suno: penanda struktur di editor lirik + chip gaya instan.
 const STRUCTURE_TAGS = ['[Intro]', '[Verse]', '[Pre-Chorus]', '[Chorus]', '[Bridge]', '[Outro]']
 const STYLE_CHIPS = [
-  'female vocal', 'male vocal', 'duet', 'acoustic', 'lo-fi', '80s synth',
+  'female vocal', 'male vocal', 'child female vocal', 'child male vocal', 'duet',
+  'acoustic', 'country', 'children song', 'lo-fi', '80s synth',
   'orchestral', 'dangdut', 'keroncong', 'reggae', 'trap', 'ballad',
   'uplifting', 'melancholic', 'fast', 'slow', 'warm analog', 'dreamy reverb',
 ]
@@ -1613,8 +1616,18 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     const query = genreQuery.trim().toLowerCase()
     const list = catalog.genres || []
     if (!query) return list
-    return list.filter((item) => `${item.label} ${item.id}`.toLowerCase().includes(query))
+    return list.filter((item) => `${item.label} ${item.id} ${item.category || ''} ${item.tags || ''}`.toLowerCase().includes(query))
   }, [catalog.genres, genreQuery])
+
+  const groupedVisibleGenres = useMemo(() => {
+    const groups = new Map()
+    for (const item of visibleGenres) {
+      const cat = item.category || 'Lainnya'
+      if (!groups.has(cat)) groups.set(cat, [])
+      groups.get(cat).push(item)
+    }
+    return Array.from(groups.entries())
+  }, [visibleGenres])
 
   const regenerateCover = async (overrideUrl = '') => {
     if (!user) { onSignIn(); return }
@@ -3075,7 +3088,10 @@ export default function Music({ user, authChecked = false, onSignIn }) {
 
             <Group title="2 · Gaya Musik, Bahasa & Durasi" subtitle="Pilih genre, bahasa vokal, dan durasi lagu" defaultOpen>
             <div className="relative">
-              <span className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-white/65">Genre Musik</span>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="text-xs font-bold uppercase tracking-widest text-white/65">Genre Musik</span>
+                <span className="font-mono text-[10px] text-white/40">{(catalog.genres || []).length} genre</span>
+              </div>
               <button type="button" onClick={() => setGenreOpen((v) => !v)}
                 aria-haspopup="listbox" aria-expanded={genreOpen}
                 className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-left text-sm text-white outline-none transition focus:border-cyan/60">
@@ -3093,22 +3109,29 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                   <div className="absolute z-20 mt-1.5 w-full overflow-hidden rounded-xl border border-white/15 bg-navy-3 shadow-2xl">
                     <div className="border-b border-white/10 p-2">
                       <input value={genreQuery} onChange={(e) => setGenreQuery(e.target.value)}
-                        placeholder="Ketik untuk mencari genre…" aria-label="Cari genre" autoFocus
+                        placeholder="Cari genre, subgenre, atau instrumen (mis. trap, koplo, 80s)…" aria-label="Cari genre" autoFocus
                         className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-cyan/60" />
                     </div>
-                    <div role="listbox" className="max-h-56 overflow-y-auto p-1.5">
-                      {visibleGenres.map((item) => (
-                        <button key={item.id} type="button" role="option" aria-selected={genre === item.id}
-                          onClick={() => { setGenre(item.id); setGenreOpen(false); setGenreQuery('') }}
-                          className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
-                            genre === item.id
-                              ? 'bg-magenta/25 font-bold text-white'
-                              : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
-                          <span className="truncate">{item.label}</span>
-                          {item.language_locked && (
-                            <span className="shrink-0 font-mono text-[10px] text-cyan-soft/70">🔒{item.language_label}</span>
-                          )}
-                        </button>
+                    <div role="listbox" className="max-h-72 overflow-y-auto p-1.5 space-y-1">
+                      {groupedVisibleGenres.map(([cat, items]) => (
+                        <div key={cat}>
+                          <div className="px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-cyan-soft/65">
+                            {cat} ({items.length})
+                          </div>
+                          {items.map((item) => (
+                            <button key={item.id} type="button" role="option" aria-selected={genre === item.id}
+                              onClick={() => { setGenre(item.id); setGenreOpen(false); setGenreQuery('') }}
+                              className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
+                                genre === item.id
+                                  ? 'bg-magenta/25 font-bold text-white'
+                                  : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
+                              <span className="truncate">{item.label}</span>
+                              {item.language_locked && (
+                                <span className="shrink-0 font-mono text-[10px] text-cyan-soft/70">🔒{item.language_label}</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
                       ))}
                       {visibleGenres.length === 0 && (
                         <p className="px-3 py-4 text-[12px] text-white/40">Tidak ada genre yang cocok.</p>
@@ -3231,7 +3254,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             )}
             </Group>
 
-            <Group title="3 · Penyanyi & Persona Suara (👩 Cewek / 👨 Cowok)" subtitle="Pilih atau buat persona suara sendiri tanpa batas" defaultOpen>
+            <Group title="3 · Penyanyi & Persona Suara (👩 Cewek / 👨 Cowok / 👧👦 Anak)" subtitle="Pilih suara dewasa, anak-anak, atau buat persona sendiri" defaultOpen>
             {renderPersonaStudioPanel({ compact: false })}
 
             <div className="grid gap-3 sm:grid-cols-2">

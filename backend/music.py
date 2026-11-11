@@ -41,37 +41,98 @@ except Exception:
 from bgm import render_bgm
 
 GENRES = [
-    {"id": "jazz-pop", "label": "Jazz Pop Jawa", "mood": "chill", "tags": "Indonesian jazz pop, Javanese influence, male and female duet, piano, upright bass, brush drums"},
-    {"id": "pop-jawa", "label": "Pop Jawa", "mood": "upbeat", "tags": "Javanese pop, warm gamelan textures, modern pop"},
-    {"id": "campursari", "label": "Campursari", "mood": "chill", "tags": "campursari, kendang, siter, Javanese vocal"},
-    {"id": "dangdut-koplo", "label": "Dangdut Koplo", "mood": "upbeat", "tags": "dangdut koplo, kendang, festive, danceable"},
-    {"id": "keroncong", "label": "Keroncong", "mood": "chill", "tags": "keroncong, ukulele, cak cuk, nostalgic"},
-    {"id": "sunda", "label": "Pop Sunda", "mood": "chill", "tags": "Sundanese pop, kacapi, suling, intimate"},
-    {"id": "bali", "label": "Pop Bali", "mood": "upbeat", "tags": "Balinese pop, gamelan-inspired, bright"},
-    {"id": "pop", "label": "Pop", "mood": "upbeat", "tags": "radio pop, polished, catchy chorus"},
-    {"id": "kpop", "label": "K-Pop", "mood": "upbeat", "tags": "k-pop, energetic Korean pop, bright vocals, polished production, driving beat, catchy hook"},
-    {"id": "jpop", "label": "J-Pop", "mood": "upbeat", "tags": "j-pop, upbeat Japanese pop, youthful vocal, bright synths, driving guitars"},
-    {"id": "anime", "label": "Anime / J-Pop", "mood": "epic", "tags": "anime opening, j-pop, energetic female vocal, bright female singer, driving drums, sparkling synths, catchy anthemic chorus"},
-    {"id": "arab", "label": "Arab / Middle East", "mood": "epic", "tags": "Arabic pop, middle eastern scales, oud, qanun, darbuka percussion, passionate vocal"},
-    {"id": "nasyid", "label": "Nasyid / Islami", "mood": "chill", "tags": "nasyid, Islamic devotional, peaceful male vocal, frame drum, soft strings, uplifting chorus"},
-    {"id": "latin", "label": "Latin / Reggaeton", "mood": "upbeat", "tags": "Latin pop, reggaeton beat, Spanish guitar, danceable groove, passionate vocal"},
-    {"id": "edm", "label": "EDM / Dance", "mood": "epic", "tags": "EDM, festival dance, powerful drop, sidechain synths, euphoric build-up"},
-    {"id": "dj-remix", "label": "DJ Remix", "mood": "epic", "tags": "DJ remix, club mix, punchy kick, bass drop, sidechain, dancefloor energy"},
-    {"id": "pop-remix", "label": "Pop Remix", "mood": "upbeat", "tags": "pop remix, polished vocal, four-on-the-floor drums, synth bass, radio hook"},
-    {"id": "reggae", "label": "Reggae", "mood": "chill", "tags": "warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove (soft kick and cross-stick rimshot on beat 3), muted clean electric guitar and warm Hammond B3 organ bubble on the offbeat upbeats, deep round sub-dub bassline (60-160 Hz warm pocket), melodic brass horn hook on intro and interlude, relaxed soulful vocal with warm studio reverb and subtle dub tape echo, silky rolled-off analog highs, no harsh hi-hats, no four-on-the-floor kick"},
-    {"id": "dangdut-remix", "label": "Dangdut Remix", "mood": "upbeat", "tags": "dangdut remix, koplo groove, kendang, electronic bass, danceable drop"},
-    {"id": "rock", "label": "Rock", "mood": "epic", "tags": "rock, electric guitars, driving drums, powerful chorus, energetic vocal"},
-    {"id": "rnb", "label": "R&B / Soul", "mood": "chill", "tags": "R&B, soulful vocal, smooth groove, warm keys, late night vibe"},
-    {"id": "jazz", "label": "Jazz", "mood": "chill", "tags": "jazz, swing rhythm, brushed drums, upright bass, smooth vocal"},
-    {"id": "mandarin", "label": "Mandarin Pop", "mood": "upbeat", "tags": "mandopop, emotional ballad vocal, piano, strings, polished production"},
-    {"id": "india", "label": "India / Bollywood", "mood": "upbeat", "tags": "Bollywood, Hindi pop, tabla, sitar textures, festive chorus"},
-    {"id": "afrobeats", "label": "Afrobeats", "mood": "upbeat", "tags": "afrobeats, log drums, groovy percussion, warm vocal, danceable"},
-    {"id": "folk", "label": "Folk / Akustik", "mood": "chill", "tags": "folk, acoustic guitar, intimate vocal, warm harmonies"},
-    {"id": "akustik", "label": "Pop Akustik / Acoustic", "mood": "chill", "tags": "acoustic pop, unplugged, fingerpicked acoustic guitar, intimate vocal, gentle piano, warm harmonies, live session feel"},
-    {"id": "metal", "label": "Metal", "mood": "epic", "tags": "metal, heavy guitars, double kick drums, intense vocal, epic chorus"},
-    {"id": "ambient", "label": "Ambient / Sinematik", "mood": "chill", "tags": "ambient, cinematic pads, ethereal vocal textures, slow build"},
-    {"id": "lofi", "label": "Lo-fi", "mood": "chill", "tags": "lo-fi, mellow, dusty drums, late night"},
-    {"id": "hiphop", "label": "Hip-hop", "mood": "epic", "tags": "hip-hop, punchy drums, bass, confident"},
+    # Pop & Balada
+    {"id": "pop", "label": "Pop", "category": "Pop & Balada", "mood": "upbeat", "tags": "radio pop, polished, catchy chorus"},
+    {"id": "pop-indo", "label": "Pop Indonesia / Galau", "category": "Pop & Balada", "mood": "chill", "tags": "Indonesian emotional pop ballad, warm grand piano, lush strings, heartfelt vocal, catchy chorus"},
+    {"id": "ballad", "label": "Power Ballad", "category": "Pop & Balada", "mood": "epic", "tags": "emotional power ballad, grand piano, sweeping orchestral strings, dynamic drum build-up, soaring vocal"},
+    {"id": "pop-rock", "label": "Pop Rock", "category": "Pop & Balada", "mood": "upbeat", "tags": "catchy pop rock, crunchy rhythm guitars, energetic live drums, soaring chorus"},
+    {"id": "indie-pop", "label": "Indie Pop", "category": "Pop & Balada", "mood": "chill", "tags": "dreamy indie pop, jangly electric guitar, warm analog synths, relaxed groovy drums, intimate vocal"},
+    {"id": "synth-pop", "label": "Synth-Pop / 80s Retro", "category": "Pop & Balada", "mood": "upbeat", "tags": "1980s synth-pop, analog Juno pads, gated reverb snare, punchy synth bass, nostalgic chorus"},
+    {"id": "city-pop", "label": "City Pop", "category": "Pop & Balada", "mood": "chill", "tags": "80s Japanese city pop groove, funk slap bass, lush Rhodes electric piano, brass stabs, shimmering night vibe"},
+    {"id": "dream-pop", "label": "Dream Pop / Shoegaze", "category": "Pop & Balada", "mood": "chill", "tags": "ethereal dream pop, lush chorused guitars, washed-out reverb, airy dreamy vocal, atmospheric pads"},
+    {"id": "akustik", "label": "Pop Akustik / Acoustic", "category": "Pop & Balada", "mood": "chill", "tags": "acoustic pop, unplugged, fingerpicked acoustic guitar, intimate vocal, gentle piano, warm harmonies, live session feel"},
+    {"id": "pop-remix", "label": "Pop Remix", "category": "Pop & Balada", "mood": "upbeat", "tags": "pop remix, polished vocal, four-on-the-floor drums, synth bass, radio hook"},
+
+    # Nusantara & Daerah
+    {"id": "pop-jawa", "label": "Pop Jawa", "category": "Nusantara & Daerah", "mood": "upbeat", "tags": "Javanese pop, warm gamelan textures, modern pop"},
+    {"id": "jazz-pop", "label": "Jazz Pop Jawa", "category": "Nusantara & Daerah", "mood": "chill", "tags": "Indonesian jazz pop, Javanese influence, male and female duet, piano, upright bass, brush drums"},
+    {"id": "campursari", "label": "Campursari", "category": "Nusantara & Daerah", "mood": "chill", "tags": "campursari, kendang, siter, Javanese vocal"},
+    {"id": "dangdut-koplo", "label": "Dangdut Koplo", "category": "Nusantara & Daerah", "mood": "upbeat", "tags": "dangdut koplo, kendang, festive, danceable"},
+    {"id": "dangdut-klasik", "label": "Dangdut Klasik", "category": "Nusantara & Daerah", "mood": "upbeat", "tags": "classic Indonesian dangdut, expressive tabla kendang, melodic bamboo suling flute, mandolin, emotional cengkok vocal"},
+    {"id": "dangdut-remix", "label": "Dangdut Remix", "category": "Nusantara & Daerah", "mood": "upbeat", "tags": "dangdut remix, koplo groove, kendang, electronic bass, danceable drop"},
+    {"id": "keroncong", "label": "Keroncong", "category": "Nusantara & Daerah", "mood": "chill", "tags": "keroncong, ukulele, cak cuk, nostalgic"},
+    {"id": "sunda", "label": "Pop Sunda", "category": "Nusantara & Daerah", "mood": "chill", "tags": "Sundanese pop, kacapi, suling, intimate"},
+    {"id": "bali", "label": "Pop Bali", "category": "Nusantara & Daerah", "mood": "upbeat", "tags": "Balinese pop, gamelan-inspired, bright"},
+    {"id": "pop-minang", "label": "Pop Minang / Melayu", "category": "Nusantara & Daerah", "mood": "chill", "tags": "Minangkabau Malay melodic pop, saluang bamboo flute, gambus and accordion accents, slow rock Melayu feel, expressive soulful vocal"},
+    {"id": "pop-batak", "label": "Pop Batak", "category": "Nusantara & Daerah", "mood": "epic", "tags": "Batak melodic pop ballad, soaring powerful harmony vocals, acoustic guitar, warm piano and strings, heartfelt anthem"},
+    {"id": "pop-timur", "label": "Pop Indonesia Timur / Ambon", "category": "Nusantara & Daerah", "mood": "chill", "tags": "Eastern Indonesian tropical pop, warm island acoustic guitar, groovy bass, soulful silky vocal harmonies"},
+
+    # Anak-anak & Keluarga
+    {"id": "anak-ceria", "label": "Lagu Anak-anak / Ceria", "category": "Anak-anak & Keluarga", "mood": "upbeat", "tags": "cheerful children song, Indonesian kids singalong, playful xylophone, marimba, bright acoustic guitar, happy clapping rhythm, innocent sweet melody"},
+    {"id": "anak-edukasi", "label": "Lagu Anak / Edukasi & Bermain", "category": "Anak-anak & Keluarga", "mood": "upbeat", "tags": "educational children song, cheerful playful ukulele, upright piano, tambourine, clear simple memorable kids chorus"},
+    {"id": "anak-tidur", "label": "Lagu Anak / Pengantar Tidur (Lullaby)", "category": "Anak-anak & Keluarga", "mood": "chill", "tags": "gentle children lullaby, music box, soft kalimba and warm harp, soothing gentle strings, peaceful bedtime vocal"},
+    {"id": "anak-islami", "label": "Lagu Anak Islami", "category": "Anak-anak & Keluarga", "mood": "upbeat", "tags": "cheerful Islamic children song, playful acoustic guitar, soft rebana frame drum, joyful kids singalong melody"},
+
+    # Country, Folk & Akustik
+    {"id": "country", "label": "Country / Americana", "category": "Country, Folk & Akustik", "mood": "chill", "tags": "warm modern country, acoustic strumming, pedal steel guitar licks, upright bass, storytelling vocal"},
+    {"id": "country-pop", "label": "Country Pop", "category": "Country, Folk & Akustik", "mood": "upbeat", "tags": "modern country pop, bright acoustic guitar, banjo accents, catchy crossover pop chorus, warm live drums"},
+
+    # Religi & Rohani
+    {"id": "nasyid", "label": "Nasyid / Islami", "category": "Religi & Rohani", "mood": "chill", "tags": "nasyid, Islamic devotional, peaceful male vocal, frame drum, soft strings, uplifting chorus"},
+    {"id": "sholawat", "label": "Sholawat / Hadroh Modern", "category": "Religi & Rohani", "mood": "chill", "tags": "Indonesian sholawat hadroh rebana frame drum percussion, warm oud and orchestral strings, serene devotional choral vocal"},
+    {"id": "qasidah", "label": "Qasidah Gambus", "category": "Religi & Rohani", "mood": "upbeat", "tags": "classic qasidah gambus ensemble, rhythmic darbuka tambourine, expressive oud melody, warm unison vocal"},
+    {"id": "gospel", "label": "Gospel / Choir Uplifting", "category": "Religi & Rohani", "mood": "epic", "tags": "soulful gospel choir, Hammond organ, grand piano, uplifting handclaps, powerful harmonies"},
+
+    # Rock, Indie & Metal
+    {"id": "rock", "label": "Rock", "category": "Rock, Indie & Metal", "mood": "epic", "tags": "rock, electric guitars, driving drums, powerful chorus, energetic vocal"},
+    {"id": "alt-rock", "label": "Alternative Rock", "category": "Rock, Indie & Metal", "mood": "epic", "tags": "90s 2000s alternative rock, dynamic quiet-loud verses, gritty guitar riffs, punchy live drums, emotional chorus"},
+    {"id": "indie-rock", "label": "Indie Rock", "category": "Rock, Indie & Metal", "mood": "upbeat", "tags": "modern indie rock, crisp telecaster guitar riffs, tight driving bass and drums, raw authentic vocal"},
+    {"id": "punk", "label": "Pop Punk / Punk Rock", "category": "Rock, Indie & Metal", "mood": "upbeat", "tags": "fast energetic pop punk, palm-muted power chords, snappy fast drums, youthful anthemic gang vocals"},
+    {"id": "grunge", "label": "Grunge", "category": "Rock, Indie & Metal", "mood": "epic", "tags": "90s Seattle grunge, heavy fuzz distortion guitar, sludgy bassline, thunderous snare, raw raspy vocal"},
+    {"id": "blues-rock", "label": "Blues Rock", "category": "Rock, Indie & Metal", "mood": "upbeat", "tags": "gritty blues rock, expressive electric guitar licks, Hammond organ, shuffle groove, soulful raspy vocal"},
+    {"id": "metal", "label": "Metal", "category": "Rock, Indie & Metal", "mood": "epic", "tags": "metal, heavy guitars, double kick drums, intense vocal, epic chorus"},
+    {"id": "metalcore", "label": "Metalcore / Post-Hardcore", "category": "Rock, Indie & Metal", "mood": "epic", "tags": "modern metalcore, drop-tuned chugging guitar riffs, breakdown grooves, soaring clean chorus and intense screams"},
+    {"id": "folk", "label": "Folk / Akustik", "category": "Rock, Indie & Metal", "mood": "chill", "tags": "folk, acoustic guitar, intimate vocal, warm harmonies"},
+
+    # Elektronik & DJ
+    {"id": "edm", "label": "EDM / Dance", "category": "Elektronik & DJ", "mood": "epic", "tags": "EDM, festival dance, powerful drop, sidechain synths, euphoric build-up"},
+    {"id": "dj-remix", "label": "DJ Remix", "category": "Elektronik & DJ", "mood": "epic", "tags": "DJ remix, club mix, punchy kick, bass drop, sidechain, dancefloor energy"},
+    {"id": "funkot", "label": "Funkot / Breakbeat Indo", "category": "Elektronik & DJ", "mood": "upbeat", "tags": "high-energy Indonesian funkot breakbeat, bouncy offbeat bass, chopped vocal stabs, fast club percussion"},
+    {"id": "house", "label": "Deep House / Tropical House", "category": "Elektronik & DJ", "mood": "chill", "tags": "warm deep and tropical house, 120 BPM four-on-the-floor kick, marimba plucks, lush piano chords, airy vocal"},
+    {"id": "techno", "label": "Techno / Melodic Techno", "category": "Elektronik & DJ", "mood": "epic", "tags": "driving melodic techno, hypnotic analog arpeggios, rolling sub bass, dark atmospheric builds"},
+    {"id": "trance", "label": "Trance / Uplifting", "category": "Elektronik & DJ", "mood": "epic", "tags": "euphoric uplifting trance, 138 BPM rolling bass, soaring supersaw lead melody, emotional breakdown"},
+    {"id": "dubstep", "label": "Dubstep / Future Bass", "category": "Elektronik & DJ", "mood": "epic", "tags": "melodic dubstep and future bass, half-time punchy snare, massive wobble sub-bass, shimmering chord drops"},
+    {"id": "dnb", "label": "Drum & Bass / Liquid DnB", "category": "Elektronik & DJ", "mood": "upbeat", "tags": "fast 172 BPM liquid drum and bass, crisp breakbeat snare, warm rolling sub bass, atmospheric pads"},
+    {"id": "synthwave", "label": "Synthwave / Outrun", "category": "Elektronik & DJ", "mood": "upbeat", "tags": "retro-futuristic 80s synthwave, driving analog arpeggio bass, gated tom drums, neon nostalgic synths"},
+    {"id": "disco", "label": "Nu-Disco / Funk", "category": "Elektronik & DJ", "mood": "upbeat", "tags": "groovy nu-disco and funk, slap bassline, rhythmic wah electric guitar, crisp hi-hats, bright brass"},
+
+    # Urban, Hip-Hop & R&B
+    {"id": "rnb", "label": "R&B / Soul", "category": "Urban, Hip-Hop & R&B", "mood": "chill", "tags": "R&B, soulful vocal, smooth groove, warm keys, late night vibe"},
+    {"id": "hiphop", "label": "Hip-hop", "category": "Urban, Hip-Hop & R&B", "mood": "epic", "tags": "hip-hop, punchy drums, bass, confident"},
+    {"id": "trap", "label": "Trap / Melodic Rap", "category": "Urban, Hip-Hop & R&B", "mood": "epic", "tags": "modern melodic trap, booming 808 sub bass, rapid rolling hi-hats, moody synth bells, melodic rap vocal"},
+    {"id": "drill", "label": "Drill / Sliding 808", "category": "Urban, Hip-Hop & R&B", "mood": "epic", "tags": "dark sliding 808 bass glides, syncopated drill hi-hat bounce, ominous piano loop, sharp confident rap delivery"},
+    {"id": "phonk", "label": "Phonk / Drift Phonk", "category": "Urban, Hip-Hop & R&B", "mood": "epic", "tags": "Memphis cowbell phonk, heavy distorted 808 bass, dark cowbell melody, gritty underground club vibe"},
+    {"id": "afrobeats", "label": "Afrobeats / Amapiano", "category": "Urban, Hip-Hop & R&B", "mood": "upbeat", "tags": "afrobeats, log drums, groovy percussion, warm vocal, danceable"},
+
+    # Jazz, Reggae, Chill & Sinematik
+    {"id": "jazz", "label": "Jazz", "category": "Jazz, Chill & Reggae", "mood": "chill", "tags": "jazz, swing rhythm, brushed drums, upright bass, smooth vocal"},
+    {"id": "bossa-nova", "label": "Bossa Nova", "category": "Jazz, Chill & Reggae", "mood": "chill", "tags": "smooth Brazilian bossa nova, nylon acoustic guitar syncopation, soft brushed drums, warm flute and Rhodes, intimate vocal"},
+    {"id": "blues", "label": "Soul & Classic Blues", "category": "Jazz, Chill & Reggae", "mood": "chill", "tags": "vintage classic blues and soul, warm tube guitar solo, slow 12/8 pocket groove, brass section, heartfelt vocal"},
+    {"id": "reggae", "label": "Reggae", "category": "Jazz, Chill & Reggae", "mood": "chill", "tags": "warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove (soft kick and cross-stick rimshot on beat 3), muted clean electric guitar and warm Hammond B3 organ bubble on the offbeat upbeats, deep round sub-dub bassline (60-160 Hz warm pocket), melodic brass horn hook on intro and interlude, relaxed soulful vocal with warm studio reverb and subtle dub tape echo, silky rolled-off analog highs, no harsh hi-hats, no four-on-the-floor kick"},
+    {"id": "ska", "label": "Ska / Reggae-Rock", "category": "Jazz, Chill & Reggae", "mood": "upbeat", "tags": "upbeat horn-driven ska groove, crisp offbeat guitar chops, walking bass, brass trumpet and trombone hooks, energetic vocal"},
+    {"id": "lofi", "label": "Lo-fi", "category": "Jazz, Chill & Reggae", "mood": "chill", "tags": "lo-fi, mellow, dusty drums, late night"},
+    {"id": "ambient", "label": "Ambient / Sinematik", "category": "Jazz, Chill & Reggae", "mood": "chill", "tags": "ambient, cinematic pads, ethereal vocal textures, slow build"},
+    {"id": "orchestral", "label": "Orkestra / Epic Soundtrack", "category": "Jazz, Chill & Reggae", "mood": "epic", "tags": "sweeping cinematic orchestra, lush violin and cello section, epic brass fanfare, timpani drums, dramatic vocal"},
+
+    # Global & Asia
+    {"id": "kpop", "label": "K-Pop", "category": "Global & Asia", "mood": "upbeat", "tags": "k-pop, energetic Korean pop, bright vocals, polished production, driving beat, catchy hook"},
+    {"id": "jpop", "label": "J-Pop", "category": "Global & Asia", "mood": "upbeat", "tags": "j-pop, upbeat Japanese pop, youthful vocal, bright synths, driving guitars"},
+    {"id": "anime", "label": "Anime / J-Pop", "category": "Global & Asia", "mood": "epic", "tags": "anime opening, j-pop, energetic female vocal, bright female singer, driving drums, sparkling synths, catchy anthemic chorus"},
+    {"id": "mandarin", "label": "Mandarin Pop", "category": "Global & Asia", "mood": "upbeat", "tags": "mandopop, emotional ballad vocal, piano, strings, polished production"},
+    {"id": "india", "label": "India / Bollywood", "category": "Global & Asia", "mood": "upbeat", "tags": "Bollywood, Hindi pop, tabla, sitar textures, festive chorus"},
+    {"id": "arab", "label": "Arab / Middle East", "category": "Global & Asia", "mood": "epic", "tags": "Arabic pop, middle eastern scales, oud, qanun, darbuka percussion, passionate vocal"},
+    {"id": "latin", "label": "Latin / Reggaeton", "category": "Global & Asia", "mood": "upbeat", "tags": "Latin pop, reggaeton beat, Spanish guitar, danceable groove, passionate vocal"},
+    {"id": "flamenco", "label": "Flamenco / Spanish Acoustic", "category": "Global & Asia", "mood": "epic", "tags": "passionate Spanish flamenco guitar rasgueado, crisp palmas handclaps, cajon rhythm, dramatic vocal"},
 ]
 
 
@@ -455,6 +516,8 @@ VOCAL_GENDERS = {
     "auto": "",
     "male": "male vocal, male singer, masculine voice",
     "female": "female vocal, female singer, feminine voice",
+    "child-female": "young girl child vocal, sweet innocent little girl singer, bright youthful child voice",
+    "child-male": "young boy child vocal, cheerful little boy singer, bright youthful boy voice",
     "duet": "real male and female duet, female lead vocal, male response vocal, alternating singers, two distinct voices, duet harmony",
 }
 
@@ -847,10 +910,15 @@ def _synthesize_voice_reference(spec: dict, job_dir: Path, log=None) -> str:
             "Cover voice-conversion butuh referensi suara: pilih persona "
             "bersuara atau aktifkan worker Seed-VC (KLIPIN_VOICE_MODAL_ENABLED=1).")
     gender = str(spec.get("vocal_gender") or "female").strip().lower()
-    if gender not in ("male", "female"):
+    if gender == "child-female":
+        timbre = "young girl child vocal,little girl singer,sweet innocent child voice"
+    elif gender == "child-male":
+        timbre = "young boy child vocal,little boy singer,bright cheerful child voice"
+    elif gender == "male":
+        timbre = "male singer,masculine voice"
+    else:
         gender = "female"
-    timbre = ("female singer,feminine voice" if gender == "female"
-              else "male singer,masculine voice")
+        timbre = "female singer,feminine voice"
     persona_tags = str(spec.get("style_tags") or "").strip()
     extra = f",{persona_tags}" if persona_tags else ",clear smooth voice,expressive singing,balanced vocal"
     tags = f"{timbre}{extra},solo singer,a cappella,dry studio vocal"
@@ -943,6 +1011,66 @@ GENRE_ARRANGEMENT_BLUEPRINTS: dict[str, str] = {
     "lofi": (
         "mellow lo-fi chillhop instrumental arrangement, dusty boom-bap drum loop, warm detuned "
         "electric piano chords, soft vinyl warmth, round sub bass"
+    ),
+    "pop-indo": (
+        "modern Indonesian emotional pop ballad instrumental arrangement, warm grand piano, "
+        "lush orchestral strings, subtle clean electric guitar arpeggio, steady dynamic drums"
+    ),
+    "synth-pop": (
+        "1980s retro synth-pop instrumental arrangement, warm analog Juno synth chords, "
+        "punchy gated reverb snare, pulsing synth bassline, crisp electronic percussion"
+    ),
+    "city-pop": (
+        "80s Japanese city pop groove instrumental arrangement, funky slap bassline, "
+        "lush Fender Rhodes keys, bright brass stabs, shimmering clean guitar rhythm"
+    ),
+    "funkot": (
+        "high-energy Indonesian funkot breakbeat club instrumental arrangement, fast bouncy "
+        "offbeat bassline, crisp club percussion, bright synth stabs, festival drop"
+    ),
+    "house": (
+        "warm tropical & deep house instrumental arrangement, 120 BPM four-on-the-floor kick, "
+        "bouncy marimba plucks, lush piano house chords, smooth sidechained bass"
+    ),
+    "ska": (
+        "upbeat horn-driven ska instrumental arrangement, crisp offbeat guitar chops, "
+        "walking bassline, punchy trumpet and trombone horn section, lively drumbeat"
+    ),
+    "bossa-nova": (
+        "smooth Brazilian bossa nova instrumental arrangement, syncopated nylon acoustic guitar, "
+        "soft brushed snare & rimshot groove, upright acoustic bass, warm Rhodes chords"
+    ),
+    "disco": (
+        "groovy nu-disco & funk instrumental arrangement, funky slap bass, rhythmic wah-wah guitar, "
+        "four-on-the-floor disco drums, bright strings and brass accents"
+    ),
+    "trap": (
+        "modern melodic trap instrumental arrangement, booming 808 sub-bass, crisp rapid hi-hat rolls, "
+        "moody bell synths, hard-hitting trap snare"
+    ),
+    "country": (
+        "warm modern country Americana instrumental arrangement, steel-string acoustic guitar strumming, "
+        "melodic pedal steel guitar and fiddle fills, upright bass, relaxed steady country drum beat"
+    ),
+    "country-pop": (
+        "modern upbeat country pop instrumental arrangement, bright acoustic rhythm guitar, "
+        "playful banjo picking, warm electric guitar accents, radio-ready live drums"
+    ),
+    "anak-ceria": (
+        "cheerful children song instrumental arrangement, playful xylophone and marimba melody, "
+        "bright acoustic guitar strumming, happy handclaps, light tambourine and cheerful upright piano"
+    ),
+    "anak-edukasi": (
+        "educational children song instrumental arrangement, bright ukulele chords, warm grand piano, "
+        "soft shaker and woodblock rhythm, simple clear singalong melody"
+    ),
+    "anak-tidur": (
+        "gentle children bedtime lullaby instrumental arrangement, delicate music box chimes, "
+        "soft warm harp and kalimba arpeggios, soothing quiet orchestral strings"
+    ),
+    "anak-islami": (
+        "cheerful Islamic children song instrumental arrangement, playful acoustic guitar, "
+        "gentle rebana frame drum rhythm, warm piano and joyful melody"
     ),
 }
 
@@ -1083,8 +1211,10 @@ def _prepare_harmonic_guide_backing(backing_path: Path, job_dir: Path,
     while keeping 100% of the chord progression and bar timing locked to the vocal.
     """
     rhythmic_genres = {
-        "reggae", "dangdut-koplo", "dangdut-remix", "dj-remix", "edm",
-        "pop-remix", "keroncong", "campursari", "jazz-pop", "jazz", "latin", "afrobeats"
+        "reggae", "ska", "dangdut-koplo", "dangdut-klasik", "dangdut-remix",
+        "dj-remix", "funkot", "edm", "house", "techno", "trance", "dubstep", "dnb",
+        "synthwave", "disco", "pop-remix", "keroncong", "campursari", "jazz-pop",
+        "jazz", "bossa-nova", "latin", "afrobeats", "trap", "drill", "phonk",
     }
     if not groove_reset and str(genre or "").lower() not in rhythmic_genres:
         return backing_path

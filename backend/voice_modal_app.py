@@ -29,12 +29,15 @@ image = (modal.Image.debian_slim(python_version="3.10")
                       "descript-audio-codec==1.0.0", "resemblyzer",
                       "hydra-core==1.3.2", "pyyaml", "modelscope==1.18.1",
                       "funasr==1.1.5", "demucs==4.0.1", "python-dotenv",
-                      "faiss-cpu", "soxr", "torchcrepe", "tqdm", "onnxruntime")
+                      "faiss-cpu", "soxr", "torchcrepe", "tqdm", "onnxruntime",
+                      "deepfilternet==0.5.6", "noisereduce==3.0.3")
          .run_commands("git clone --depth 1 https://github.com/Plachtaa/seed-vc.git /opt/seed-vc",
                        "ln -s /models/seed /opt/seed-vc/checkpoints",
                        "git clone --depth 1 https://github.com/IAHispano/Applio.git /opt/applio")
          # Audio dependencies pull an old protobuf incompatible with Modal's runner.
          .pip_install("protobuf>=5.29,<6")
+         # Ensure /models is absent in the base image so Modal Volume mounts cleanly.
+         .run_commands("rm -rf /models")
          .env({"HF_HOME": "/models/huggingface", "TORCH_HOME": "/models/torch"}))
 
 GPU = dict(image=image, gpu=["L4", "A10G"], cpu=8, memory=16384, timeout=1800,
@@ -154,29 +157,102 @@ def _separate(source: Path, work: Path) -> tuple[Path, Path]:
     return vocals, backing
 
 
+_DF_CACHE = None
+
+
+def _get_df_model():
+    global _DF_CACHE
+    if _DF_CACHE is None:
+        cache_dir = Path("/models/cache")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["XDG_CACHE_HOME"] = str(cache_dir)
+        from df.enhance import init_df
+        model, df_state, _ = init_df()
+        _DF_CACHE = (model, df_state)
+    return _DF_CACHE
+
+
+def _denoise_speech_neural(source: Path, destination: Path, work: Path,
+                           *, sample_rate: int = 24000, max_sec: int = 25,
+                           atten_lim_db: float = 35.0) -> Path:
+    """Strip sub-85Hz rumble, stationary hiss, and ambient/crowd noise with DeepFilterNet3 + noisereduce fallback."""
+    import numpy as np
+    import soundfile as sf
+
+    denoised_raw = work / "denoised_raw.wav"
+    try:
+        import torch
+        from df.enhance import enhance
+
+        model, df_state = _get_df_model()
+        df_sr = int(df_state.sr())
+        df_in = work / "df_in.wav"
+        _run(["ffmpeg", "-y", "-v", "error", "-i", str(source), "-t", str(max_sec),
+              "-ac", "1", "-ar", str(df_sr), "-af", "highpass=f=85",
+              "-c:a", "pcm_f32le", str(df_in)])
+        audio_np, _ = sf.read(df_in, dtype="float32")
+        if audio_np.ndim > 1:
+            audio_np = np.mean(audio_np, axis=1)
+        audio_t = torch.from_numpy(np.ascontiguousarray(audio_np)).unsqueeze(0)
+        with torch.no_grad():
+            enhanced_t = enhance(model, df_state, audio_t, pad=True, atten_lim_db=atten_lim_db)
+        enhanced_np = enhanced_t.squeeze(0).detach().cpu().numpy().astype(np.float32)
+        if np.isfinite(enhanced_np).all() and np.sqrt(np.mean(enhanced_np ** 2)) > 1e-4:
+            sf.write(denoised_raw, enhanced_np, df_sr, subtype="FLOAT")
+    except Exception as exc:
+        print(f"[Denoise] DeepFilterNet skipped ({exc}), trying noisereduce fallback")
+
+    if not denoised_raw.is_file():
+        try:
+            import noisereduce as nr
+
+            nr_in = work / "nr_in.wav"
+            _run(["ffmpeg", "-y", "-v", "error", "-i", str(source), "-t", str(max_sec),
+                  "-ac", "1", "-ar", str(sample_rate), "-af", "highpass=f=85",
+                  "-c:a", "pcm_f32le", str(nr_in)])
+            audio_np, sr = sf.read(nr_in, dtype="float32")
+            reduced = nr.reduce_noise(y=audio_np, sr=sr, prop_decrease=0.88, stationary=False)
+            if np.isfinite(reduced).all() and np.sqrt(np.mean(reduced ** 2)) > 1e-4:
+                sf.write(denoised_raw, reduced.astype(np.float32), sr, subtype="FLOAT")
+        except Exception as exc:
+            print(f"[Denoise] noisereduce fallback skipped ({exc})")
+
+    final_src = denoised_raw if denoised_raw.is_file() else source
+    _run(["ffmpeg", "-y", "-v", "error", "-i", str(final_src), "-t", str(max_sec),
+          "-ac", "1", "-ar", str(sample_rate),
+          "-af", "highpass=f=85,loudnorm=I=-18:TP=-2:LRA=7",
+          "-c:a", "pcm_s16le", str(destination)])
+    return destination
+
+
 def _clean_target_reference(reference: Path, work: Path) -> Path:
-    """If the uploaded target voice clip contains background music, isolate pure vocals via Demucs."""
+    """Isolate pure voice (Demucs if BGM present) and remove ambient/mic noise via DeepFilterNet3."""
     import numpy as np
     import soundfile as sf
 
     ref_work = work / "ref_clean"
     ref_work.mkdir(parents=True, exist_ok=True)
+    voice_src = reference
     try:
         ref_vocal, ref_backing = _separate(reference, ref_work)
         v_data, _ = sf.read(ref_vocal)
         b_data, _ = sf.read(ref_backing)
         v_rms = float(np.sqrt(np.mean(v_data ** 2)))
         b_rms = float(np.sqrt(np.mean(b_data ** 2)))
-        if v_rms > 0.002 and (b_rms / max(v_rms, 1e-6)) > 0.12:
-            cleaned = work / "reference_clean_vocal.wav"
-            _run(["ffmpeg", "-y", "-v", "error", "-i", str(ref_vocal), "-t", "25",
-                  "-ac", "1", "-ar", "24000", "-af", "highpass=f=80,loudnorm=I=-18:TP=-2:LRA=7",
-                  "-c:a", "pcm_s16le", str(cleaned)])
-            if cleaned.is_file() and cleaned.stat().st_size > 1024:
-                return cleaned
-    except Exception:
-        pass
-    return reference
+        # Even light BGM (5%+) muddies Seed-VC timbre conditioning; prefer Demucs vocal stem.
+        if v_rms > 0.002 and (b_rms / max(v_rms, 1e-6)) > 0.05:
+            voice_src = ref_vocal
+    except Exception as exc:
+        print(f"[RefClean] Demucs separation skipped ({exc})")
+
+    try:
+        cleaned = work / "reference_clean_vocal.wav"
+        _denoise_speech_neural(voice_src, cleaned, ref_work, sample_rate=24000, max_sec=25, atten_lim_db=35.0)
+        if cleaned.is_file() and cleaned.stat().st_size > 1024:
+            return cleaned
+    except Exception as exc:
+        print(f"[RefClean] Neural denoise failed ({exc})")
+    return voice_src
 
 
 def _separate_4stems(source: Path, work: Path) -> dict[str, Path]:
@@ -216,6 +292,10 @@ def warmup() -> dict:
         _ensure_rvc_models()
     except Exception as exc:
         print(f"[Warmup] Warning: RVC warmup skipped ({exc})")
+    try:
+        _get_df_model()
+    except Exception as exc:
+        print(f"[Warmup] Warning: DeepFilterNet3 preload skipped ({exc})")
     Path("/models/ready-v1").write_text("demucs + seed-vc + rvc v2 loaded", encoding="utf-8")
     models.commit()
     return {"ready": True}
@@ -240,7 +320,7 @@ def extract_voice(audio_b64: str) -> dict:
         vocal, _ = _separate(source, work)
         normalized = work / "reference.wav"
         _run(["ffmpeg", "-y", "-v", "error", "-i", str(vocal), "-t", "16",
-              "-ac", "1", "-ar", "24000", "-af", "loudnorm=I=-20:TP=-2:LRA=7",
+              "-ac", "1", "-ar", "24000", "-af", "highpass=f=85,afftdn=nr=12:nf=-36,loudnorm=I=-20:TP=-2:LRA=7",
               "-c:a", "pcm_s16le", str(normalized)])
         samples, sr = sf.read(normalized)
         duration = len(samples) / sr
@@ -248,6 +328,27 @@ def extract_voice(audio_b64: str) -> dict:
             raise RuntimeError("Preview belum berisi vokal yang cukup jelas. Coba variasi lain.")
         models.commit()
         return {"audio_b64": base64.b64encode(normalized.read_bytes()).decode("ascii"),
+                "duration": duration, "gpu_sec": time.monotonic() - started}
+
+
+@app.function(**GPU)
+def clean_voice_reference(audio_b64: str) -> dict:
+    """Clean an arbitrary target voice clip using Demucs BGM removal + DeepFilterNet3 speech denoising."""
+    import numpy as np
+    import soundfile as sf
+
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="voice-clean-") as folder:
+        work = Path(folder)
+        raw = work / "raw.wav"
+        raw.write_bytes(base64.b64decode(audio_b64, validate=True))
+        cleaned = _clean_target_reference(raw, work)
+        samples, sr = sf.read(cleaned)
+        duration = len(samples) / sr
+        if duration < 1.5 or not np.isfinite(samples).all() or np.sqrt(np.mean(samples ** 2)) < 0.001:
+            raise RuntimeError("Sampel suara terlalu pelan atau tidak valid setelah pembersihan.")
+        models.commit()
+        return {"audio_b64": base64.b64encode(cleaned.read_bytes()).decode("ascii"),
                 "duration": duration, "gpu_sec": time.monotonic() - started}
 
 
@@ -441,11 +542,11 @@ def convert_song(audio_b64: str, reference_b64: str = "", duration: float = 180.
             output_dir = work / "converted"
             clean_vocals = work / "clean_vocals.wav"
             _run(["ffmpeg", "-y", "-v", "error", "-i", str(vocals),
-                  "-af", "highpass=f=80,equalizer=f=3500:t=q:w=1.0:g=1.2",
+                  "-af", "highpass=f=85,afftdn=nr=16:nf=-34,equalizer=f=3500:t=q:w=1.0:g=1.0",
                   "-c:a", "pcm_s16le", str(clean_vocals)])
             _run([sys.executable, "/opt/seed-vc/inference.py", "--source", str(clean_vocals),
                   "--target", str(reference), "--output", str(output_dir),
-                  "--diffusion-steps", "30", "--f0-condition", "True",
+                  "--diffusion-steps", "40", "--f0-condition", "True",
                   "--auto-f0-adjust", "True" if auto_f0 else "False",
                   "--semi-tone-shift", str(int(semi_tone_shift))],
                  timeout=1500, cwd="/opt/seed-vc")
@@ -456,11 +557,11 @@ def convert_song(audio_b64: str, reference_b64: str = "", duration: float = 180.
             method_name = "seed-vc-vocal-stem"
 
         target = work / "song.mp3"
-        # Studio vocal chain: highpass 80Hz + presence 3.5kHz + air sheen 10.5kHz
-        # Gain staging: backing at 0.86, vocal at 1.08 gives a 2dB center pocket so the persona sings clearly above the band
+        # Studio vocal chain: cut sub-85Hz rumble + mild de-noise + presence 3.2kHz + tame diffusion fizz above 8.5kHz
+        # Gain staging: backing at 0.86, vocal at 1.06 gives a clear center pocket without amplifying static
         _run(["ffmpeg", "-y", "-v", "error", "-i", str(backing), "-i", str(converted_wav),
               "-filter_complex",
-              "[1:a]highpass=f=80,equalizer=f=3500:t=q:w=1.2:g=1.8,equalizer=f=10500:t=q:w=1.0:g=2.5,volume=1.08[voc];"
+              "[1:a]highpass=f=85,afftdn=nr=10:nf=-40,equalizer=f=3200:t=q:w=1.2:g=1.4,treble=g=-1.5:f=8500,volume=1.06[voc];"
               "[0:a]volume=0.86[bg];"
               "[bg][voc]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.98[out]",
               "-map", "[out]", "-t", str(max(3, min(float(duration), 600))),
