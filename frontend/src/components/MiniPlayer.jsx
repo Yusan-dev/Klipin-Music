@@ -212,8 +212,8 @@ export default function MiniPlayer({ sidebarCollapsed = false, onNavigate }) {
               <div className="truncate text-xs font-semibold text-white">
                 {track.title || 'Klipin Song'}
               </div>
-              <div className="truncate font-mono text-[10px] text-white/50">
-                {track.genreLabel || 'Klip-in'} · {track.provider || 'studio'}
+              <div className="truncate font-mono text-[10px] text-white/60">
+                {track.genreLabel || 'Klipin Music'} · klipin-music
               </div>
             </div>
           </button>
@@ -357,15 +357,15 @@ export default function MiniPlayer({ sidebarCollapsed = false, onNavigate }) {
                 <span className="rounded bg-cyan/15 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-cyan">
                   Aktif
                 </span>
-                <span className="truncate font-mono text-[10px] text-white/50">
-                  {track.provider || 'studio'}
+                <span className="truncate font-mono text-[10px] text-white/60">
+                  klipin-music
                 </span>
               </div>
               <h3 id="floating-player-title" className="mt-1 truncate text-sm font-bold text-white">
                 {track.title || 'Klipin Song'}
               </h3>
-              <p className="truncate text-[11px] text-white/60">
-                {track.genreLabel || 'Klip-in'}
+              <p className="truncate text-[11px] text-white/70">
+                {track.genreLabel || 'Klipin Music'}
               </p>
               {actions?.lyricsSource && (
                 <p className="mt-0.5 font-mono text-[10px] text-signal">

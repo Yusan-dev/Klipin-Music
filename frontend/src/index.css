@@ -53,30 +53,30 @@ html.light {
 
   /* surfaces — warm ivory paper, crisp elevated cards */
   --c-navy: 247 245 240;       /* #F7F5F0 */
-  --c-navy-1: 241 238 231;     /* #F1EEE7 */
+  --c-navy-1: 238 234 226;     /* #EEEAE2 */
   --c-navy-2: 255 255 255;     /* #FFFFFF */
-  --c-navy-3: 235 231 223;     /* #EBE7DF */
+  --c-navy-3: 229 224 214;     /* #E5E0D6 */
   --c-panel: 255 255 255;
-  --c-panel-2: 249 247 242;
-  --c-border: 214 208 197;     /* #D6D0C5 */
-  --c-border-soft: 229 224 214;/* #E5E0D6 */
+  --c-panel-2: 246 243 236;
+  --c-border: 198 191 178;     /* #C6BFB2 */
+  --c-border-soft: 217 211 200;/* #D9D3C8 */
 
-  /* deeper contrast amber & coral for AA compliance on ivory/white */
+  /* deeper contrast amber & coral for crisp AA compliance on ivory/white */
   --c-cyan: 180 83 9;          /* #B45309 Rich Amber Bronze */
-  --c-cyan-soft: 146 64 14;    /* #92400E */
-  --c-magenta: 225 29 72;      /* #E11D48 Coral Rose */
-  --c-magenta-soft: 190 18 60;
+  --c-cyan-soft: 120 53 15;    /* #78350F Deep Amber */
+  --c-magenta: 190 18 60;      /* #BE123C Deep Rose */
+  --c-magenta-soft: 159 18 57; /* #9F1239 */
   --c-gold: 180 83 9;
-  --c-gold-soft: 146 64 14;
+  --c-gold-soft: 120 53 15;
 
   /* semantic */
-  --c-signal: 5 150 105;
+  --c-signal: 4 120 87;        /* #047857 Emerald 700 */
   --c-warn: 180 83 9;
-  --c-danger: 220 38 38;
-  --c-brand: 217 119 6;
+  --c-danger: 185 28 28;       /* #B91C1C Red 700 */
+  --c-brand: 180 83 9;
 
-  /* dark charcoal ink */
-  --c-ink: 20 22 28;           /* #14161C */
+  /* high-contrast charcoal ink */
+  --c-ink: 17 20 26;           /* #11141A */
 
   /* heading gradient tuned for light backgrounds */
   --c-chrome-0: 20 22 28;
@@ -280,19 +280,62 @@ html.light .text-neon {
   color: transparent;
 }
 
-/* Light mode alpha ink adaptation so muted copy stays legible on ivory cream */
-html.light [class*="text-white/20"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.42); }
-html.light [class*="text-white/25"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.48); }
-html.light [class*="text-white/30"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.54); }
-html.light [class*="text-white/35"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.60); }
-html.light [class*="text-white/40"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.68); }
-html.light [class*="text-white/45"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.74); }
-html.light [class*="text-white/50"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.78); }
-html.light [class*="text-white/55"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.84); }
+/* Light mode alpha ink adaptation so muted copy & placeholders stay crisp on ivory/white */
+html.light [class*="text-white/15"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.50); }
+html.light [class*="text-white/20"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.54); }
+html.light [class*="text-white/25"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.58); }
+html.light [class*="text-white/30"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.62); }
+html.light [class*="text-white/35"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.66); }
+html.light [class*="text-white/40"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.72); }
+html.light [class*="text-white/45"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.76); }
+html.light [class*="text-white/50"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.80); }
+html.light [class*="text-white/55"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.85); }
 html.light [class*="text-white/60"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.88); }
+html.light [class*="text-white/65"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.90); }
 html.light [class*="text-white/70"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.92); }
-html.light [class*="text-white/80"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.95); }
-html.light [class*="text-white/85"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.97); }
+html.light [class*="text-white/75"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.94); }
+html.light [class*="text-white/80"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.96); }
+html.light [class*="text-white/85"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink) / 0.98); }
+html.light [class*="text-white/90"]:not([class*="text-white-solid"]) { color: rgb(var(--c-ink)); }
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: rgb(var(--c-ink) / 0.52);
+  opacity: 1;
+}
+
+/* Ensure subtle white-alpha borders/surfaces stay visible on light cream cards */
+html.light [class*="border-white/5"],
+html.light [class*="border-white/10"],
+html.light [class*="border-white/15"] {
+  border-color: rgb(var(--c-border));
+}
+html.light .bg-white\/5,
+html.light .bg-white\/\[0\.02\],
+html.light .bg-white\/\[0\.03\],
+html.light .bg-white\/\[0\.04\] {
+  background-color: rgb(var(--c-ink) / 0.04);
+}
+html.light .bg-black\/30,
+html.light .bg-black\/40 {
+  background-color: rgb(var(--c-navy-3));
+}
+
+/* Deepen pastel Tailwind text hues in Light Mode so badges/alerts never wash out */
+html.light .text-amber-200,
+html.light .text-amber-300,
+html.light .text-amber-400 { color: #92400e !important; }
+html.light .text-emerald-200,
+html.light .text-emerald-300,
+html.light .text-emerald-400 { color: #047857 !important; }
+html.light .text-rose-200,
+html.light .text-rose-300,
+html.light .text-rose-400,
+html.light .text-red-400 { color: #b91c1c !important; }
+html.light .text-yellow-300,
+html.light .text-yellow-400 { color: #854d0e !important; }
+html.light .text-sky-300,
+html.light .text-cyan-300 { color: #0e7490 !important; }
 
 html.light .bg-gold:not(.bg-navy),
 html.light .bg-gold-soft:not(.bg-navy),

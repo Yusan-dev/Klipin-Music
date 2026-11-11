@@ -42,7 +42,7 @@ function labels() {
   const en = {
     eyebrow: 'COVER CREATE — FAITHFUL SONG COVER',
     title: 'Ubah lagu jadi cover, melodi aslinya tetap.',
-    sub: 'Unggah lagu, pilih gaya, dan atur parameter aransemen. YuE2 + SheetSage2 Headless mengunci notasi melodi vokal & lirik lagu aslinya dengan presisi tinggi.',
+    sub: 'Unggah lagu, pilih gaya, dan atur parameter aransemen. Engine klipin-music mengunci notasi melodi vokal & lirik lagu aslinya dengan presisi tinggi.',
     source: 'Lagu sumber', drop: 'Klik untuk memilih file audio', dropHint: 'MP3, WAV, M4A, FLAC — maks. 15 MB',
     genre: 'Gaya / genre', voice: 'Persona vokal', engine: 'Engine cover',
     lyrics: 'Lirik (opsional)', lyricsHint: 'Kosongkan untuk menuliskan lirik otomatis dari audio (ASR).',
@@ -58,7 +58,7 @@ function labels() {
   const id = {
     eyebrow: 'COVER CREATE — COVER LAGU SETIA',
     title: 'Ubah lagu jadi cover, melodi aslinya tetap.',
-    sub: 'Unggah lagu, pilih gaya, lalu atur parameter aransemen. YuE2 + SheetSage2 Headless mengunci notasi melodi vokal & lirik lagu aslinya dengan presisi tinggi.',
+    sub: 'Unggah lagu, pilih gaya, lalu atur parameter aransemen. Engine klipin-music mengunci notasi melodi vokal & lirik lagu aslinya dengan presisi tinggi.',
     source: 'Lagu sumber', drop: 'Klik untuk memilih file audio', dropHint: 'MP3, WAV, M4A, FLAC — maks. 15 MB',
     genre: 'Gaya / genre', voice: 'Persona vokal', engine: 'Engine cover',
     lyrics: 'Lirik (opsional)', lyricsHint: 'Kosongkan untuk menuliskan lirik otomatis dari audio (ASR).',
@@ -350,8 +350,8 @@ export default function CoverCreate({
     return (
       <div className="space-y-3.5">
         {/* Langkah 1: Lagu Sumber & Lirik */}
-        <div className="space-y-2.5 rounded-xl border border-[#26262e] bg-[#141419] p-3">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-white/75">
+        <div className="space-y-2.5 rounded-xl border border-border bg-navy-1 p-3">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-white/80">
             1 · Lagu Sumber &amp; Lirik
           </div>
           <input
@@ -372,40 +372,40 @@ export default function CoverCreate({
               pickFile(e.dataTransfer?.files?.[0])
             }}
             className={`flex w-full flex-col items-center gap-1 rounded-lg border border-dashed px-4 py-4 text-center transition ${
-              drag ? 'border-[#f59e0b] bg-[#f59e0b]/10' : 'border-[#2c2c35] bg-[#18181d] hover:border-[#3f3f4a] hover:bg-[#1c1c22]'
+              drag ? 'border-cyan bg-cyan/10' : 'border-border bg-navy-2 hover:border-cyan/50 hover:bg-navy-3'
             }`}
           >
-            <Icon name="music" className="h-5 w-5 text-[#8e8e99]" aria-hidden />
-            <span className="text-xs font-medium text-[#f4f4f6]">{L.drop}</span>
-            <span className="font-mono text-[10px] text-[#6e6e7a]">{L.dropHint}</span>
+            <Icon name="music" className="h-5 w-5 text-white/60" aria-hidden />
+            <span className="text-xs font-medium text-white">{L.drop}</span>
+            <span className="font-mono text-[10px] text-white/55">{L.dropHint}</span>
             {file && (
-              <span className="mt-1 rounded-md border border-[#f59e0b]/40 bg-[#f59e0b]/10 px-2.5 py-0.5 text-[11px] font-medium text-[#fbbf24]">
+              <span className="mt-1 rounded-md border border-cyan/40 bg-cyan/10 px-2.5 py-0.5 text-[11px] font-medium text-cyan-soft">
                 {file.name} · {(file.size / 1_048_576).toFixed(1)} MB
               </span>
             )}
           </button>
 
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.lyrics}</label>
+            <label className="mb-1 block text-[11px] font-medium text-white/70">{L.lyrics}</label>
             <textarea
               value={lyrics}
               onChange={(e) => setLyrics(e.target.value)}
               rows={3}
               placeholder={L.lyricsHint}
-              className="w-full resize-y rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] placeholder:text-[#5c5c66] outline-none focus:border-[#52525b]"
+              className="w-full resize-y rounded-lg border border-border bg-navy-2 px-2.5 py-2 text-xs text-white placeholder:text-white/40 outline-none focus:border-cyan"
             />
           </div>
         </div>
 
         {/* Langkah 2: Gaya Musik Cover */}
-        <div className="space-y-2.5 rounded-xl border border-[#26262e] bg-[#141419] p-3">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-white/75">
+        <div className="space-y-2.5 rounded-xl border border-border bg-navy-1 p-3">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-white/80">
             2 · Gaya Musik Cover (Genre &amp; Aransemen)
           </div>
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.genre}</label>
+            <label className="mb-1 block text-[11px] font-medium text-white/70">{L.genre}</label>
             <select value={genre} onChange={(e) => setGenre(e.target.value)}
-              className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
+              className="w-full rounded-lg border border-border bg-navy-2 px-2.5 py-2 text-xs text-white outline-none focus:border-cyan">
               <option value="original">🎵 Lagu Original — Pertahankan Musik Asli (Ganti Vokal Saja)</option>
               <optgroup label="Ubah Genre / Aransemen Baru">
                 {genres.map((g) => (
@@ -416,12 +416,12 @@ export default function CoverCreate({
           </div>
 
           {isOriginalGenre ? (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-[11px] leading-relaxed text-emerald-200">
+            <div className="rounded-lg border border-signal/35 bg-signal/10 p-2.5 text-[11px] leading-relaxed text-signal">
               ✨ <b>Mode Lagu Original:</b> Musik &amp; instrumen lagu sumber dipertahankan 100%. Hanya vokal penyanyinya yang diganti menggunakan <b>Persona</b> atau <b>File Suara</b> di langkah 3 (cocok untuk membawakan lagu A dengan suara artis/sosok pilihan Anda).
             </div>
           ) : (
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Preset Vibe / Arahan Aransemen (opsional)</label>
+              <label className="mb-1 block text-[11px] font-medium text-white/70">Preset Vibe / Arahan Aransemen (opsional)</label>
               {genre === 'reggae' && (
                 <div className="mb-2 flex flex-wrap gap-1.5">
                   {[
@@ -452,8 +452,8 @@ export default function CoverCreate({
                       onClick={() => setStylePrompt(preset.prompt)}
                       className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
                         stylePrompt === preset.prompt
-                          ? 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fbbf24]'
-                          : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f4a] hover:text-[#f4f4f6]'
+                          ? 'border-cyan bg-cyan/20 text-cyan-soft'
+                          : 'border-border bg-navy-2 text-white/70 hover:border-cyan/40 hover:text-white'
                       }`}
                     >
                       {preset.label}
@@ -465,22 +465,22 @@ export default function CoverCreate({
                 value={stylePrompt}
                 onChange={(e) => setStylePrompt(e.target.value)}
                 placeholder="Contoh: warm roots reggae, brass intro, dub bassline, santai…"
-                className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] placeholder:text-[#5c5c66] outline-none focus:border-[#52525b]"
+                className="w-full rounded-lg border border-border bg-navy-2 px-2.5 py-2 text-xs text-white placeholder:text-white/40 outline-none focus:border-cyan"
               />
             </div>
           )}
         </div>
 
         {/* Langkah 3: Penyanyi & Persona Suara */}
-        <div className="space-y-2.5 rounded-xl border border-[#26262e] bg-[#141419] p-3">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-white/75">
+        <div className="space-y-2.5 rounded-xl border border-border bg-navy-1 p-3">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-white/80">
             3 · Penyanyi &amp; Persona Suara (👩 Cewek / 👨 Cowok)
           </div>
           {personaSlot}
 
-          <div className="rounded-lg border border-dashed border-[#30303a] bg-[#18181f] p-2.5">
+          <div className="rounded-lg border border-dashed border-border bg-navy-2 p-2.5">
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-white/80">
+              <span className="text-[11px] font-semibold text-white/85">
                 🎙️ Atau Upload Suara Target Langsung (Opsional — mis. suara artis/tokoh)
               </span>
               {directVoiceFile && (
@@ -490,7 +490,7 @@ export default function CoverCreate({
                     setDirectVoiceFile(null)
                     setDirectVoicePreviewUrl((u) => { if (u) URL.revokeObjectURL(u); return '' })
                   }}
-                  className="text-[10px] font-semibold text-rose-400 hover:text-rose-300"
+                  className="text-[10px] font-semibold text-danger hover:underline"
                 >
                   ✕ Hapus
                 </button>
@@ -507,11 +507,11 @@ export default function CoverCreate({
                   return picked ? URL.createObjectURL(picked) : ''
                 })
               }}
-              className="block w-full text-[11px] text-white/60 file:mr-2 file:rounded-md file:border-0 file:bg-[#f59e0b]/20 file:px-2.5 file:py-1 file:text-[11px] file:font-semibold file:text-[#fbbf24]"
+              className="block w-full text-[11px] text-white/70 file:mr-2 file:rounded-md file:border-0 file:bg-cyan/20 file:px-2.5 file:py-1 file:text-[11px] file:font-semibold file:text-cyan-soft"
             />
             {directVoiceFile && (
               <div className="mt-1.5 space-y-1">
-                <p className="text-[10.5px] text-emerald-300">
+                <p className="text-[10.5px] text-signal">
                   ✓ Memakai file suara: <b>{directVoiceFile.name}</b> ({(directVoiceFile.size / 1_048_576).toFixed(1)} MB). Musik latar otomatis dibersihkan bila ada.
                 </p>
                 {directVoicePreviewUrl && (
@@ -523,12 +523,12 @@ export default function CoverCreate({
 
           <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.voice}</label>
+              <label className="mb-1 block text-[11px] font-medium text-white/70">{L.voice}</label>
               <select
                 value={voice}
                 disabled={Boolean(activePersona)}
                 onChange={(e) => setVoice(e.target.value)}
-                className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b] disabled:opacity-60"
+                className="w-full rounded-lg border border-border bg-navy-2 px-2.5 py-2 text-xs text-white outline-none focus:border-cyan disabled:opacity-60"
               >
                 {VOICE_OPTIONS.map((v) => (
                   <option key={v.id} value={v.id}>{v.id === 'auto' && activePersona ? 'Ikuti Persona' : v.label}</option>
@@ -537,11 +537,11 @@ export default function CoverCreate({
             </div>
             {isOriginalGenre ? (
               <div>
-                <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Nada Vokal (Pitch)</label>
+                <label className="mb-1 block text-[11px] font-medium text-white/70">Nada Vokal (Pitch)</label>
                 <select
                   value={pitchShift}
                   onChange={(e) => setPitchShift(e.target.value)}
-                  className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]"
+                  className="w-full rounded-lg border border-border bg-navy-2 px-2.5 py-2 text-xs text-white outline-none focus:border-cyan"
                 >
                   <option value="auto">Auto (Ikuti Suara Target)</option>
                   <option value="0">Asli (0 semitone)</option>
@@ -555,9 +555,9 @@ export default function CoverCreate({
               </div>
             ) : (
               <div>
-                <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Karakter vokal</label>
+                <label className="mb-1 block text-[11px] font-medium text-white/70">Karakter vokal</label>
                 <select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value)}
-                  className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
+                  className="w-full rounded-lg border border-border bg-navy-2 px-2.5 py-2 text-xs text-white outline-none focus:border-cyan">
                   {VOCAL_STYLE_OPTIONS.map((vs) => (
                     <option key={vs.id} value={vs.id}>{vs.label}</option>
                   ))}
@@ -568,18 +568,18 @@ export default function CoverCreate({
         </div>
 
         {/* Pengaturan Lanjutan & Studio EQ (Opsional - Lipat) */}
-        <details className="group rounded-xl border border-[#26262e] bg-[#141419] p-3">
-          <summary className="flex cursor-pointer list-none items-center justify-between text-[11px] font-semibold text-[#a1a1aa] hover:text-white">
+        <details className="group rounded-xl border border-border bg-navy-1 p-3">
+          <summary className="flex cursor-pointer list-none items-center justify-between text-[11px] font-semibold text-white/75 hover:text-white">
             <span>⚙️ Pengaturan Lanjutan &amp; Studio EQ (Opsional)</span>
-            <span className="font-mono text-[10px] text-white/40 group-open:rotate-180">▼</span>
+            <span className="font-mono text-[10px] text-white/50 group-open:rotate-180">▼</span>
           </summary>
-          <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
+          <div className="mt-3 space-y-3 border-t border-border-soft pt-3">
             {!isOriginalGenre && (
               <>
                 <div>
                   <div className="mb-1 flex items-center justify-between text-[11px]">
-                    <span className="text-[#8e8e99]">Kunci Melodi &amp; Ketukan</span>
-                    <span className="font-mono text-[#fbbf24]">{Math.round(restyleStrength * 100)}%</span>
+                    <span className="text-white/70">Kunci Melodi &amp; Ketukan</span>
+                    <span className="font-mono text-cyan-soft">{Math.round(restyleStrength * 100)}%</span>
                   </div>
                   <input
                     type="range"
@@ -588,15 +588,15 @@ export default function CoverCreate({
                     step={0.05}
                     value={restyleStrength}
                     onChange={(e) => setRestyleStrength(parseFloat(e.target.value))}
-                    className="w-full accent-[#f59e0b]"
+                    className="w-full accent-cyan"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
                     <div className="mb-1 flex items-center justify-between text-[11px]">
-                      <span className="text-[#8e8e99]">Kreativitas Aransemen</span>
-                      <span className="font-mono text-[#e4e4e7]">{weirdness}%</span>
+                      <span className="text-white/70">Kreativitas Aransemen</span>
+                      <span className="font-mono text-white/90">{weirdness}%</span>
                     </div>
                     <input
                       type="range"
@@ -605,13 +605,13 @@ export default function CoverCreate({
                       step={5}
                       value={weirdness}
                       onChange={(e) => setWeirdness(Number(e.target.value))}
-                      className="w-full accent-[#f59e0b]"
+                      className="w-full accent-cyan"
                     />
                   </div>
                   <div>
                     <div className="mb-1 flex items-center justify-between text-[11px]">
-                      <span className="text-[#8e8e99]">Kepatuhan Genre</span>
-                      <span className="font-mono text-[#e4e4e7]">{styleInfluence}%</span>
+                      <span className="text-white/70">Kepatuhan Genre</span>
+                      <span className="font-mono text-white/90">{styleInfluence}%</span>
                     </div>
                     <input
                       type="range"
@@ -620,7 +620,7 @@ export default function CoverCreate({
                       step={5}
                       value={styleInfluence}
                       onChange={(e) => setStyleInfluence(Number(e.target.value))}
-                      className="w-full accent-[#f59e0b]"
+                      className="w-full accent-cyan"
                     />
                   </div>
                 </div>
@@ -629,14 +629,14 @@ export default function CoverCreate({
 
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <span className="text-[11px] font-medium text-[#8e8e99]">Pre-Master Studio Equalizer</span>
+                <span className="text-[11px] font-medium text-white/70">Pre-Master Studio Equalizer</span>
                 <button
                   type="button"
                   onClick={() => setShowStudioEq((v) => !v)}
                   className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition ${
                     showStudioEq || eqConfig.preset !== 'flat'
-                      ? 'border-[#10b981]/60 bg-[#10b981]/15 text-[#34d399]'
-                      : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:text-[#f4f4f6]'
+                      ? 'border-signal/60 bg-signal/15 text-signal'
+                      : 'border-border bg-navy-2 text-white/75 hover:text-white'
                   }`}
                 >
                   🎚️ Studio EQ ({eqConfig.preset === 'custom' ? 'Custom' : (STUDIO_EQ_PRESETS.find((p) => p.id === eqConfig.preset)?.label || 'Flat')})
@@ -656,35 +656,35 @@ export default function CoverCreate({
           </div>
         </details>
 
-        <label className="flex items-start gap-2 text-xs text-[#8e8e99]">
+        <label className="flex items-start gap-2 text-xs text-white/70">
           <input
             type="checkbox"
             checked={rights}
             onChange={(e) => setRights(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 accent-[#f59e0b]"
+            className="mt-0.5 h-3.5 w-3.5 accent-cyan"
           />
           <span>{L.rights}</span>
         </label>
 
-        {error && <p className="text-xs text-[#ef4444]">{error}</p>}
+        {error && <p className="text-xs text-danger">{error}</p>}
 
         <button
           type="button"
           onClick={create}
           disabled={busy || engineBlocked}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#f59e0b] px-4 py-3 text-[13px] font-bold text-[#0e0e11] shadow-md transition hover:bg-[#fbbf24] disabled:opacity-45"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan px-4 py-3 text-[13px] font-bold text-navy shadow-md transition hover:brightness-110 disabled:opacity-45"
         >
           {busy ? (<><Spinner className="h-3.5 w-3.5" /> {L.creating}</>) : (isOriginalGenre ? '🎤 Buat Cover Ganti Vokal (Musik Asli)' : '🎵 Buat Cover Lagu')}
         </button>
 
         {groupId && (
-          <div className="space-y-2 rounded-lg border border-[#26262e] bg-[#18181d] p-3">
-            <div className="flex items-center justify-between text-[11px] text-[#8e8e99]">
+          <div className="space-y-2 rounded-lg border border-border bg-navy-1 p-3">
+            <div className="flex items-center justify-between text-[11px] text-white/70">
               <span>{result?.status === 'completed' ? L.done : result?.status === 'failed' ? L.failed : L.waiting}</span>
               <span className="font-mono tabular-nums">{fmtSecs(elapsed)}</span>
             </div>
-            <div className="h-1 w-full overflow-hidden rounded-full bg-[#26262e]">
-              <div className="h-full rounded-full bg-[#f59e0b] transition-all" style={{ width: `${progress}%` }} />
+            <div className="h-1 w-full overflow-hidden rounded-full bg-navy-3">
+              <div className="h-full rounded-full bg-cyan transition-all" style={{ width: `${progress}%` }} />
             </div>
             {result?.status === 'completed' && (
               <div className="space-y-2 pt-1">
@@ -699,7 +699,7 @@ export default function CoverCreate({
                   <a
                     href={resolveDownloadAsset(result.audio_path, `${result.title || 'klipin-cover'}.mp3`)}
                     download={`${result.title || 'klipin-cover'}.mp3`}
-                    className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#f59e0b] hover:underline"
+                    className="inline-flex items-center gap-1.5 text-[11px] font-medium text-cyan hover:underline"
                   >
                     <Icon name="download" className="h-3.5 w-3.5" aria-hidden /> {L.download}
                   </a>
@@ -708,7 +708,7 @@ export default function CoverCreate({
                     onClick={() => {
                       window.location.hash = `#/studio/${result.job_id}`
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-[#10b981]/50 bg-[#10b981]/15 px-2.5 py-1 text-[11px] font-semibold text-[#6ee7b7] transition hover:bg-[#10b981]/25"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-signal/50 bg-signal/15 px-2.5 py-1 text-[11px] font-semibold text-signal transition hover:bg-signal/25"
                   >
                     🎚️ Buka di Studio Equalizer
                   </button>
@@ -828,7 +828,7 @@ export default function CoverCreate({
             </div>
 
             <div className="flex items-center justify-between rounded-xl border border-cyan/30 bg-cyan/5 px-3.5 py-2.5 text-xs">
-              <span className="font-medium text-white">✨ Engine Cover: YuE2 + SheetSage2 Headless</span>
+              <span className="font-medium text-white">✨ Engine Cover: klipin-music</span>
               <span className="rounded bg-cyan/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-cyan-soft">
                 Fast Keep-Warm · Lirik &amp; Melodi Terkunci
               </span>
@@ -954,7 +954,7 @@ export default function CoverCreate({
                 {groupTakes.map((t) => (
                   <li key={t.job_id} className="flex items-center justify-between rounded-lg border border-border-soft bg-navy-2/40 px-3 py-2">
                     <span className="min-w-0 flex-1 truncate text-xs text-white/70">
-                      take {t.take_index + 1} · {t.provider}
+                      take {t.take_index + 1} · klipin-music
                     </span>
                     <span className={`ml-2 shrink-0 font-mono text-[10px] uppercase tracking-widest ${
                       t.status === 'completed' ? 'text-signal'
@@ -988,7 +988,7 @@ export default function CoverCreate({
                       onClick={() => {
                         window.location.hash = `#/studio/${result.job_id}`
                       }}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[#10b981]/50 bg-[#10b981]/15 px-3 py-1.5 text-xs font-semibold text-[#6ee7b7] transition hover:bg-[#10b981]/25"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-signal/50 bg-signal/15 px-3 py-1.5 text-xs font-semibold text-signal transition hover:bg-signal/25"
                     >
                       🎚️ Buka di Studio Equalizer
                     </button>

@@ -363,8 +363,8 @@ export default function StudioWorkstation({
               aria-pressed={Boolean(tab.active)}
               className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition ${
                 tab.active
-                  ? 'border border-[#10b981]/40 bg-[#10b981]/15 text-[#6ee7b7]'
-                  : 'text-[#8e8e99] hover:text-[#f4f4f6]'
+                  ? 'border border-signal/40 bg-signal/15 text-signal'
+                  : 'text-white/65 hover:text-white'
               }`}
             >
               {tab.label}
@@ -383,7 +383,7 @@ export default function StudioWorkstation({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[#26262e] bg-[#18181d] px-3 py-1.5 text-[11px] font-semibold text-[#d4d4d8] transition hover:border-[#10b981]/50 hover:text-white"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-navy-2 px-3 py-1.5 text-[11px] font-semibold text-white/85 transition hover:border-signal/50 hover:text-white"
           >
             📂 Buka Audio Lokal (MP3/WAV)
           </button>
@@ -391,7 +391,7 @@ export default function StudioWorkstation({
             <a
               href={localFile ? activeAudioUrl : resolveDownloadAsset(activeStem?.path || activeAudioUrl, `${activeTitle || 'klipin-master'}.mp3`)}
               download={`${activeTitle || 'klipin-master'}.mp3`}
-              className="hidden items-center gap-1 rounded-lg border border-[#10b981]/40 bg-[#10b981]/15 px-3 py-1.5 text-[11px] font-semibold text-[#6ee7b7] transition hover:bg-[#10b981]/25 sm:inline-flex"
+              className="hidden items-center gap-1 rounded-lg border border-signal/40 bg-signal/15 px-3 py-1.5 text-[11px] font-semibold text-signal transition hover:bg-signal/25 sm:inline-flex"
             >
               ⬇ Unduh Track
             </a>
@@ -400,8 +400,8 @@ export default function StudioWorkstation({
       </div>
 
       {authChecked && !user && (
-        <div className="border-b border-[#26262e] bg-[#141418] px-5 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+        <div className="border-b border-border bg-navy-1 px-5 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warn/35 bg-warn/10 p-3 text-xs text-cyan-soft">
             <span>
               Masuk ke akun Anda untuk memuat riwayat lagu dari Library dan menyimpan hasil mastering EQ ke server.
               (Anda tetap bisa langsung mencoba Equalizer dengan tombol <b>📂 Buka Audio Lokal</b> di kanan atas).
@@ -409,7 +409,7 @@ export default function StudioWorkstation({
             <button
               type="button"
               onClick={onSignIn}
-              className="rounded-lg bg-amber-400 px-3 py-1.5 font-bold text-black transition hover:bg-amber-300"
+              className="rounded-lg bg-cyan px-3 py-1.5 font-bold text-navy transition hover:brightness-110"
             >
               Masuk Sekarang
             </button>
@@ -424,10 +424,10 @@ export default function StudioWorkstation({
           <div className="space-y-3 xl:sticky xl:top-[62px] xl:max-h-[calc(100vh-136px)] xl:overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xs font-bold uppercase tracking-wider text-[#e4e4e7]">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-white/90">
                   Track Library
                 </h2>
-                <p className="text-[11px] text-[#71717a]">
+                <p className="text-[11px] text-white/60">
                   Pilih lagu hasil render atau file lokal untuk di-mastering.
                 </p>
               </div>
@@ -435,7 +435,7 @@ export default function StudioWorkstation({
                 type="button"
                 onClick={loadLibrary}
                 disabled={loadingJobs || !user}
-                className="rounded-md border border-[#26262e] bg-[#18181d] px-2 py-1 text-[10px] font-medium text-[#a1a1aa] hover:text-white disabled:opacity-40"
+                className="rounded-md border border-border bg-navy-2 px-2 py-1 text-[10px] font-medium text-white/75 hover:text-white disabled:opacity-40"
               >
                 {loadingJobs ? '…' : 'Segarkan'}
               </button>
@@ -445,16 +445,16 @@ export default function StudioWorkstation({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari judul lagu / genre…"
-              className="w-full rounded-lg border border-[#26262e] bg-[#18181d] px-3 py-2 text-xs text-[#f4f4f6] outline-none placeholder:text-[#5c5c66] focus:border-[#10b981]/60"
+              className="w-full rounded-lg border border-border bg-navy-2 px-3 py-2 text-xs text-white outline-none placeholder:text-white/45 focus:border-signal"
             />
 
             {localFile && (
-              <div className="rounded-xl border border-[#10b981]/60 bg-[#10b981]/10 p-2.5">
+              <div className="rounded-xl border border-signal/60 bg-signal/10 p-2.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="rounded bg-[#10b981]/20 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase text-[#6ee7b7]">
+                  <span className="rounded bg-signal/20 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase text-signal">
                     FILE LOKAL AKTIF
                   </span>
-                  <span className="font-mono text-[10px] text-[#a1a1aa]">{localFile.sizeMb} MB</span>
+                  <span className="font-mono text-[10px] text-white/70">{localFile.sizeMb} MB</span>
                 </div>
                 <div className="mt-1 truncate text-xs font-semibold text-white">{localFile.fileName}</div>
               </div>
@@ -462,7 +462,7 @@ export default function StudioWorkstation({
 
             <div className="max-h-[540px] space-y-1.5 overflow-y-auto pr-1">
               {filteredJobs.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[#26262e] p-5 text-center text-xs text-[#71717a]">
+                <div className="rounded-xl border border-dashed border-border p-5 text-center text-xs text-white/60">
                   {user
                     ? 'Belum ada lagu selesai di Library. Unggah file MP3/WAV lokal atau buat lagu di tab Create/Cover.'
                     : 'Klik "Masuk" atau gunakan tombol "📂 Buka Audio Lokal" untuk mulai menggunakan Studio Equalizer.'}
@@ -479,11 +479,11 @@ export default function StudioWorkstation({
                       onClick={() => selectJob(item)}
                       className={`library-row-deferred flex w-full items-center gap-2.5 rounded-xl border p-2 text-left transition ${
                         isSelected
-                          ? 'border-[#10b981]/60 bg-navy-2 ring-1 ring-[#10b981]/25'
+                          ? 'border-signal/60 bg-navy-2 ring-1 ring-signal/25'
                           : 'border-transparent bg-navy-2/70 hover:border-border hover:bg-navy-2'
                       }`}
                     >
-                      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-[#26262e]">
+                      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-navy-3">
                         {thumb ? (
                           <img
                             src={resolveMediaAsset(thumb)}
@@ -495,23 +495,23 @@ export default function StudioWorkstation({
                             className="h-full w-full object-cover"
                           />
                         ) : (
-                          <span className="flex h-full w-full items-center justify-center text-[#71717a]">
+                          <span className="flex h-full w-full items-center justify-center text-white/55">
                             <Icon name="music" className="h-4 w-4" />
                           </span>
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1.5">
-                          <span className="truncate text-xs font-semibold text-[#f4f4f6]">
+                          <span className="truncate text-xs font-semibold text-white">
                             {item.title || item.job_id}
                           </span>
                           {hasEq && (
-                            <span className="shrink-0 rounded bg-[#10b981]/20 px-1 py-0.5 font-mono text-[8px] font-bold text-[#34d399]">
+                            <span className="shrink-0 rounded bg-signal/20 px-1 py-0.5 font-mono text-[8px] font-bold text-signal">
                               EQ
                             </span>
                           )}
                         </div>
-                        <div className="mt-0.5 truncate font-mono text-[10px] text-[#71717a]">
+                        <div className="mt-0.5 truncate font-mono text-[10px] text-white/60">
                           {item.metadata?.genre_label || item.genre || 'music'} ·{' '}
                           {formatTime(item.duration || item.metadata?.duration || 0)}
                         </div>
@@ -524,7 +524,7 @@ export default function StudioWorkstation({
           </div>
         </aside>
 
-        {/* Center Pane: Suno Studio DAW Transport, Stem Switcher & Full-Size Equalizer Rack */}
+        {/* Center Pane: Klipin Studio DAW Transport, Stem Switcher & Full-Size Equalizer Rack */}
         <section className="min-w-0 flex-1 space-y-5 p-4 sm:p-6">
           {/* Hidden Studio Audio Element */}
           <audio
@@ -549,7 +549,7 @@ export default function StudioWorkstation({
           />
 
           {audioError && (
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-xs text-danger">
               <span>⚠️ {audioError}</span>
               <button
                 type="button"
@@ -557,7 +557,7 @@ export default function StudioWorkstation({
                   setAudioError('')
                   setMediaBust(Date.now())
                 }}
-                className="shrink-0 rounded-md border border-rose-400/40 px-2.5 py-1 font-mono text-[10px] font-bold text-rose-200 hover:bg-rose-500/20"
+                className="shrink-0 rounded-md border border-danger/40 px-2.5 py-1 font-mono text-[10px] font-bold text-danger hover:bg-danger/20"
               >
                 Muat Ulang Track
               </button>
@@ -565,10 +565,10 @@ export default function StudioWorkstation({
           )}
 
           {/* Track Transport & Multitrack Timeline Card */}
-          <div className="rounded-2xl border border-[#26262e] bg-[#141419] p-4 shadow-xl sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#26262e] pb-4">
+          <div className="rounded-2xl border border-border bg-navy-2 p-4 shadow-xl sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
               <div className="flex min-w-0 items-center gap-3.5">
-                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#26262e]">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-border bg-navy-3">
                   {coverSrc ? (
                     <img
                       src={coverSrc}
@@ -579,21 +579,21 @@ export default function StudioWorkstation({
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-[#71717a]">
+                    <div className="flex h-full w-full items-center justify-center text-white/55">
                       <Icon name="music" className="h-6 w-6" />
                     </div>
                   )}
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md border border-[#10b981]/40 bg-[#10b981]/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[#6ee7b7]">
-                      SUNO STUDIO WORKSTATION
+                    <span className="rounded-md border border-signal/40 bg-signal/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-signal">
+                      KLIPIN-MUSIC STUDIO EQ
                     </span>
-                    <span className="rounded-md bg-[#26262e] px-2 py-0.5 font-mono text-[10px] uppercase text-[#a1a1aa]">
+                    <span className="rounded-md bg-navy-3 px-2 py-0.5 font-mono text-[10px] uppercase text-white/75">
                       {activeGenre}
                     </span>
                     {selectedJob?.metadata?.beat_bpm && (
-                      <span className="rounded-md bg-[#26262e] px-2 py-0.5 font-mono text-[10px] text-[#f59e0b]">
+                      <span className="rounded-md bg-navy-3 px-2 py-0.5 font-mono text-[10px] text-cyan-soft">
                         {Math.round(selectedJob.metadata.beat_bpm)} BPM
                       </span>
                     )}
@@ -601,8 +601,8 @@ export default function StudioWorkstation({
                   <h1 className="mt-1.5 truncate text-lg font-bold tracking-tight text-white">
                     {activeTitle}
                   </h1>
-                  <p className="mt-0.5 font-mono text-[11px] text-[#71717a]">
-                    Track Aktif: <span className="text-[#d4d4d8]">{activeStem?.label || 'Tidak ada'}</span>
+                  <p className="mt-0.5 font-mono text-[11px] text-white/60">
+                    Track Aktif: <span className="text-white/90">{activeStem?.label || 'Tidak ada'}</span>
                   </p>
                 </div>
               </div>
@@ -613,7 +613,7 @@ export default function StudioWorkstation({
                   type="button"
                   onClick={togglePlay}
                   disabled={!activeAudioUrl}
-                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#10b981] to-[#059669] px-5 py-2.5 text-xs font-bold text-[#06130e] shadow-lg transition hover:brightness-110 disabled:opacity-40"
+                  className="inline-flex items-center gap-2 rounded-xl bg-signal px-5 py-2.5 text-xs font-bold text-white-solid shadow-lg transition hover:brightness-110 disabled:opacity-40"
                 >
                   <Icon name={playing ? 'pause' : 'play'} className="h-4 w-4" />
                   {playing ? 'Pause Studio' : 'Play Studio'}
@@ -623,7 +623,7 @@ export default function StudioWorkstation({
                   onClick={() => seekTo(0)}
                   disabled={!activeAudioUrl}
                   title="Kembali ke awal (00:00)"
-                  className="rounded-xl border border-[#26262e] bg-[#1c1c22] px-3 py-2.5 font-mono text-xs text-[#a1a1aa] transition hover:text-white disabled:opacity-40"
+                  className="rounded-xl border border-border bg-navy-1 px-3 py-2.5 font-mono text-xs text-white/75 transition hover:text-white disabled:opacity-40"
                 >
                   ⏮ 00:00
                 </button>
@@ -632,8 +632,8 @@ export default function StudioWorkstation({
                   onClick={() => setLooping((v) => !v)}
                   className={`rounded-xl border px-3 py-2.5 font-mono text-xs font-semibold transition ${
                     looping
-                      ? 'border-[#f59e0b]/60 bg-[#f59e0b]/15 text-[#fbbf24]'
-                      : 'border-[#26262e] bg-[#1c1c22] text-[#a1a1aa] hover:text-white'
+                      ? 'border-cyan/60 bg-cyan/15 text-cyan-soft'
+                      : 'border-border bg-navy-1 text-white/75 hover:text-white'
                   }`}
                 >
                   🔁 Loop {looping ? 'ON' : 'OFF'}
@@ -651,7 +651,7 @@ export default function StudioWorkstation({
                 duration={effectiveDuration}
               />
               <div className="flex items-center gap-3">
-                <span className="w-12 font-mono text-xs tabular-nums text-[#10b981]">
+                <span className="w-12 font-mono text-xs tabular-nums text-signal">
                   {formatTime(currentTime)}
                 </span>
                 <input
@@ -662,33 +662,33 @@ export default function StudioWorkstation({
                   value={Math.min(currentTime, Math.max(1, effectiveDuration))}
                   onChange={(e) => seekTo(Number(e.target.value))}
                   aria-label="Timeline scrub"
-                  className="flex-1 accent-[#10b981]"
+                  className="flex-1 accent-signal"
                 />
-                <span className="w-12 text-right font-mono text-xs tabular-nums text-[#71717a]">
+                <span className="w-12 text-right font-mono text-xs tabular-nums text-white/60">
                   {formatTime(effectiveDuration)}
                 </span>
               </div>
             </div>
 
-            {/* Suno Studio Multitrack Stem Selector */}
+            {/* Multitrack Stem Selector */}
             {!localFile && selectedJob && (
-              <div className="mt-4 border-t border-[#26262e] pt-3.5">
+              <div className="mt-4 border-t border-border pt-3.5">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#8e8e99]">
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-white/70">
                     🎛️ Multitrack Stems &amp; Bus Monitoring
                   </span>
                   <button
                     type="button"
                     onClick={handleExtractStems}
                     disabled={stemsBusy}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-1 font-mono text-[10px] font-semibold text-[#d4d4d8] transition hover:border-[#f59e0b]/50 hover:text-white disabled:opacity-40"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-navy-1 px-2.5 py-1 font-mono text-[10px] font-semibold text-white/85 transition hover:border-cyan/50 hover:text-white disabled:opacity-40"
                   >
                     {stemsBusy ? (
                       <>
                         <Spinner className="h-3 w-3" /> Memisahkan Stems…
                       </>
                     ) : (
-                      '🔀 Pisahkan / Segarkan AI Stems (Demucs)'
+                      '🔀 Pisahkan / Segarkan AI Stems'
                     )}
                   </button>
                 </div>
@@ -706,8 +706,8 @@ export default function StudioWorkstation({
                         }}
                         className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
                           on
-                            ? 'border-[#10b981]/60 bg-[#10b981]/20 text-[#6ee7b7]'
-                            : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f46] hover:text-white'
+                            ? 'border-signal/60 bg-signal/20 text-signal'
+                            : 'border-border bg-navy-1 text-white/75 hover:border-cyan/40 hover:text-white'
                         }`}
                       >
                         {track.label}
@@ -716,7 +716,7 @@ export default function StudioWorkstation({
                   })}
                 </div>
                 {stemsFeedback && (
-                  <p className="mt-2 font-mono text-[11px] text-[#34d399]">{stemsFeedback}</p>
+                  <p className="mt-2 font-mono text-[11px] text-signal">{stemsFeedback}</p>
                 )}
               </div>
             )}
@@ -734,15 +734,15 @@ export default function StudioWorkstation({
         </section>
 
         {/* Right Pane: Synchronized Lyrics & Studio Mastering Specs */}
-        <aside className="w-full shrink-0 border-t border-[#26262e] bg-[#121216] p-4 xl:w-[320px] xl:border-l xl:border-t-0">
+        <aside className="w-full shrink-0 border-t border-border bg-navy-1/70 p-4 xl:w-[320px] xl:border-l xl:border-t-0">
           <div className="space-y-4 xl:sticky xl:top-[105px] xl:max-h-[calc(100vh-120px)] xl:overflow-y-auto">
             {/* Synchronized Lyrics Monitor */}
-            <div className="rounded-xl border border-[#26262e] bg-[#16161b] p-3.5">
+            <div className="rounded-xl border border-border bg-navy-2 p-3.5">
               <div className="mb-2.5 flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#d4d4d8]">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-white/90">
                   Karaoke Lyrics Monitor
                 </h3>
-                <span className="font-mono text-[10px] text-[#71717a]">
+                <span className="font-mono text-[10px] text-white/60">
                   {lyricsLines.length ? `${lyricsLines.length} baris` : '—'}
                 </span>
               </div>
@@ -757,11 +757,11 @@ export default function StudioWorkstation({
                         onClick={() => seekTo(line.start)}
                         className={`flex w-full gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
                           active
-                            ? 'border border-[#10b981]/40 bg-[#10b981]/15 font-semibold text-[#6ee7b7]'
-                            : 'text-[#a1a1aa] hover:bg-[#1c1c22] hover:text-white'
+                            ? 'border border-signal/40 bg-signal/15 font-semibold text-signal'
+                            : 'text-white/75 hover:bg-navy-1 hover:text-white'
                         }`}
                       >
-                        <span className="w-10 shrink-0 font-mono text-[10px] text-[#71717a]">
+                        <span className="w-10 shrink-0 font-mono text-[10px] text-white/55">
                           {formatTime(line.start)}
                         </span>
                         <span className="flex-1 leading-5">{line.text}</span>
@@ -770,29 +770,29 @@ export default function StudioWorkstation({
                   })}
                 </div>
               ) : (
-                <p className="py-6 text-center text-xs text-[#71717a]">
+                <p className="py-6 text-center text-xs text-white/60">
                   Pilih lagu dengan lirik dari Library untuk memantau artikulasi vokal sambil mengatur frekuensi Presence (1kHz–6kHz).
                 </p>
               )}
             </div>
 
             {/* Studio Engineering Reference Guide */}
-            <div className="rounded-xl border border-[#26262e] bg-[#16161b] p-3.5">
-              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-[#d4d4d8]">
+            <div className="rounded-xl border border-border bg-navy-2 p-3.5">
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-white/90">
                 Panduan Frekuensi Studio
               </h3>
-              <ul className="space-y-2 text-[11px] leading-5 text-[#a1a1aa]">
+              <ul className="space-y-2 text-[11px] leading-5 text-white/75">
                 <li>
-                  <strong className="text-[#6ee7b7]">60Hz – 150Hz (Sub &amp; Dub Bass):</strong> Mengatur dentuman kick one-drop dan ketebalan bassline reggae.
+                  <strong className="text-signal">60Hz – 150Hz (Sub &amp; Dub Bass):</strong> Mengatur dentuman kick one-drop dan ketebalan bassline reggae.
                 </li>
                 <li>
-                  <strong className="text-[#6ee7b7]">400Hz (Low-Mid Mud):</strong> Turunkan <code className="text-white">-2dB</code> bila vokal atau gitar terdengar mendem/boxy.
+                  <strong className="text-signal">400Hz (Low-Mid Mud):</strong> Turunkan <code className="text-white">-2dB</code> bila vokal atau gitar terdengar mendem/boxy.
                 </li>
                 <li>
-                  <strong className="text-[#6ee7b7]">1kHz – 2.4kHz (Vocal &amp; Skank):</strong> Frekuensi utama artikulasi vokal dan petikan gitar skank off-beat.
+                  <strong className="text-signal">1kHz – 2.4kHz (Vocal &amp; Skank):</strong> Frekuensi utama artikulasi vokal dan petikan gitar skank off-beat.
                 </li>
                 <li>
-                  <strong className="text-[#6ee7b7]">6kHz – 16kHz (Clarity &amp; Air):</strong> Memberikan kejernihan vokal modern dan desis hi-hat yang renyah.
+                  <strong className="text-signal">6kHz – 16kHz (Clarity &amp; Air):</strong> Memberikan kejernihan vokal modern dan desis hi-hat yang renyah.
                 </li>
               </ul>
             </div>
