@@ -1635,7 +1635,36 @@ async def _run_music_take(job_id: str, spec: dict, user_id: str):
         from music import generate_music
         voice_persona_id = str(spec.get("voice_persona_id") or "").strip()
         cover_engine = str(spec.get("cover_engine") or "").lower()
-        if voice_persona_id and (cover_engine == "voice" or spec.get("force_voice_conversion")):
+        direct_ref_path = str(spec.get("_voice_reference_path") or "").strip()
+        direct_ref_b64 = str(spec.get("_voice_reference_b64") or "").strip()
+        if direct_ref_path and Path(direct_ref_path).is_file():
+            result = await asyncio.to_thread(
+                generate_music,
+                {**spec, "_voice_reference_path": direct_ref_path}, job_dir,
+                on_stage=_set_stage)
+        elif direct_ref_b64:
+            import base64 as _b64
+            voice_tmp = Path(tempfile.mkdtemp(prefix="music-voice-job-", dir=str(db.DATA_DIR)))
+            try:
+                raw_voice = _b64.b64decode(direct_ref_b64)
+                raw_path = voice_tmp / "raw-voice"
+                raw_path.write_bytes(raw_voice)
+                norm_path = voice_tmp / "voice-reference.wav"
+                ffmpeg_bin = shutil.which("ffmpeg")
+                if ffmpeg_bin:
+                    await asyncio.to_thread(
+                        subprocess.run,
+                        [ffmpeg_bin, "-y", "-v", "error", "-i", str(raw_path), "-t", "30",
+                         "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", str(norm_path)],
+                        capture_output=True, text=True, timeout=60)
+                ref_to_use = norm_path if norm_path.is_file() else raw_path
+                result = await asyncio.to_thread(
+                    generate_music,
+                    {**spec, "_voice_reference_path": str(ref_to_use)}, job_dir,
+                    on_stage=_set_stage)
+            finally:
+                shutil.rmtree(voice_tmp, ignore_errors=True)
+        elif voice_persona_id and (cover_engine == "voice" or spec.get("force_voice_conversion")):
             persona = db.get_music_persona(voice_persona_id, user_id)
             if not persona or not persona.get("voice_ref_path"):
                 raise RuntimeError("Persona suara tidak ditemukan; lagu belum dijalankan.")
@@ -1938,6 +1967,7 @@ class MusicRemixUrlRequest(BaseModel):
     ref_strength: float = 0.6
     vocal_gender: str = "female"
     persona_id: str = ""
+    voice_b64: str = ""        # optional direct uploaded target voice audio (base64)
     rights_confirmed: bool = False
     cover_engine: str = ""   # ""=auto | arrangement | voice | mulacover | diffrhythm | heartmula | ace-step
     pitch_shift: str = "auto"  # voice-conversion: "auto" | semitone int (mis. 12, -12, 0)
@@ -2126,7 +2156,9 @@ async def music_cover_upload(
     genre: str = Form("dangdut-koplo"),
     vocal_gender: str = Form("auto"),
     persona_id: str = Form(""),
+    voice_file: UploadFile | None = File(None),
     voice_pitch_shift: int = Form(0),
+    pitch_shift: str = Form("auto"),
     restyle_strength: float = Form(0.42),
     keep_original_vocal: bool = Form(False),
     cover_engine: str = Form("yue2_comfy"),
@@ -2161,10 +2193,13 @@ async def music_cover_upload(
         raise HTTPException(
             status_code=400,
             detail="Konfirmasi dulu bahwa kamu berhak memakai lagu sumber ini.")
-    genre_ids = {str(g.get("id")) for g in GENRES}
+    genre_ids = {str(g.get("id")) for g in GENRES} | {"original"}
     if genre not in genre_ids:
         raise HTTPException(status_code=400, detail=f"Genre '{genre}' tidak dikenal.")
     engine = (cover_engine or "mulacover").strip().lower()
+    if genre == "original":
+        engine = "voice"
+        keep_original_vocal = False
     if engine in ("acestep", "ace"):
         engine = "ace-step"
     availability = {
@@ -2203,6 +2238,32 @@ async def music_cover_upload(
     ref_path = job_dir / f"source{suffix}"
     ref_path.write_bytes(raw)
 
+    direct_voice_path = ""
+    if voice_file is not None and (voice_file.filename or "").strip():
+        vraw = await voice_file.read()
+        if len(vraw) < 1024:
+            raise HTTPException(status_code=400, detail="File suara target kosong atau rusak.")
+        if len(vraw) > 25_000_000:
+            raise HTTPException(status_code=400, detail="File suara target terlalu besar (maks. 25 MB).")
+        vsuffix = (Path(voice_file.filename or "voice.wav").suffix or ".wav").lower()
+        if vsuffix not in (".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"):
+            vsuffix = ".wav"
+        raw_voice_path = job_dir / f"voice-raw{vsuffix}"
+        raw_voice_path.write_bytes(vraw)
+        norm_voice_path = job_dir / "voice-reference.wav"
+        ffmpeg_bin = shutil.which("ffmpeg")
+        if ffmpeg_bin:
+            conv = await asyncio.to_thread(
+                subprocess.run,
+                [ffmpeg_bin, "-y", "-v", "error", "-i", str(raw_voice_path), "-t", "30",
+                 "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", str(norm_voice_path)],
+                capture_output=True, text=True, timeout=60)
+            if conv.returncode != 0 or not norm_voice_path.is_file():
+                raise HTTPException(status_code=400, detail="File suara target tidak valid atau gagal diproses.")
+            direct_voice_path = str(norm_voice_path)
+        else:
+            direct_voice_path = str(raw_voice_path)
+
     duration = await asyncio.to_thread(_probe_audio_duration, ref_path)
     duration = max(15.0, min(float(duration or 180.0), 600.0))
 
@@ -2216,14 +2277,29 @@ async def music_cover_upload(
         from music import _transcribe_source_audio, _music_timed_lines_from_transcript
         try:
             transcript = await asyncio.to_thread(_transcribe_source_audio, str(ref_path))
+            text = _music_lyrics_from_transcript(transcript)
+            timed_lines = _music_timed_lines_from_transcript(transcript)
+            lyrics_source = str(transcript.get("source") or "audio_asr")
         except Exception as exc:  # noqa: BLE001 - friendly message to the UI
-            raise HTTPException(
-                status_code=400,
-                detail=("Lirik tidak diberikan dan transkripsi otomatis gagal: "
-                        f"{str(exc)[:300]}")) from exc
-        text = _music_lyrics_from_transcript(transcript)
-        timed_lines = _music_timed_lines_from_transcript(transcript)
-        lyrics_source = str(transcript.get("source") or "audio_asr")
+            if engine in ("arrangement", "voice", "voice_pure"):
+                text = "[Verse]\n(Vokal asli sumber dipertahankan)"
+                lyrics_source = "source_vocal_stem"
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=("Lirik tidak diberikan dan transkripsi otomatis gagal: "
+                            f"{str(exc)[:300]}")) from exc
+
+    pitch_raw = str(pitch_shift or "").strip().lower()
+    if pitch_raw in ("", "auto"):
+        eff_pitch_shift = int(voice_pitch_shift or 0)
+        eff_pitch_auto = (eff_pitch_shift == 0)
+    else:
+        try:
+            eff_pitch_shift = max(-24, min(24, int(float(pitch_raw))))
+        except (TypeError, ValueError):
+            eff_pitch_shift = 0
+        eff_pitch_auto = False
 
     try:
         base_seed = int(seed)
@@ -2233,7 +2309,10 @@ async def music_cover_upload(
         base_seed = int(time.time()) % (2 ** 31 - 1)
 
     stem = Path(file.filename or "lagu").stem[:60] or "lagu"
-    custom_prompt = (prompt or "").strip() or f"faithful cover in {genre}"
+    custom_prompt = (prompt or "").strip() or (
+        "original arrangement voice conversion cover" if genre == "original"
+        else f"faithful cover in {genre}"
+    )
     try:
         eff_strength = max(0.15, min(0.85, float(restyle_strength)))
     except (TypeError, ValueError):
@@ -2248,8 +2327,9 @@ async def music_cover_upload(
             gender = str(persona["vocal_gender"]).strip().lower()
     persona_tags = (persona or {}).get("style_tags", "").strip()
     combined_style_tags = ", ".join(p for p in ((prompt or "").strip(), persona_tags) if p)
+    cover_title = f"{stem} — Cover Vokal" if genre == "original" else f"{stem} — cover {genre}"
     base_spec = {
-        "title": f"{stem} — cover {genre}", "prompt": custom_prompt,
+        "title": cover_title, "prompt": custom_prompt,
         "cover_style_prompt": combined_style_tags,
         "lyrics": text, "lyrics_timed": timed_lines,
         "genre": genre, "language": "id", "language_override": True,
@@ -2260,9 +2340,11 @@ async def music_cover_upload(
         "arrangement_prompt": (prompt or "").strip(),
         "parent_job_id": "",
         "ref_audio_path": str(ref_path), "ref_strength": eff_strength,
+        "restyle": False if genre == "original" else bool(engine == "arrangement"),
         "restyle_strength": eff_strength,
-        "voice_pitch_shift": max(-12, min(12, int(voice_pitch_shift or 0))),
-        "keep_original_vocal": bool(keep_original_vocal or engine == "arrangement"),
+        "voice_pitch_shift": eff_pitch_shift,
+        "voice_pitch_auto": eff_pitch_auto,
+        "keep_original_vocal": False if genre == "original" else bool(keep_original_vocal or engine == "arrangement"),
         "cover_mode": True, "_lyrics_locked": True,
         "lyrics_extraction_source": lyrics_source,
         "cover_upload_name": file.filename or "",
@@ -2279,7 +2361,9 @@ async def music_cover_upload(
         "cfg_scale": cfg_scale,
         "topk": topk,
     }
-    if persona and persona.get("voice_ref_path"):
+    if direct_voice_path:
+        base_spec["_voice_reference_path"] = direct_voice_path
+    elif persona and persona.get("voice_ref_path"):
         from music import voice_persona_capability
         cap = await asyncio.to_thread(voice_persona_capability)
         if cap.get("ready"):
@@ -2332,7 +2416,7 @@ async def music_remix_url(req: MusicRemixUrlRequest,
             "Konfirmasi bahwa kamu memiliki izin memakai lagu sumber "
             "sebelum membuat cover."
         ))
-    genre_ids = {g["id"] for g in GENRES}
+    genre_ids = {g["id"] for g in GENRES} | {"original"}
     if req.genre not in genre_ids:
         raise HTTPException(status_code=400, detail=f"Genre '{req.genre}' tidak dikenal.")
     mulacover_enabled = _mulacover_modal_enabled()
@@ -2361,6 +2445,8 @@ async def music_remix_url(req: MusicRemixUrlRequest,
         "heartmula": heartmula_enabled,
     }
     requested_engine = (req.cover_engine or "").strip().lower()
+    if req.genre == "original":
+        requested_engine = "voice"
     if requested_engine and requested_engine not in engine_available:
         raise HTTPException(status_code=400, detail=(
             "Engine cover tidak dikenal. Pilih salah satu: yue2_comfy, yue2_native, yue2, "
@@ -2454,7 +2540,7 @@ async def music_remix_url(req: MusicRemixUrlRequest,
             result = subprocess.run(
                 ["ffmpeg", "-y", "-v", "error", "-i", source,
                  "-t", "600", "-vn", "-ac", "2", "-ar", "44100",
-                 "-c:a", "libmp3lame", "-b:a", "128k", str(normalized)],
+                 "-c:a", "libmp3lame", "-b:a", "192k", str(normalized)],
                 capture_output=True, text=True, timeout=180)
             if result.returncode != 0 or not normalized.exists():
                 raise RuntimeError("Audio sumber gagal dinormalisasi.")
@@ -2524,22 +2610,32 @@ async def music_remix_url(req: MusicRemixUrlRequest,
             "genre": req.genre,
             "cover_engine": cover_engine,
         }
-    prompt = (req.prompt or "").strip() or f"rearrange this song as {req.genre}"
-    prompt = (
-        f"{prompt}; preserve the extracted lyrics exactly, keep the original "
-        "section order and emotional direction, and use a fresh singer; "
-        f"make the arrangement clearly {req.genre}"
+    prompt = (req.prompt or "").strip() or (
+        "original arrangement voice conversion cover" if req.genre == "original"
+        else f"rearrange this song as {req.genre}"
     )
+    if req.genre != "original":
+        prompt = (
+            f"{prompt}; preserve the extracted lyrics exactly, keep the original "
+            "section order and emotional direction, and use a fresh singer; "
+            f"make the arrangement clearly {req.genre}"
+        )
     # Reggae/ska/dub live or die on the one-drop groove; a source ballad beat
     # leaks through MuLaCover's drum condition, so those genres drop the source
     # drums by default and let the model rebuild the groove from tags.
-    groove_reset = bool(req.groove_reset) or (
-        cover_engine in ("mulacover", "arrangement") and req.genre in (
-            "reggae", "ska", "dub", "dangdut-koplo", "dangdut-remix", "dj-remix", "edm"))
+    groove_reset = False if req.genre == "original" else (
+        bool(req.groove_reset) or (
+            cover_engine in ("mulacover", "arrangement") and req.genre in (
+                "reggae", "ska", "dub", "dangdut-koplo", "dangdut-remix", "dj-remix", "edm"))
+    )
     source_duration = ref["duration"]
-    keep_original_vocal = bool(req.keep_original_vocal or cover_engine == "arrangement")
+    keep_original_vocal = False if req.genre == "original" else bool(req.keep_original_vocal or cover_engine == "arrangement")
+    cover_title = f"{title} — Cover Vokal" if req.genre == "original" else f"{title} — {req.genre}"
+    voice_b64 = (req.voice_b64 or "").strip()
+    if voice_b64 and len(voice_b64) > 35_000_000:
+        raise HTTPException(status_code=400, detail="File suara target terlalu besar (maks. 25 MB).")
     base_spec = {
-        "title": f"{title} — {req.genre}", "prompt": prompt,
+        "title": cover_title, "prompt": prompt,
         "lyrics": ref["lyrics"],
         "lyrics_timed": ref.get("timed_lines", []),
         "genre": req.genre, "language": "id", "language_override": True,
@@ -2552,7 +2648,7 @@ async def music_remix_url(req: MusicRemixUrlRequest,
         "parent_job_id": "", "ref_strength": strength,
         "voice_pitch_shift": voice_pitch_shift, "voice_pitch_auto": voice_pitch_auto,
         "voice_mode": voice_mode,
-        "restyle": bool(req.restyle or cover_engine == "arrangement"),
+        "restyle": False if req.genre == "original" else bool(req.restyle or cover_engine == "arrangement"),
         "keep_original_vocal": keep_original_vocal,
         "restyle_strength": max(0.1, min(0.9, float(req.restyle_strength or 0.42))),
         "cover_mode": True, "cover_engine": cover_engine, "_lyrics_locked": True,
@@ -2576,9 +2672,11 @@ async def music_remix_url(req: MusicRemixUrlRequest,
     }
     if needs_ref:
         base_spec["ref_audio_b64"] = ref["audio_b64"]
-    elif cover_engine in ("voice", "arrangement"):
+    elif cover_engine in ("voice", "voice_pure", "arrangement"):
         base_spec["cover_source_b64"] = ref["audio_b64"]
-    if persona and persona.get("voice_ref_path") and persona_voice_ready:
+    if voice_b64:
+        base_spec["_voice_reference_b64"] = voice_b64
+    elif persona and persona.get("voice_ref_path") and persona_voice_ready:
         base_spec["voice_persona_id"] = persona_id
     grouped = _create_music_group(base_spec, _user["google_sub"], 1, "final",
                                   user=_user)

@@ -123,6 +123,9 @@ export default function CoverCreate({
     [personas],
   )
   const [engine] = useState('yue2_comfy')
+  const [directVoiceFile, setDirectVoiceFile] = useState(null)
+  const [directVoicePreviewUrl, setDirectVoicePreviewUrl] = useState('')
+  const [pitchShift, setPitchShift] = useState('auto')
   const [restyleStrength, setRestyleStrength] = useState(0.55)
   const [weirdness, setWeirdness] = useState(45)
   const [styleInfluence, setStyleInfluence] = useState(70)
@@ -245,10 +248,12 @@ export default function CoverCreate({
   const elapsed = startedAt ? Math.max(0, Math.round((now - startedAt) / 1000)) : 0
   const result = useMemo(() => preferredTake(groupTakes), [groupTakes])
   const running = groupTakes.some((t) => ['queued', 'processing'].includes(t.status))
+  const isOriginalGenre = genre === 'original'
+  const effectiveEngine = isOriginalGenre ? 'voice' : engine
   const engineStatus = useMemo(() => {
     if (!coverEngines.length) return null
-    return coverEngines.find((e) => e.id === engine) || null
-  }, [coverEngines, engine])
+    return coverEngines.find((e) => e.id === effectiveEngine) || null
+  }, [coverEngines, effectiveEngine])
   const engineBlocked = Boolean(engineStatus && !engineStatus.available)
   const progress = useMemo(() => {
     if (!result) return 0
@@ -287,8 +292,10 @@ export default function CoverCreate({
       fd.append('genre', genre)
       fd.append('vocal_gender', effectiveVoice)
       if (activePersonaId) fd.append('persona_id', activePersonaId)
+      if (directVoiceFile) fd.append('voice_file', directVoiceFile)
       fd.append('vocal_style', vocalStyle)
-      fd.append('cover_engine', 'yue2_comfy')
+      fd.append('cover_engine', isOriginalGenre ? 'voice' : 'yue2_comfy')
+      fd.append('pitch_shift', pitchShift)
       fd.append('restyle_strength', String(restyleStrength))
       fd.append('weirdness', String(weirdness))
       fd.append('style_influence', String(styleInfluence))
@@ -399,60 +406,69 @@ export default function CoverCreate({
             <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.genre}</label>
             <select value={genre} onChange={(e) => setGenre(e.target.value)}
               className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
-              {genres.map((g) => (
-                <option key={g.id} value={g.id}>{g.label}</option>
-              ))}
+              <option value="original">🎵 Lagu Original — Pertahankan Musik Asli (Ganti Vokal Saja)</option>
+              <optgroup label="Ubah Genre / Aransemen Baru">
+                {genres.map((g) => (
+                  <option key={g.id} value={g.id}>{g.label}</option>
+                ))}
+              </optgroup>
             </select>
           </div>
 
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Preset Vibe / Arahan Aransemen (opsional)</label>
-            {genre === 'reggae' && (
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {[
-                  {
-                    id: 'boenter',
-                    label: '🌴 Reggae Santai (BOENTER)',
-                    prompt: 'warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove, muted clean offbeat guitar skank, warm Hammond B3 organ bubble, deep round sub-dub bassline, melodic brass intro hook, relaxed soulful vocal with warm reverb and subtle dub echo, silky analog highs',
-                  },
-                  {
-                    id: 'ska',
-                    label: '🎺 Reggae Ska & Brass',
-                    prompt: 'upbeat Indonesian ska-reggae cover, lively brass section (trumpet, trombone, saxophone hooks), crisp offbeat guitar skank, bouncy walking dub bassline, tight one-drop snare and rimshot',
-                  },
-                  {
-                    id: 'acoustic',
-                    label: '🌊 Reggae Akustik',
-                    prompt: 'acoustic island reggae cover, nylon and steel acoustic guitar offbeat skank, warm cajon and rimshot one-drop, deep upright dub bass, relaxed intimate vocal',
-                  },
-                  {
-                    id: 'dub',
-                    label: '🔊 Reggae Dub Bass',
-                    prompt: 'deep roots dub reggae cover, heavy warm sub-bass pocket (60-140 Hz), spacious spring reverb and analog tape echo, laid-back one-drop rimshot, warm Hammond organ bubble',
-                  },
-                ].map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => setStylePrompt(preset.prompt)}
-                    className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                      stylePrompt === preset.prompt
-                        ? 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fbbf24]'
-                        : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f4a] hover:text-[#f4f4f6]'
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            <input
-              value={stylePrompt}
-              onChange={(e) => setStylePrompt(e.target.value)}
-              placeholder="Contoh: warm roots reggae, brass intro, dub bassline, santai…"
-              className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] placeholder:text-[#5c5c66] outline-none focus:border-[#52525b]"
-            />
-          </div>
+          {isOriginalGenre ? (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-[11px] leading-relaxed text-emerald-200">
+              ✨ <b>Mode Lagu Original:</b> Musik &amp; instrumen lagu sumber dipertahankan 100%. Hanya vokal penyanyinya yang diganti menggunakan <b>Persona</b> atau <b>File Suara</b> di langkah 3 (cocok untuk membawakan lagu A dengan suara artis/sosok pilihan Anda).
+            </div>
+          ) : (
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Preset Vibe / Arahan Aransemen (opsional)</label>
+              {genre === 'reggae' && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {[
+                    {
+                      id: 'boenter',
+                      label: '🌴 Reggae Santai (BOENTER)',
+                      prompt: 'warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove, muted clean offbeat guitar skank, warm Hammond B3 organ bubble, deep round sub-dub bassline, melodic brass intro hook, relaxed soulful vocal with warm reverb and subtle dub echo, silky analog highs',
+                    },
+                    {
+                      id: 'ska',
+                      label: '🎺 Reggae Ska & Brass',
+                      prompt: 'upbeat Indonesian ska-reggae cover, lively brass section (trumpet, trombone, saxophone hooks), crisp offbeat guitar skank, bouncy walking dub bassline, tight one-drop snare and rimshot',
+                    },
+                    {
+                      id: 'acoustic',
+                      label: '🌊 Reggae Akustik',
+                      prompt: 'acoustic island reggae cover, nylon and steel acoustic guitar offbeat skank, warm cajon and rimshot one-drop, deep upright dub bass, relaxed intimate vocal',
+                    },
+                    {
+                      id: 'dub',
+                      label: '🔊 Reggae Dub Bass',
+                      prompt: 'deep roots dub reggae cover, heavy warm sub-bass pocket (60-140 Hz), spacious spring reverb and analog tape echo, laid-back one-drop rimshot, warm Hammond organ bubble',
+                    },
+                  ].map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setStylePrompt(preset.prompt)}
+                      className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                        stylePrompt === preset.prompt
+                          ? 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fbbf24]'
+                          : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f4a] hover:text-[#f4f4f6]'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <input
+                value={stylePrompt}
+                onChange={(e) => setStylePrompt(e.target.value)}
+                placeholder="Contoh: warm roots reggae, brass intro, dub bassline, santai…"
+                className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] placeholder:text-[#5c5c66] outline-none focus:border-[#52525b]"
+              />
+            </div>
+          )}
         </div>
 
         {/* Langkah 3: Penyanyi & Persona Suara */}
@@ -461,6 +477,50 @@ export default function CoverCreate({
             3 · Penyanyi &amp; Persona Suara (👩 Cewek / 👨 Cowok)
           </div>
           {personaSlot}
+
+          <div className="rounded-lg border border-dashed border-[#30303a] bg-[#18181f] p-2.5">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-white/80">
+                🎙️ Atau Upload Suara Target Langsung (Opsional — mis. suara artis/tokoh)
+              </span>
+              {directVoiceFile && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDirectVoiceFile(null)
+                    setDirectVoicePreviewUrl((u) => { if (u) URL.revokeObjectURL(u); return '' })
+                  }}
+                  className="text-[10px] font-semibold text-rose-400 hover:text-rose-300"
+                >
+                  ✕ Hapus
+                </button>
+              )}
+            </div>
+            <input
+              type="file"
+              accept="audio/*"
+              onChange={(e) => {
+                const picked = e.target.files?.[0] || null
+                setDirectVoiceFile(picked)
+                setDirectVoicePreviewUrl((old) => {
+                  if (old) URL.revokeObjectURL(old)
+                  return picked ? URL.createObjectURL(picked) : ''
+                })
+              }}
+              className="block w-full text-[11px] text-white/60 file:mr-2 file:rounded-md file:border-0 file:bg-[#f59e0b]/20 file:px-2.5 file:py-1 file:text-[11px] file:font-semibold file:text-[#fbbf24]"
+            />
+            {directVoiceFile && (
+              <div className="mt-1.5 space-y-1">
+                <p className="text-[10.5px] text-emerald-300">
+                  ✓ Memakai file suara: <b>{directVoiceFile.name}</b> ({(directVoiceFile.size / 1_048_576).toFixed(1)} MB). Musik latar otomatis dibersihkan bila ada.
+                </p>
+                {directVoicePreviewUrl && (
+                  <audio controls src={directVoicePreviewUrl} className="h-7 max-w-full" />
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-2.5">
             <div>
               <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">{L.voice}</label>
@@ -475,15 +535,35 @@ export default function CoverCreate({
                 ))}
               </select>
             </div>
-            <div>
-              <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Karakter vokal</label>
-              <select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value)}
-                className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
-                {VOCAL_STYLE_OPTIONS.map((vs) => (
-                  <option key={vs.id} value={vs.id}>{vs.label}</option>
-                ))}
-              </select>
-            </div>
+            {isOriginalGenre ? (
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Nada Vokal (Pitch)</label>
+                <select
+                  value={pitchShift}
+                  onChange={(e) => setPitchShift(e.target.value)}
+                  className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]"
+                >
+                  <option value="auto">Auto (Ikuti Suara Target)</option>
+                  <option value="0">Asli (0 semitone)</option>
+                  <option value="12">+12 (+1 Oktaf: Cowok → Cewek)</option>
+                  <option value="-12">-12 (-1 Oktaf: Cewek → Cowok)</option>
+                  <option value="5">+5 semitone</option>
+                  <option value="-5">-5 semitone</option>
+                  <option value="3">+3 semitone</option>
+                  <option value="-3">-3 semitone</option>
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-[#8e8e99]">Karakter vokal</label>
+                <select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value)}
+                  className="w-full rounded-lg border border-[#26262e] bg-[#1c1c22] px-2.5 py-2 text-xs text-[#f4f4f6] outline-none focus:border-[#52525b]">
+                  {VOCAL_STYLE_OPTIONS.map((vs) => (
+                    <option key={vs.id} value={vs.id}>{vs.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
 
@@ -494,54 +574,58 @@ export default function CoverCreate({
             <span className="font-mono text-[10px] text-white/40 group-open:rotate-180">▼</span>
           </summary>
           <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
-            <div>
-              <div className="mb-1 flex items-center justify-between text-[11px]">
-                <span className="text-[#8e8e99]">Kunci Melodi &amp; Ketukan</span>
-                <span className="font-mono text-[#fbbf24]">{Math.round(restyleStrength * 100)}%</span>
-              </div>
-              <input
-                type="range"
-                min={0.2}
-                max={0.85}
-                step={0.05}
-                value={restyleStrength}
-                onChange={(e) => setRestyleStrength(parseFloat(e.target.value))}
-                className="w-full accent-[#f59e0b]"
-              />
-            </div>
+            {!isOriginalGenre && (
+              <>
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-[11px]">
+                    <span className="text-[#8e8e99]">Kunci Melodi &amp; Ketukan</span>
+                    <span className="font-mono text-[#fbbf24]">{Math.round(restyleStrength * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.2}
+                    max={0.85}
+                    step={0.05}
+                    value={restyleStrength}
+                    onChange={(e) => setRestyleStrength(parseFloat(e.target.value))}
+                    className="w-full accent-[#f59e0b]"
+                  />
+                </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <div className="mb-1 flex items-center justify-between text-[11px]">
-                  <span className="text-[#8e8e99]">Kreativitas Aransemen</span>
-                  <span className="font-mono text-[#e4e4e7]">{weirdness}%</span>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-[11px]">
+                      <span className="text-[#8e8e99]">Kreativitas Aransemen</span>
+                      <span className="font-mono text-[#e4e4e7]">{weirdness}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={weirdness}
+                      onChange={(e) => setWeirdness(Number(e.target.value))}
+                      className="w-full accent-[#f59e0b]"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-[11px]">
+                      <span className="text-[#8e8e99]">Kepatuhan Genre</span>
+                      <span className="font-mono text-[#e4e4e7]">{styleInfluence}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={styleInfluence}
+                      onChange={(e) => setStyleInfluence(Number(e.target.value))}
+                      className="w-full accent-[#f59e0b]"
+                    />
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={weirdness}
-                  onChange={(e) => setWeirdness(Number(e.target.value))}
-                  className="w-full accent-[#f59e0b]"
-                />
-              </div>
-              <div>
-                <div className="mb-1 flex items-center justify-between text-[11px]">
-                  <span className="text-[#8e8e99]">Kepatuhan Genre</span>
-                  <span className="font-mono text-[#e4e4e7]">{styleInfluence}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={styleInfluence}
-                  onChange={(e) => setStyleInfluence(Number(e.target.value))}
-                  className="w-full accent-[#f59e0b]"
-                />
-              </div>
-            </div>
+              </>
+            )}
 
             <div>
               <div className="mb-1.5 flex items-center justify-between">
@@ -590,7 +674,7 @@ export default function CoverCreate({
           disabled={busy || engineBlocked}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#f59e0b] px-4 py-3 text-[13px] font-bold text-[#0e0e11] shadow-md transition hover:bg-[#fbbf24] disabled:opacity-45"
         >
-          {busy ? (<><Spinner className="h-3.5 w-3.5" /> {L.creating}</>) : '🎵 Buat Cover Lagu'}
+          {busy ? (<><Spinner className="h-3.5 w-3.5" /> {L.creating}</>) : (isOriginalGenre ? '🎤 Buat Cover Ganti Vokal (Musik Asli)' : '🎵 Buat Cover Lagu')}
         </button>
 
         {groupId && (
@@ -686,6 +770,7 @@ export default function CoverCreate({
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label={L.genre}>
                 <Select value={genre} onChange={(e) => setGenre(e.target.value)}>
+                  <option value="original">🎵 Lagu Original — Pertahankan Musik Asli (Ganti Vokal Saja)</option>
                   {genres.map((g) => (
                     <option key={g.id} value={g.id}>{g.label}</option>
                   ))}

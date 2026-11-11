@@ -154,6 +154,31 @@ def _separate(source: Path, work: Path) -> tuple[Path, Path]:
     return vocals, backing
 
 
+def _clean_target_reference(reference: Path, work: Path) -> Path:
+    """If the uploaded target voice clip contains background music, isolate pure vocals via Demucs."""
+    import numpy as np
+    import soundfile as sf
+
+    ref_work = work / "ref_clean"
+    ref_work.mkdir(parents=True, exist_ok=True)
+    try:
+        ref_vocal, ref_backing = _separate(reference, ref_work)
+        v_data, _ = sf.read(ref_vocal)
+        b_data, _ = sf.read(ref_backing)
+        v_rms = float(np.sqrt(np.mean(v_data ** 2)))
+        b_rms = float(np.sqrt(np.mean(b_data ** 2)))
+        if v_rms > 0.002 and (b_rms / max(v_rms, 1e-6)) > 0.12:
+            cleaned = work / "reference_clean_vocal.wav"
+            _run(["ffmpeg", "-y", "-v", "error", "-i", str(ref_vocal), "-t", "25",
+                  "-ac", "1", "-ar", "24000", "-af", "highpass=f=80,loudnorm=I=-18:TP=-2:LRA=7",
+                  "-c:a", "pcm_s16le", str(cleaned)])
+            if cleaned.is_file() and cleaned.stat().st_size > 1024:
+                return cleaned
+    except Exception:
+        pass
+    return reference
+
+
 def _separate_4stems(source: Path, work: Path) -> dict[str, Path]:
     """Run full 4-stem Demucs htdemucs (vocals, drums, bass, other) on L4 GPU."""
     _run([sys.executable, "-m", "demucs", "-n", "htdemucs",
@@ -315,6 +340,7 @@ def convert_stems(audio_b64: str, reference_b64: str = "", duration: float = 180
                 raise RuntimeError("Seed-VC conversion requires reference audio.")
             reference = work / "reference.wav"
             reference.write_bytes(base64.b64decode(reference_b64, validate=True))
+            reference = _clean_target_reference(reference, work)
             output_dir = work / "converted"
             _run([sys.executable, "/opt/seed-vc/inference.py", "--source", str(vocals),
                   "--target", str(reference), "--output", str(output_dir),
@@ -411,6 +437,7 @@ def convert_song(audio_b64: str, reference_b64: str = "", duration: float = 180.
                 raise RuntimeError("Seed-VC conversion requires reference audio.")
             reference = work / "reference.wav"
             reference.write_bytes(base64.b64decode(reference_b64, validate=True))
+            reference = _clean_target_reference(reference, work)
             output_dir = work / "converted"
             clean_vocals = work / "clean_vocals.wav"
             _run(["ffmpeg", "-y", "-v", "error", "-i", str(vocals),

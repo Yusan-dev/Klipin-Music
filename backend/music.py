@@ -75,7 +75,17 @@ GENRES = [
 ]
 
 
+ORIGINAL_COVER_GENRE: dict = {
+    "id": "original",
+    "label": "🎵 Lagu Original (Pertahankan Musik Asli — Ganti Vokal Saja)",
+    "mood": "pop",
+    "tags": "original arrangement,preserve backing track,voice conversion cover",
+}
+
+
 def genre_info(genre: str) -> dict:
+    if str(genre or "").strip().lower() == "original":
+        return ORIGINAL_COVER_GENRE
     return next((g for g in GENRES if g["id"] == genre), GENRES[0])
 
 
@@ -841,8 +851,9 @@ def _synthesize_voice_reference(spec: dict, job_dir: Path, log=None) -> str:
         gender = "female"
     timbre = ("female singer,feminine voice" if gender == "female"
               else "male singer,masculine voice")
-    tags = (f"{timbre},clear smooth voice,expressive singing,balanced vocal,"
-            "solo singer,a cappella,dry studio vocal")
+    persona_tags = str(spec.get("style_tags") or "").strip()
+    extra = f",{persona_tags}" if persona_tags else ",clear smooth voice,expressive singing,balanced vocal"
+    tags = f"{timbre}{extra},solo singer,a cappella,dry studio vocal"
     seed = int(spec.get("seed") or 1) % (2 ** 31 - 1)
     log and log(f"🎤 Menyintesis referensi suara {gender} untuk cover…")
     result = _voice_fn("design_preview").remote(
@@ -3632,7 +3643,9 @@ def master_audio(src: Path, log=None, genre: str = "") -> bool:
     if duration <= 0:
         return False
     gid = str(genre or "").strip().lower()
-    if gid in ("reggae", "ska", "dub", "reggae-santai", "reggae-ska", "reggae-dub"):
+    if gid == "original":
+        af_chain = "loudnorm=I=-14:TP=-1.5:LRA=11"
+    elif gid in ("reggae", "ska", "dub", "reggae-santai", "reggae-ska", "reggae-dub"):
         af_chain = (
             "highpass=f=28,lowpass=f=11200,"
             "equalizer=f=95:width_type=q:width=1.0:g=2.8,"

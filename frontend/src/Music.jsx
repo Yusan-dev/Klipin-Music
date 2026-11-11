@@ -383,6 +383,8 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const [remixTranscribing, setRemixTranscribing] = useState(false)
   const [shareBusy, setShareBusy] = useState(false)
   const [coverSourceTab, setCoverSourceTab] = useState('url')
+  const [remixVoiceFile, setRemixVoiceFile] = useState(null)
+  const [remixVoicePreviewUrl, setRemixVoicePreviewUrl] = useState('')
   const [feedFilter, setFeedFilter] = useState('all')
   const [libraryFilter, setLibraryFilter] = useState('all')
   const [mobilePane, setMobilePane] = useState('create')
@@ -1976,17 +1978,34 @@ export default function Music({ user, authChecked = false, onSignIn }) {
       setRequestError('Centang pernyataan hak/izin memakai lagu sumber terlebih dahulu.')
       return
     }
+    const isOriginalGenre = remixGenre === 'original'
     // Review step: jika lirik kosong dan belum di-review ASR, jalankan review step terlebih dahulu
-    if (!remixLyrics.trim() && !remixAsrReviewed && !['arrangement'].includes(remixEngine)) {
+    // (Mode Lagu Original langsung menggunakan stem audio asli lewat Seed-VC tanpa wajib review lirik).
+    if (!isOriginalGenre && !remixLyrics.trim() && !remixAsrReviewed && !['arrangement'].includes(remixEngine)) {
       await fetchAndReviewAsr()
       return
     }
     setRemixBusy(true)
     setRequestError('')
     try {
+      let voiceB64 = ''
+      if (remixVoiceFile) {
+        if (remixVoiceFile.size > 25_000_000) {
+          throw new Error('File suara target terlalu besar (maks. 25 MB).')
+        }
+        voiceB64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            const resStr = String(reader.result || '')
+            resolve(resStr.includes(',') ? resStr.split(',')[1] : resStr)
+          }
+          reader.onerror = () => reject(new Error('Gagal membaca file suara target.'))
+          reader.readAsDataURL(remixVoiceFile)
+        })
+      }
       const coverGender = remixGender === 'auto' ? effectiveGender : remixGender
-      const isPureVoice = remixEngine === 'voice_pure'
-      const effEngine = isPureVoice ? 'voice' : remixEngine
+      const isPureVoice = isOriginalGenre || remixEngine === 'voice_pure'
+      const effEngine = isPureVoice ? 'voice' : 'yue2_comfy'
       const effRestyle = isPureVoice ? false : remixRestyle
       const res = await remixMusicUrl({
         url: remixUrl.trim(),
@@ -1999,8 +2018,9 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         weirdness: Number(remixWeirdness),
         style_influence: Number(remixStyleInfluence),
         persona_id: personaId,
+        voice_b64: voiceB64,
         rights_confirmed: remixRightsConfirmed,
-        cover_engine: 'yue2_comfy',
+        cover_engine: effEngine,
         pitch_shift: remixPitch,
         restyle: effRestyle,
         voice_mode: remixVoiceMode,
@@ -2574,70 +2594,79 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                       <div>
                         <label className={labelCls}>Genre tujuan</label>
                         <select value={remixGenre} onChange={(e) => setRemixGenre(e.target.value)} className={fieldCls}>
-                          {(catalog.genres || []).map((g) => {
-                            const id = g.id || g
-                            return <option key={id} value={id}>{g.label || id}</option>
-                          })}
+                          <option value="original">🎵 Lagu Original — Pertahankan Musik Asli (Ganti Vokal Saja)</option>
+                          <optgroup label="Ubah Genre / Aransemen Baru">
+                            {(catalog.genres || []).map((g) => {
+                              const id = g.id || g
+                              return <option key={id} value={id}>{g.label || id}</option>
+                            })}
+                          </optgroup>
                         </select>
                       </div>
 
-                      <div>
-                        <div className="mb-1 flex items-center justify-between">
-                          <label className="text-[11px] font-medium text-[#8e8e99]">Preset Vibe / Arahan Aransemen (opsional)</label>
-                          {remixGenre === 'reggae' && (
-                            <span className="rounded bg-[#f59e0b]/15 px-1.5 py-0.5 text-[10px] font-medium text-[#fbbf24]">
-                              🌴 Preset Reggae
-                            </span>
-                          )}
+                      {remixGenre === 'original' ? (
+                        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-[11px] leading-relaxed text-emerald-200">
+                          ✨ <b>Mode Lagu Original:</b> Musik &amp; instrumen lagu sumber dipertahankan 100%. Hanya vokal penyanyinya yang diganti menggunakan <b>Persona</b> atau <b>File Suara</b> di langkah 3 (cocok untuk membawakan lagu A dengan suara artis/sosok pilihan Anda).
                         </div>
-                        {remixGenre === 'reggae' && (
-                          <div className="mb-2 flex flex-wrap gap-1.5">
-                            {[
-                              {
-                                id: 'boenter',
-                                label: '🌴 Reggae Santai (BOENTER)',
-                                strength: 0.4,
-                                prompt: 'warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove, muted clean offbeat guitar skank, warm Hammond B3 organ bubble, deep round sub-dub bassline, melodic brass intro hook, relaxed soulful vocal with warm reverb and subtle dub echo, silky analog highs',
-                              },
-                              {
-                                id: 'ska',
-                                label: '🎺 Reggae Ska & Brass',
-                                strength: 0.4,
-                                prompt: 'upbeat Indonesian ska-reggae cover, lively brass section (trumpet, trombone, saxophone hooks), crisp offbeat guitar skank, bouncy walking dub bassline, tight one-drop snare and rimshot',
-                              },
-                              {
-                                id: 'acoustic',
-                                label: '🌊 Reggae Akustik',
-                                strength: 0.45,
-                                prompt: 'acoustic island reggae cover, nylon and steel acoustic guitar offbeat skank, warm cajon and rimshot one-drop, deep upright dub bass, relaxed intimate vocal',
-                              },
-                              {
-                                id: 'dub',
-                                label: '🔊 Reggae Dub Bass',
-                                strength: 0.4,
-                                prompt: 'deep roots dub reggae cover, heavy warm sub-bass pocket (60-140 Hz), spacious spring reverb and analog tape echo, laid-back one-drop rimshot, warm Hammond organ bubble',
-                              },
-                            ].map((preset) => (
-                              <button
-                                key={preset.id}
-                                type="button"
-                                onClick={() => {
-                                  setRemixPrompt(preset.prompt)
-                                  setRemixStrength(preset.strength)
-                                }}
-                                className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                                  remixPrompt === preset.prompt
-                                    ? 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fbbf24]'
-                                    : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f4a] hover:text-[#f4f4f6]'
-                                }`}
-                              >
-                                {preset.label}
-                              </button>
-                            ))}
+                      ) : (
+                        <div>
+                          <div className="mb-1 flex items-center justify-between">
+                            <label className="text-[11px] font-medium text-[#8e8e99]">Preset Vibe / Arahan Aransemen (opsional)</label>
+                            {remixGenre === 'reggae' && (
+                              <span className="rounded bg-[#f59e0b]/15 px-1.5 py-0.5 text-[10px] font-medium text-[#fbbf24]">
+                                🌴 Preset Reggae
+                              </span>
+                            )}
                           </div>
-                        )}
-                        <input value={remixPrompt} onChange={(e) => setRemixPrompt(e.target.value)} placeholder="Contoh: warm roots reggae, brass intro, dub bassline, santai…" className={fieldCls} />
-                      </div>
+                          {remixGenre === 'reggae' && (
+                            <div className="mb-2 flex flex-wrap gap-1.5">
+                              {[
+                                {
+                                  id: 'boenter',
+                                  label: '🌴 Reggae Santai (BOENTER)',
+                                  strength: 0.4,
+                                  prompt: 'warm island roots pop-reggae cover (BOENTER chill reggae vibe), laid-back 68 BPM half-time one-drop drum groove, muted clean offbeat guitar skank, warm Hammond B3 organ bubble, deep round sub-dub bassline, melodic brass intro hook, relaxed soulful vocal with warm reverb and subtle dub echo, silky analog highs',
+                                },
+                                {
+                                  id: 'ska',
+                                  label: '🎺 Reggae Ska & Brass',
+                                  strength: 0.4,
+                                  prompt: 'upbeat Indonesian ska-reggae cover, lively brass section (trumpet, trombone, saxophone hooks), crisp offbeat guitar skank, bouncy walking dub bassline, tight one-drop snare and rimshot',
+                                },
+                                {
+                                  id: 'acoustic',
+                                  label: '🌊 Reggae Akustik',
+                                  strength: 0.45,
+                                  prompt: 'acoustic island reggae cover, nylon and steel acoustic guitar offbeat skank, warm cajon and rimshot one-drop, deep upright dub bass, relaxed intimate vocal',
+                                },
+                                {
+                                  id: 'dub',
+                                  label: '🔊 Reggae Dub Bass',
+                                  strength: 0.4,
+                                  prompt: 'deep roots dub reggae cover, heavy warm sub-bass pocket (60-140 Hz), spacious spring reverb and analog tape echo, laid-back one-drop rimshot, warm Hammond organ bubble',
+                                },
+                              ].map((preset) => (
+                                <button
+                                  key={preset.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setRemixPrompt(preset.prompt)
+                                    setRemixStrength(preset.strength)
+                                  }}
+                                  className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                                    remixPrompt === preset.prompt
+                                      ? 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fbbf24]'
+                                      : 'border-[#26262e] bg-[#18181d] text-[#a1a1aa] hover:border-[#3f3f4a] hover:text-[#f4f4f6]'
+                                  }`}
+                                >
+                                  {preset.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <input value={remixPrompt} onChange={(e) => setRemixPrompt(e.target.value)} placeholder="Contoh: warm roots reggae, brass intro, dub bassline, santai…" className={fieldCls} />
+                        </div>
+                      )}
                     </div>
 
                     {/* Langkah 3: Penyanyi & Persona Suara */}
@@ -2646,6 +2675,50 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         3 · Penyanyi &amp; Persona Suara (👩 Cewek / 👨 Cowok)
                       </div>
                       {renderPersonaStudioPanel({ compact: true })}
+
+                      <div className="rounded-lg border border-dashed border-[#30303a] bg-[#18181f] p-2.5">
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-white/80">
+                            🎙️ Atau Upload Suara Target Langsung (Opsional — mis. suara artis/tokoh)
+                          </span>
+                          {remixVoiceFile && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRemixVoiceFile(null)
+                                setRemixVoicePreviewUrl((u) => { if (u) URL.revokeObjectURL(u); return '' })
+                              }}
+                              className="text-[10px] font-semibold text-rose-400 hover:text-rose-300"
+                            >
+                              ✕ Hapus
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="file"
+                          accept="audio/*"
+                          onChange={(e) => {
+                            const picked = e.target.files?.[0] || null
+                            setRemixVoiceFile(picked)
+                            setRemixVoicePreviewUrl((old) => {
+                              if (old) URL.revokeObjectURL(old)
+                              return picked ? URL.createObjectURL(picked) : ''
+                            })
+                          }}
+                          className="block w-full text-[11px] text-white/60 file:mr-2 file:rounded-md file:border-0 file:bg-[#f59e0b]/20 file:px-2.5 file:py-1 file:text-[11px] file:font-semibold file:text-[#fbbf24]"
+                        />
+                        {remixVoiceFile && (
+                          <div className="mt-1.5 space-y-1">
+                            <p className="text-[10.5px] text-emerald-300">
+                              ✓ Memakai file suara: <b>{remixVoiceFile.name}</b> ({(remixVoiceFile.size / 1_048_576).toFixed(1)} MB). Musik latar otomatis dibersihkan bila ada.
+                            </p>
+                            {remixVoicePreviewUrl && (
+                              <audio controls src={remixVoicePreviewUrl} className="h-7 max-w-full" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       <div className="grid grid-cols-2 gap-2.5">
                         <div>
                           <label className={labelCls}>Vokal</label>
@@ -2655,14 +2728,30 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                             ))}
                           </select>
                         </div>
-                        <div>
-                          <label className={labelCls}>Karakter vokal</label>
-                          <select value={remixVocalStyle} onChange={(e) => setRemixVocalStyle(e.target.value)} className={fieldCls}>
-                            {VOCAL_STYLES.map((vs) => (
-                              <option key={vs.id} value={vs.id}>{vs.label}</option>
-                            ))}
-                          </select>
-                        </div>
+                        {remixGenre === 'original' ? (
+                          <div>
+                            <label className={labelCls}>Nada Vokal (Pitch)</label>
+                            <select value={remixPitch} onChange={(e) => setRemixPitch(e.target.value)} className={fieldCls}>
+                              <option value="auto">Auto (Ikuti Suara Target)</option>
+                              <option value="0">Asli (0 semitone)</option>
+                              <option value="12">+12 (+1 Oktaf: Cowok → Cewek)</option>
+                              <option value="-12">-12 (-1 Oktaf: Cewek → Cowok)</option>
+                              <option value="5">+5 semitone</option>
+                              <option value="-5">-5 semitone</option>
+                              <option value="3">+3 semitone</option>
+                              <option value="-3">-3 semitone</option>
+                            </select>
+                          </div>
+                        ) : (
+                          <div>
+                            <label className={labelCls}>Karakter vokal</label>
+                            <select value={remixVocalStyle} onChange={(e) => setRemixVocalStyle(e.target.value)} className={fieldCls}>
+                              {VOCAL_STYLES.map((vs) => (
+                                <option key={vs.id} value={vs.id}>{vs.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2673,33 +2762,37 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         <span className="font-mono text-[10px] text-white/40 group-open:rotate-180">▼</span>
                       </summary>
                       <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
-                        <div>
-                          <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
-                            <span>Kunci Melodi &amp; Ketukan ke Lagu Asli</span>
-                            <span className="font-mono tabular-nums text-[#71717a]">{Math.round(remixStrength * 100)}%</span>
-                          </div>
-                          <input type="range" min="0.1" max="0.9" step="0.1" value={remixStrength}
-                            onChange={(e) => setRemixStrength(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
-                        </div>
+                        {remixGenre !== 'original' && (
+                          <>
+                            <div>
+                              <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
+                                <span>Kunci Melodi &amp; Ketukan ke Lagu Asli</span>
+                                <span className="font-mono tabular-nums text-[#71717a]">{Math.round(remixStrength * 100)}%</span>
+                              </div>
+                              <input type="range" min="0.1" max="0.9" step="0.1" value={remixStrength}
+                                onChange={(e) => setRemixStrength(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
+                            </div>
 
-                        <div className="grid grid-cols-2 gap-2.5">
-                          <div>
-                            <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
-                              <span>Kreativitas Aransemen</span>
-                              <span className="font-mono tabular-nums text-[#71717a]">{remixWeirdness}%</span>
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <div>
+                                <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
+                                  <span>Kreativitas Aransemen</span>
+                                  <span className="font-mono tabular-nums text-[#71717a]">{remixWeirdness}%</span>
+                                </div>
+                                <input type="range" min={10} max={90} step={5} value={remixWeirdness}
+                                  onChange={(e) => setRemixWeirdness(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
+                              </div>
+                              <div>
+                                <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
+                                  <span>Kepatuhan Genre</span>
+                                  <span className="font-mono tabular-nums text-[#71717a]">{remixStyleInfluence}%</span>
+                                </div>
+                                <input type="range" min={20} max={95} step={5} value={remixStyleInfluence}
+                                  onChange={(e) => setRemixStyleInfluence(Number(e.target.value))} className="w-full accent-[#10b981]" />
+                              </div>
                             </div>
-                            <input type="range" min={10} max={90} step={5} value={remixWeirdness}
-                              onChange={(e) => setRemixWeirdness(Number(e.target.value))} className="w-full accent-[#f59e0b]" />
-                          </div>
-                          <div>
-                            <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-[#a1a1aa]">
-                              <span>Kepatuhan Genre</span>
-                              <span className="font-mono tabular-nums text-[#71717a]">{remixStyleInfluence}%</span>
-                            </div>
-                            <input type="range" min={20} max={95} step={5} value={remixStyleInfluence}
-                              onChange={(e) => setRemixStyleInfluence(Number(e.target.value))} className="w-full accent-[#10b981]" />
-                          </div>
-                        </div>
+                          </>
+                        )}
 
                         <div>
                           <div className="mb-1.5 flex items-center justify-between">
@@ -2742,6 +2835,8 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         <><Spinner className="h-3.5 w-3.5" /> Menyiapkan cover…</>
                       ) : remixTranscribing ? (
                         <><Spinner className="h-3.5 w-3.5" /> Mentranskripsi lirik ASR…</>
+                      ) : remixGenre === 'original' ? (
+                        '🎤 Buat Cover Ganti Vokal (Musik Asli)'
                       ) : (!remixLyrics.trim() && !remixAsrReviewed && !['arrangement'].includes(remixEngine)) ? (
                         <>🎙️ Ambil Lirik &amp; Review ASR</>
                       ) : (
