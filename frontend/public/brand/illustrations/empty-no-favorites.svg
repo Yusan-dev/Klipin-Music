@@ -1,8 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 440" fill="none" >
-<rect width="720" height="440" rx="32" fill="#12162E"/>
-<path d="M80 335 H640" stroke="#2A3156"/><path d="M120 365 H600" stroke="#2A3156" opacity=".5"/>
-<rect x="235" y="80" width="250" height="160" rx="24" fill="#0F1328" stroke="#FF2EAE" stroke-width="4"/>
-<path d="M325 113 L420 160 L325 210 Z" stroke="#00F0FF" stroke-width="9" stroke-linejoin="round"/><path d="M341 124 L398 160 L341 196 Z" fill="#FF2EAE"/>
-<path d="M250 260 L295 240 L340 260 L385 240 L430 260 L475 240" stroke="#FF2EAE" stroke-width="4"/>
-<text x="360" y="320" fill="#E8ECFF" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="800" text-anchor="middle" letter-spacing="0">Belum ada favorit</text><text x="360" y="351" fill="#7DF6FF" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="500" text-anchor="middle" letter-spacing="0">Simpan klip terbaik supaya mudah ditemukan.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 200" fill="none">
+  <rect x="44" y="34" width="192" height="128" rx="18" fill="#1C202C" stroke="#2D3348" stroke-width="2"/>
+  <path d="M140 132 C 140 132 102 108 102 82 C 102 68 113 58 126 58 C 133 58 138 62 140 66 C 142 62 147 58 154 58 C 167 58 178 68 178 82 C 178 108 140 132 140 132 Z" fill="#F472B6" fill-opacity="0.16" stroke="#F472B6" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="72" cy="60" r="5" fill="#818CF8"/>
+  <circle cx="208" cy="136" r="5" fill="#2DD4BF"/>
 </svg>

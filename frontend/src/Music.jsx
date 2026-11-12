@@ -146,49 +146,9 @@ const STATUS_META = {
 // Estimasi durasi saat "Auto ikuti lirik": ~4.7 dtk per baris nyanyi + intro/outro.
 const AUTO_SECONDS_PER_LINE = 4.7
 
+// Reuse centralized Lucide-backed open-source icon system across the studio.
 function StudioIcon({ name, className = 'h-3.5 w-3.5' }) {
-  const props = {
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.75,
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-    className,
-    'aria-hidden': 'true',
-  }
-  switch (name) {
-    case 'wand':
-      return <svg {...props}><path d="M15 4V2m0 14v-2M8 9h2m10 0h2m-4.2-4.2L19 3.5m-1.2 9.7L19 14.5M3 21l9-9m.2-6.2L11 4.5" /></svg>
-    case 'dice':
-      return <svg {...props}><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1" fill="currentColor" /><circle cx="15.5" cy="8.5" r="1" fill="currentColor" /><circle cx="12" cy="12" r="1" fill="currentColor" /><circle cx="8.5" cy="15.5" r="1" fill="currentColor" /><circle cx="15.5" cy="15.5" r="1" fill="currentColor" /></svg>
-    case 'sliders':
-      return <svg {...props}><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" /></svg>
-    case 'disc':
-      return <svg {...props}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="2.5" /><path d="M12 3a9 9 0 0 1 9 9" /></svg>
-    case 'mic':
-      return <svg {...props}><rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10a7 7 0 0 0 14 0M12 17v4m-4 0h8" /></svg>
-    case 'repeat':
-      return <svg {...props}><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>
-    case 'folder':
-      return <svg {...props}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
-    case 'chevron':
-      return <svg {...props}><polyline points="6 9 12 15 18 9" /></svg>
-    case 'trash':
-      return <svg {...props}><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m5 0V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2" /></svg>
-    case 'share':
-      return <svg {...props}><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
-    case 'extend':
-      return <svg {...props}><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
-    case 'link':
-      return <svg {...props}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
-    case 'upload':
-      return <svg {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-    case 'refresh':
-      return <svg {...props}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
-    default:
-      return <svg {...props}><circle cx="12" cy="12" r="8" /></svg>
-  }
+  return <Icon name={name} className={className} />
 }
 
 // Flat hairline disclosure section for Create Dock (no nested boxes inside boxes)
@@ -2386,29 +2346,31 @@ export default function Music({ user, authChecked = false, onSignIn }) {
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-navy text-white">
-      {/* Studio workspace sub-bar — non-sticky so we never stack multiple fixed bars */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border-soft bg-navy-1/75 px-3.5 py-2 sm:px-5">
-        <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Bagian studio musik">
+      {/* Envato-style Studio category sub-bar — crisp pills with open-source Lucide icons */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border-soft bg-navy-1/75 px-3.5 py-2.5 sm:px-5">
+        <nav className="flex items-center gap-1.5 overflow-x-auto" aria-label="Bagian studio musik">
           {[
-            { id: 'create', label: 'Buat Lagu', action: () => { setStudioTab('create'); setMobilePane('create'); window.location.hash = '#/music' } },
-            { id: 'cover', label: 'Cover', action: () => { setStudioTab('cover'); setMobilePane('create'); window.location.hash = '#/cover' } },
+            { id: 'create', icon: 'music', label: 'Buat Lagu', action: () => { setStudioTab('create'); setMobilePane('create'); window.location.hash = '#/music' } },
+            { id: 'cover', icon: 'mic', label: 'Cover', action: () => { setStudioTab('cover'); setMobilePane('create'); window.location.hash = '#/cover' } },
             {
               id: 'studio',
-              label: '🎚️ Studio EQ',
+              icon: 'sliders',
+              label: 'Studio EQ',
               action: () => {
                 window.location.hash = job?.job_id ? `#/studio/${job.job_id}` : '#/studio'
               },
             },
-            { id: 'history', label: `Library${historyList.length ? ` · ${historyList.length}` : ''}`, action: () => { setStudioTab('history'); setMobilePane('songs'); window.location.hash = '#/history' } },
+            { id: 'history', icon: 'listMusic', label: `Library${historyList.length ? ` · ${historyList.length}` : ''}`, action: () => { setStudioTab('history'); setMobilePane('songs'); window.location.hash = '#/history' } },
           ].map((tab) => (
             <button key={tab.id} type="button" onClick={tab.action}
               aria-pressed={studioTab === tab.id}
-              className={`touch-hit shrink-0 rounded-lg px-3 py-1.5 text-[13px] font-medium transition ${
+              className={`touch-hit inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-[13px] font-semibold transition ${
                 studioTab === tab.id
-                  ? 'bg-cyan/15 text-cyan ring-1 ring-cyan/35'
-                  : 'text-white/60 hover:bg-white/5 hover:text-white'
+                  ? 'bg-cyan text-white-solid shadow-sm'
+                  : 'border border-transparent text-white/65 hover:border-border hover:bg-navy-2 hover:text-white'
               }`}>
-              {tab.label}
+              <Icon name={tab.icon} className="h-3.5 w-3.5 shrink-0" />
+              <span>{tab.label}</span>
             </button>
           ))}
         </nav>

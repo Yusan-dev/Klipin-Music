@@ -72,7 +72,7 @@ function SidebarBody({ route, collapsed, onNavigate, onToggle }) {
         { key: 'home', route: 'home', label: L.home, path: '#/', icon: 'dashboard' },
         { key: 'clip', route: 'clip', label: L.clip, path: '#/clip', icon: 'plus' },
         { key: 'music', route: 'music', label: L.music, path: '#/music', icon: 'music' },
-        { key: 'studio', route: 'studio', label: L.studio, path: '#/studio', icon: 'library' },
+        { key: 'studio', route: 'studio', label: L.studio, path: '#/studio', icon: 'sliders' },
         { key: 'library', route: 'library', label: L.library, path: '#/library', icon: 'library' },
         { key: 'ideas', route: 'ideas', label: L.ideas, path: '#/ideas', icon: 'ideas' },
         { key: 'favorites', route: 'favorites', label: L.favorites, path: '#/favorites', icon: 'favorites' },
@@ -140,15 +140,15 @@ function SidebarBody({ route, collapsed, onNavigate, onToggle }) {
                       collapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5'
                     } ${
                       active
-                        ? 'bg-cyan/15 text-cyan ring-1 ring-cyan/35'
-                        : 'text-white/65 hover:bg-white/5 hover:text-white'
+                        ? 'bg-cyan text-white-solid shadow-sm'
+                        : 'text-white/70 hover:bg-navy-2 hover:text-white'
                     }`}
                   >
-                    <span className={`shrink-0 ${active ? 'text-cyan' : 'text-white/50 group-hover:text-white'}`}>
+                    <span className={`shrink-0 ${active ? 'text-white-solid' : 'text-white/55 group-hover:text-white'}`}>
                       <Icon name={it.icon} className="h-5 w-5" />
                     </span>
                     {!collapsed && <span className="flex-1 text-sm font-medium">{it.label}</span>}
-                    {!collapsed && active && <StatusDot tone="brand" className="!m-0" />}
+                    {!collapsed && active && <span className="h-1.5 w-1.5 rounded-full bg-white-solid/90" aria-hidden="true" />}
                   </a>
                 )
               })}

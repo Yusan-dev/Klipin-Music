@@ -20,10 +20,10 @@ export function StatusDot({ tone = 'idle', pulse = false, className = '' }) {
 
 export function Panel({ label, dot, right, children, className = '', bodyClassName = '' }) {
   return (
-    <section className={`card-chrome overflow-hidden rounded-xl ${className}`}>
+    <section className={`card-chrome overflow-hidden rounded-2xl ${className}`}>
       {(label || right) && (
-        <header className="flex items-center justify-between gap-3 border-b border-border/50 bg-navy-2/60 px-4 py-2.5">
-          <div className="flex min-w-0 items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-soft/80">
+        <header className="flex items-center justify-between gap-3 border-b border-border/70 bg-navy-1/60 px-4 py-2.5">
+          <div className="flex min-w-0 items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-soft">
             {dot && <StatusDot tone={dot} />}
             <span className="truncate">{label}</span>
           </div>
@@ -73,11 +73,11 @@ export function VUMeter({ className = '', bars = 5 }) {
 
 const VARIANTS = {
   primary:
-    'bg-cyan text-navy font-semibold hover:bg-cyan-soft shadow-sm disabled:opacity-40 disabled:hover:bg-cyan',
+    'bg-cyan text-white-solid font-semibold hover:bg-brand shadow-sm disabled:opacity-40 disabled:hover:bg-cyan',
   cyan:
-    'bg-cyan text-navy font-semibold hover:bg-cyan-soft shadow-sm disabled:opacity-40 disabled:hover:bg-cyan',
+    'bg-cyan text-white-solid font-semibold hover:bg-brand shadow-sm disabled:opacity-40 disabled:hover:bg-cyan',
   ghost:
-    'border border-border bg-navy-2/70 text-white/85 hover:border-cyan/60 hover:text-white disabled:opacity-40',
+    'border border-border bg-navy-2 text-white/85 hover:border-cyan/60 hover:text-white disabled:opacity-40',
   danger:
     'border border-danger/40 bg-danger/10 text-danger hover:bg-danger/20 disabled:opacity-40',
   magenta:
@@ -93,27 +93,34 @@ export function Button({ variant = 'primary', size = 'md', className = '', ...pr
   return (
     <button
       {...props}
-      className={`touch-hit inline-flex items-center justify-center gap-2 rounded-lg font-medium tracking-tight transition-all ${sizes[size]} ${VARIANTS[variant]} ${className}`}
+      className={`touch-hit inline-flex items-center justify-center gap-2 rounded-xl font-medium tracking-tight transition-all ${sizes[size]} ${VARIANTS[variant]} ${className}`}
     />
   )
 }
 
 export function Logo({ size = 28, variant = 'mark' }) {
-  // variant: 'mark' (icon-only, sidebar rail) | 'horizontal' (expanded sidebar)
-  const src =
-    variant === 'horizontal'
-      ? '/brand/logos/logo-horizontal-dark.svg'
-      : '/brand/logos/logo-mark.svg'
-  const h = variant === 'horizontal' ? Math.max(28, size * 1.1) : size
+  // Adaptive Studio Logo: renders crisp Indigo/Coral monogram + theme-aware wordmark
   return (
-    <img
-      src={src}
-      alt="Klip-in"
-      height={h}
-      width={variant === 'horizontal' ? 'auto' : h}
-      className="block select-none"
-      draggable={false}
-    />
+    <span className="inline-flex items-center gap-2.5 select-none">
+      <img
+        src="/brand/logos/logo-mark.svg"
+        alt="Klip-in"
+        height={size}
+        width={size}
+        className="block shrink-0 rounded-lg"
+        draggable={false}
+      />
+      {variant === 'horizontal' && (
+        <span className="flex items-center gap-1.5 leading-none">
+          <span className="font-display text-[17px] font-extrabold tracking-tight text-white">
+            klipin
+          </span>
+          <span className="rounded-md bg-cyan/15 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-cyan">
+            music
+          </span>
+        </span>
+      )}
+    </span>
   )
 }
 
