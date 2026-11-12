@@ -1161,7 +1161,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
       setCurrentDraft(draft)
       setDraftTitle(draft.title || '')
       setLyrics(draft.lyrics || '')
-      setDraftSyncRef.current = `${draft.title || ''}\n${draft.lyrics || ''}`
+      draftSyncRef.current = `${draft.title || ''}\n${draft.lyrics || ''}`
       setDraftInfo('Draft dimuat.')
     } catch (e) {
       setDraftInfo(`Gagal membuka draft: ${e.message}`)
@@ -1186,7 +1186,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         : await createMusicLyricsDraft(payload)
       setCurrentDraft(draft)
       setDraftTitle(draft.title || '')
-      setDraftSyncRef.current = `${draft.title || ''}\n${draft.lyrics || ''}`
+      draftSyncRef.current = `${draft.title || ''}\n${draft.lyrics || ''}`
       setDraftInfo(isExisting ? 'Draft tersimpan.' : 'Draft baru dibuat.')
       await loadDrafts()
     } catch (e) {
@@ -1203,7 +1203,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
       await deleteMusicLyricsDraft(currentDraft.draft_id)
       setCurrentDraft(null)
       setDraftTitle('')
-      setDraftSyncRef.current = ''
+      draftSyncRef.current = ''
       setDraftInfo('Draft dihapus.')
       await loadDrafts()
     } catch (e) {
@@ -1216,7 +1216,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const newLyricDraft = () => {
     setCurrentDraft(null)
     setDraftTitle('')
-    setDraftSyncRef.current = ''
+    draftSyncRef.current = ''
     setDraftInfo('Draft baru - mengetik akan menyimpan otomatis setelah draft dibuat.')
   }
 
@@ -2579,7 +2579,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               <HummingRecorder
                 user={user}
                 onSignIn={onSignIn}
-                genres={genres}
+                genres={catalog.genres || []}
                 onCreated={(res) => {
                   const firstId = res?.job_ids?.[0] || res?.job_id || ''
                   if (res?.group_id) setGroupId(res.group_id)

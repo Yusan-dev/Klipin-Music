@@ -1000,7 +1000,7 @@ function ClipCard({ clip, jobId, options, checked, onToggle, titles, onTitles, o
             <div className="mt-1.5 space-y-1 rounded-md border border-border bg-navy-2/40 p-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono text-[9px] uppercase tracking-wider text-white/35">
-                  {capEdit ? <><Icon name="edit" className="h-3 w-3" /> Edit subtitle</> : `${captionLines.length} baris`}
+                  {capEdit ? <><Icon name="edit" className="h-3 w-3" /> Edit subtitle</> : `${capLines.length} baris`}
                 </span>
                 {!capBusy && (
                   <button
@@ -1064,10 +1064,10 @@ function ClipCard({ clip, jobId, options, checked, onToggle, titles, onTitles, o
                   )}
                 </div>
               )}
-              {!capBusy && !capEdit && captionLines.length === 0 && (
+              {!capBusy && !capEdit && capLines.length === 0 && (
                 <div className="font-mono text-[10px] text-white/35">tidak ada teks dalam rentang klip</div>
               )}
-              {!capBusy && !capEdit && captionLines.map((s, i) => (
+              {!capBusy && !capEdit && capLines.map((s, i) => (
                 <div key={i} className="font-mono text-[10px] leading-relaxed text-white/65">
                   <span className="text-cyan-soft">[{fmtTs(s.start)} → {fmtTs(s.end)}]</span> {(s.text || '').trim()}
                 </div>
