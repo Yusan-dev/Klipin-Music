@@ -533,6 +533,77 @@ export function shareMusic(jobId, isPublic) {
   return postJSON(`/music/share/${jobId}`, { public: isPublic })
 }
 
+export function getPublicMusicShare(jobId) {
+  return fetch(`${API}/music/share/${encodeURIComponent(jobId)}`, {
+    headers: authHeaders(),
+    cache: 'no-store',
+  }).then(handle)
+}
+
+export function translateMusicLyrics(payload) {
+  return postJSON('/music/translate-lyrics', payload)
+}
+
+export function replaceMusicSection(jobId, payload) {
+  return postJSON(`/music/replace-section/${encodeURIComponent(jobId)}`, payload)
+}
+
+export function mixMusicStems(jobId, payload) {
+  return postJSON(`/music/mix-stems/${encodeURIComponent(jobId)}`, payload)
+}
+
+export function getMusicStemsZip(jobId) {
+  return fetch(`${API}/music/stems/${encodeURIComponent(jobId)}/zip`, {
+    headers: authHeaders(),
+    cache: 'no-store',
+  }).then(handle)
+}
+
+export function hummingToSongMusic(formData) {
+  return fetch(`${API}/music/humming`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData,
+  }).then(handle)
+}
+
+export function exportMusicVideo(jobId, payload = { ratio: '9:16', show_waveform: true }) {
+  return postJSON(`/music/export-video/${encodeURIComponent(jobId)}`, payload)
+}
+
+export function listMusicPlaylists() {
+  return fetch(`${API}/music/playlists`, { headers: authHeaders(), cache: 'no-store' }).then(handle)
+}
+
+export function createMusicPlaylist(payload) {
+  return postJSON('/music/playlists', payload)
+}
+
+export function getMusicPlaylist(playlistId) {
+  return fetch(`${API}/music/playlists/${encodeURIComponent(playlistId)}`, {
+    headers: authHeaders(),
+    cache: 'no-store',
+  }).then(handle)
+}
+
+export function deleteMusicPlaylist(playlistId) {
+  return fetch(`${API}/music/playlists/${encodeURIComponent(playlistId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  }).then(handle)
+}
+
+export function addMusicPlaylistItem(playlistId, jobId) {
+  return postJSON(`/music/playlists/${encodeURIComponent(playlistId)}/items`, { job_id: jobId })
+}
+
+export function removeMusicPlaylistItem(playlistId, jobId) {
+  return fetch(
+    `${API}/music/playlists/${encodeURIComponent(playlistId)}/items/${encodeURIComponent(jobId)}`,
+    { method: 'DELETE', headers: authHeaders() },
+  ).then(handle)
+}
+
 export function getMusicFeed(limit = 20) {
   return fetch(`${API}/music/feed?limit=${limit}`).then(handle)
 }

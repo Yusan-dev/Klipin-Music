@@ -11,6 +11,7 @@ import {
 import Icon from './components/Icon.jsx'
 import MusicWaveform from './components/MusicWaveform.jsx'
 import StudioEqualizer from './components/StudioEqualizer.jsx'
+import WorkstationProTools from './components/WorkstationProTools.jsx'
 import { Spinner } from './components/ui.jsx'
 
 function formatTime(value) {
@@ -731,6 +732,22 @@ export default function StudioWorkstation({
             onApplyServerEq={localFile ? null : handleServerEq}
             compact={false}
           />
+
+          {/* Pro Workstation: 4-Stem Mixer, Replace Section, Lyric Video MP4 & Share */}
+          {!localFile && selectedJob && (
+            <WorkstationProTools
+              job={selectedJob}
+              duration={effectiveDuration}
+              navigate={navigate}
+              onJobUpdated={(updated) => {
+                if (updated?.job_id) {
+                  setSelectedJob(updated)
+                  setJobs((prev) => prev.map((j) => (j.job_id === updated.job_id ? updated : j)))
+                  setMediaBust(Date.now())
+                }
+              }}
+            />
+          )}
         </section>
 
         {/* Right Pane: Synchronized Lyrics & Studio Mastering Specs */}

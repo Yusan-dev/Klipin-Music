@@ -1962,6 +1962,10 @@ class MusicCoverSongRequest(BaseModel):
     vocal_gender: str = ""            # kosong = ikut induk
     ref_strength: float = 0.45        # 0.1-0.9: keseimbangan identitas vs aransemennya
     take_count: int = 2
+    target_language: str = ""         # kosong = bahasa induk; e.g. 'ja', 'en', 'ko'
+    lyrics_override: str = ""         # opsional lirik terjemahan
+    dub_preserve_music: bool = False  # pertahankan instrumen asli sumber
+    dub_preserve_voice: bool = False  # pertahankan warna suara penyanyi asli
 
 
 class MusicRemixUrlRequest(BaseModel):
@@ -2118,11 +2122,28 @@ async def music_cover_song(job_id: str, req: MusicCoverSongRequest,
     if not parent_lyrics and not parent_instrumental:
         raise HTTPException(status_code=400,
                             detail="Lirik induk belum tersedia; cover faithful dibatalkan.")
+    target_lang = (req.target_language or "").strip().lower()
+    effective_lyrics = (req.lyrics_override or "").strip() or parent_lyrics
+    is_dub = bool(target_lang or req.dub_preserve_music or req.dub_preserve_voice)
+    if target_lang and not (req.lyrics_override or "").strip() and effective_lyrics and not parent_instrumental:
+        try:
+            from music_studio_pro import translate_lyrics_matched
+            tr = await asyncio.to_thread(
+                translate_lyrics_matched,
+                effective_lyrics,
+                target_lang,
+                genre,
+                str(parent.get("title") or ""),
+                int(parent.get("bpm") or 0),
+            )
+            effective_lyrics = tr["translated_lyrics"]
+        except Exception:  # noqa: BLE001
+            pass
     base_spec = {
-        "title": f"{parent.get('title') or 'Cover'} (reimagine)",
+        "title": f"{parent.get('title') or 'Cover'} ({target_lang.upper() + ' Dub' if target_lang else 'reimagine'})",
         "prompt": (req.prompt or "").strip() or parent.get("prompt", ""),
-        "lyrics": parent_lyrics,
-        "genre": genre, "language": parent.get("language", "id"),
+        "lyrics": effective_lyrics,
+        "genre": genre, "language": target_lang or parent.get("language", "id"),
         "language_override": True, "vocal_gender": (req.vocal_gender or "").strip() or parent.get("vocal_gender", "auto"),
         "provider": "mulacover" if mulacover_enabled else "ace-step",
         "cover_engine": "mulacover" if mulacover_enabled else "ace-step",
@@ -2132,6 +2153,9 @@ async def music_cover_song(job_id: str, req: MusicCoverSongRequest,
         "persona_id": "", "style_tags": "", "parent_job_id": job_id,
         "ref_audio_path": ref_path, "ref_strength": strength,
         "cover_mode": True, "_lyrics_locked": True,
+        "dub_mode": is_dub,
+        "dub_preserve_music": bool(req.dub_preserve_music),
+        "dub_preserve_voice": bool(req.dub_preserve_voice),
     }
     grouped = _create_music_group(base_spec, _user["google_sub"],
                                   max(1, min(int(req.take_count or 2), 2)), "cover",
@@ -2183,6 +2207,11 @@ async def music_cover_upload(
     eq_compressor: float = Form(0.0),
     eq_stereo_width: float = Form(1.0),
     eq_reverb: float = Form(0.0),
+    eq_target_lufs: float = Form(-14.0),
+    eq_clarity: float = Form(0.0),
+    target_language: str = Form("id"),
+    dub_preserve_music: bool = Form(False),
+    dub_preserve_voice: bool = Form(False),
     _user: dict = Depends(require_user),
 ):
     """Cover faithful dari lagu yang diunggah sendiri (file + lirik).
@@ -2334,12 +2363,18 @@ async def music_cover_upload(
             gender = str(persona["vocal_gender"]).strip().lower()
     persona_tags = (persona or {}).get("style_tags", "").strip()
     combined_style_tags = ", ".join(p for p in ((prompt or "").strip(), persona_tags) if p)
-    cover_title = f"{stem} — Cover Vokal" if genre == "original" else f"{stem} — cover {genre}"
+    cover_lang = (target_language or "id").strip().lower() or "id"
+    is_dub = bool(dub_preserve_music or dub_preserve_voice or cover_lang != "id")
+    cover_title = (
+        f"{stem} — {cover_lang.upper()} Dub"
+        if is_dub
+        else (f"{stem} — Cover Vokal" if genre == "original" else f"{stem} — cover {genre}")
+    )
     base_spec = {
         "title": cover_title, "prompt": custom_prompt,
         "cover_style_prompt": combined_style_tags,
         "lyrics": text, "lyrics_timed": timed_lines,
-        "genre": genre, "language": "id", "language_override": True,
+        "genre": genre, "language": cover_lang, "language_override": True,
         "vocal_gender": gender, "provider": engine, "cover_engine": engine,
         "duration": duration, "seed": base_seed, "full_song": True,
         "take_mode": "final", "instrumental": False, "bpm": 0, "music_key": "",
@@ -2353,6 +2388,9 @@ async def music_cover_upload(
         "voice_pitch_auto": eff_pitch_auto,
         "keep_original_vocal": False if genre == "original" else bool(keep_original_vocal or engine == "arrangement"),
         "cover_mode": True, "_lyrics_locked": True,
+        "dub_mode": is_dub,
+        "dub_preserve_music": bool(dub_preserve_music),
+        "dub_preserve_voice": bool(dub_preserve_voice),
         "lyrics_extraction_source": lyrics_source,
         "cover_upload_name": file.filename or "",
         "eq_preset": (eq_preset or "").strip(),
@@ -2361,6 +2399,8 @@ async def music_cover_upload(
         "eq_compressor": eq_compressor,
         "eq_stereo_width": eq_stereo_width,
         "eq_reverb": eq_reverb,
+        "eq_target_lufs": eq_target_lufs,
+        "eq_clarity": eq_clarity,
         "vocal_style": (vocal_style or "").strip(),
         "weirdness": int(weirdness if weirdness is not None else 50),
         "style_influence": int(style_influence if style_influence is not None else 50),
@@ -2713,6 +2753,81 @@ async def music_share(job_id: str, req: MusicShareRequest, _user: dict = Depends
     return {"job_id": job_id, "is_public": bool(job.get("is_public"))}
 
 
+@app.get("/api/music/share/{job_id}")
+async def music_share_detail(job_id: str, request: Request):
+    """Public share page detail + remix lineage (owner can preview unlisted links)."""
+    token = _bearer_token(request)
+    viewer = auth.user_from_token(token) if token else None
+    viewer_id = viewer["google_sub"] if viewer else None
+    data = db.get_public_music_share(job_id, viewer_user_id=viewer_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Lagu tidak ditemukan atau bersifat privat.")
+    return data
+
+
+class MusicPlaylistCreateRequest(BaseModel):
+    title: str = ""
+    description: str = ""
+    is_public: bool = False
+
+
+class MusicPlaylistItemRequest(BaseModel):
+    job_id: str = ""
+
+
+@app.get("/api/music/playlists")
+async def music_list_playlists(_user: dict = Depends(require_user)):
+    return {"playlists": db.list_music_playlists(_user["google_sub"])}
+
+
+@app.post("/api/music/playlists")
+async def music_create_playlist(req: MusicPlaylistCreateRequest, _user: dict = Depends(require_user)):
+    if not (req.title or "").strip():
+        raise HTTPException(status_code=400, detail="Nama playlist tidak boleh kosong.")
+    return db.create_music_playlist(
+        _user["google_sub"], req.title, req.description, bool(req.is_public)
+    )
+
+
+@app.get("/api/music/playlists/{playlist_id}")
+async def music_get_playlist(playlist_id: str, request: Request):
+    token = _bearer_token(request)
+    viewer = auth.user_from_token(token) if token else None
+    viewer_id = viewer["google_sub"] if viewer else None
+    pl = db.get_music_playlist(playlist_id, viewer_id)
+    if not pl:
+        raise HTTPException(status_code=404, detail="Playlist tidak ditemukan.")
+    return pl
+
+
+@app.delete("/api/music/playlists/{playlist_id}")
+async def music_delete_playlist(playlist_id: str, _user: dict = Depends(require_user)):
+    ok = db.delete_music_playlist(playlist_id, _user["google_sub"])
+    if not ok:
+        raise HTTPException(status_code=404, detail="Playlist tidak ditemukan.")
+    return {"deleted": True, "playlist_id": playlist_id}
+
+
+@app.post("/api/music/playlists/{playlist_id}/items")
+async def music_add_playlist_item(playlist_id: str, req: MusicPlaylistItemRequest,
+                                  _user: dict = Depends(require_user)):
+    if not (req.job_id or "").strip():
+        raise HTTPException(status_code=400, detail="job_id wajib diisi.")
+    updated = db.add_music_playlist_item(playlist_id, _user["google_sub"], req.job_id.strip())
+    if not updated:
+        raise HTTPException(status_code=404, detail="Playlist atau lagu tidak ditemukan.")
+    return updated
+
+
+@app.delete("/api/music/playlists/{playlist_id}/items/{job_id}")
+async def music_remove_playlist_item(playlist_id: str, job_id: str,
+                                     _user: dict = Depends(require_user)):
+    updated = db.remove_music_playlist_item(playlist_id, _user["google_sub"], job_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Playlist tidak ditemukan.")
+    return updated
+
+
 @app.get("/api/music/feed")
 async def music_feed(limit: int = 30):
     """Feed publik (tanpa login): lagu yang dibagikan pemiliknya."""
@@ -3034,6 +3149,26 @@ async def music_status(job_id: str, _user: dict = Depends(require_user)):
     return _reconcile_finished_music_job(job)
 
 
+def _resolve_completed_music_job(job_id: str, user_id: str) -> tuple[dict, Path, Path]:
+    """Validate ownership/completion and locate the primary audio artifact on disk."""
+    job = db.get_music_job(job_id, user_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Lagu tidak ditemukan.")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Lagu belum selesai dirender.")
+    job_dir = Path(OUTPUT_DIR) / job_id
+    audio_name = Path(job.get("audio_path") or "song.mp3").name.split("?")[0] or "song.mp3"
+    audio = job_dir / audio_name
+    if not audio.exists():
+        for candidate in ("song.mp3", "song.m4a", "song.wav", "audio.mp3"):
+            if (job_dir / candidate).exists():
+                audio = job_dir / candidate
+                break
+    if not audio.exists():
+        raise HTTPException(status_code=404, detail="File audio lagu tidak ditemukan di server.")
+    return job, job_dir, audio
+
+
 class MusicEqualizeRequest(BaseModel):
     preset: str = "flat"
     bands: list[float] = []
@@ -3041,8 +3176,42 @@ class MusicEqualizeRequest(BaseModel):
     compressor: float = 0.0
     stereo_width: float = 1.0
     reverb: float = 0.0
+    target_lufs: float = -14.0
+    clarity: float = 0.0
     normalize_lufs: bool = True
     reset: bool = False
+
+
+class MusicTranslateLyricsRequest(BaseModel):
+    lyrics: str = ""
+    target_language: str = "ja"
+    genre: str = "pop"
+    title: str = ""
+    bpm: int = 0
+
+
+class MusicReplaceSectionRequest(BaseModel):
+    start_sec: float = 0.0
+    end_sec: float = 10.0
+    lyrics: str = ""
+    prompt: str = ""
+    crossfade_sec: float = 0.25
+    target_lufs: float = -14.0
+    replacement_b64: str = ""
+
+
+class MusicMixStemsRequest(BaseModel):
+    gains: dict[str, float] = {}
+    mutes: dict[str, bool] = {}
+    solos: list[str] = []
+    pitch_semitones: int = 0
+    tempo: float = 1.0
+    target_lufs: float = -14.0
+
+
+class MusicExportVideoRequest(BaseModel):
+    ratio: str = "9:16"
+    show_waveform: bool = True
 
 
 @app.get("/api/music/eq-presets")
@@ -3062,22 +3231,7 @@ async def music_equalize_job(job_id: str, req: MusicEqualizeRequest,
     """Render and permanently save 8-band Studio Equalizer & Mastering to a completed song."""
     from music import apply_studio_eq
 
-    job = db.get_music_job(job_id, _user["google_sub"])
-    if not job:
-        raise HTTPException(status_code=404, detail="Lagu tidak ditemukan.")
-    if job.get("status") != "completed":
-        raise HTTPException(status_code=400, detail="Lagu belum selesai dirender.")
-
-    job_dir = Path(OUTPUT_DIR) / job_id
-    audio_name = Path(job.get("audio_path") or "song.mp3").name.split("?")[0] or "song.mp3"
-    audio = job_dir / audio_name
-    if not audio.exists():
-        for candidate in ("song.mp3", "song.m4a", "song.wav", "audio.mp3"):
-            if (job_dir / candidate).exists():
-                audio = job_dir / candidate
-                break
-    if not audio.exists():
-        raise HTTPException(status_code=404, detail="File audio lagu tidak ditemukan di server.")
+    job, job_dir, audio = _resolve_completed_music_job(job_id, _user["google_sub"])
 
     try:
         eq_result = await asyncio.to_thread(
@@ -3109,6 +3263,272 @@ async def music_equalize_job(job_id: str, req: MusicEqualizeRequest,
         metadata=json.dumps(metadata, ensure_ascii=False),
     )
     return _reconcile_finished_music_job(updated or job)
+
+
+@app.post("/api/music/translate-lyrics")
+async def music_translate_lyrics(req: MusicTranslateLyricsRequest,
+                                 _user: dict = Depends(require_user)):
+    """Translate lyrics into target language matching syllable/mora phrasing & sections."""
+    from music_studio_pro import translate_lyrics_matched
+    try:
+        return await asyncio.to_thread(
+            translate_lyrics_matched,
+            req.lyrics,
+            req.target_language,
+            req.genre,
+            req.title,
+            req.bpm,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"Gagal menerjemahkan lirik: {str(exc)[:300]}") from exc
+
+
+@app.post("/api/music/replace-section/{job_id}")
+async def music_replace_section(job_id: str, req: MusicReplaceSectionRequest,
+                                _user: dict = Depends(require_user)):
+    """Regenerate or splice an updated section [start_sec, end_sec] seamlessly into a track."""
+    import base64 as _b64
+    from music_studio_pro import replace_audio_section
+
+    job, job_dir, audio = _resolve_completed_music_job(job_id, _user["google_sub"])
+    seg_dur = float(req.end_sec or 0) - float(req.start_sec or 0)
+    if seg_dur < 1.0 or seg_dur > 120.0:
+        raise HTTPException(status_code=400, detail="Rentang waktu section harus antara 1s dan 120s.")
+
+    rep_dir = job_dir / "_replace_gen"
+    rep_dir.mkdir(parents=True, exist_ok=True)
+    rep_file = rep_dir / "segment.mp3"
+
+    try:
+        if (req.replacement_b64 or "").strip():
+            raw = _b64.b64decode(req.replacement_b64.strip())
+            if len(raw) <= 1024:
+                raise ValueError("Data audio pengganti kosong.")
+            rep_file.write_bytes(raw)
+        else:
+            from music import generate_music, _create_modal_only
+            seg_spec = {
+                "title": f"{job.get('title') or 'Track'} (section)",
+                "prompt": (req.prompt or "").strip() or job.get("prompt") or "seamless continuation",
+                "lyrics": (req.lyrics or "").strip() or "[Verse]\nLa la la",
+                "genre": job.get("genre") or "pop",
+                "language": job.get("language") or "id",
+                "vocal_gender": job.get("vocal_gender") or "auto",
+                "provider": "auto",
+                "duration": max(8.0, min(60.0, seg_dur + 2.0)),
+                "full_song": False,
+                "ref_audio_path": str(audio),
+                "cover_mode": bool(_create_modal_only()),
+            }
+            res = await asyncio.to_thread(generate_music, seg_spec, rep_dir)
+            gen_path = rep_dir / Path(res.get("audio_path") or "song.mp3").name
+            if not gen_path.is_file():
+                gen_path = next(rep_dir.glob("song.*"), rep_file)
+            if gen_path.is_file() and gen_path != rep_file:
+                rep_file.write_bytes(gen_path.read_bytes())
+
+        splice_res = await asyncio.to_thread(
+            replace_audio_section,
+            audio,
+            job_dir,
+            req.start_sec,
+            req.end_sec,
+            rep_file,
+            req.crossfade_sec,
+            req.target_lufs,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Replace section gagal: {str(exc)[:350]}") from exc
+    finally:
+        shutil.rmtree(rep_dir, ignore_errors=True)
+
+    metadata = dict(job.get("metadata") or {})
+    edits = list(metadata.get("section_edits") or [])
+    edits.append({**splice_res, "lyrics": (req.lyrics or "")[:300], "at": round(time.time(), 1)})
+    metadata["section_edits"] = edits[-10:]
+    updated = db.update_music_job(
+        job_id,
+        _user["google_sub"],
+        duration=splice_res.get("duration") or job.get("duration"),
+        metadata=json.dumps(metadata, ensure_ascii=False),
+    )
+    return {**_reconcile_finished_music_job(updated or job), "replace_section": splice_res}
+
+
+@app.post("/api/music/mix-stems/{job_id}")
+async def music_mix_stems(job_id: str, req: MusicMixStemsRequest,
+                          _user: dict = Depends(require_user)):
+    """Render an interactive multi-track stem mixdown (+ pitch/tempo) to the song file."""
+    from music_studio_pro import mix_stems_track
+
+    job, job_dir, audio = _resolve_completed_music_job(job_id, _user["google_sub"])
+    try:
+        mix_res = await asyncio.to_thread(
+            mix_stems_track,
+            audio,
+            job_dir,
+            req.gains,
+            req.mutes,
+            req.solos,
+            req.pitch_semitones,
+            req.tempo,
+            req.target_lufs,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Mixdown stems gagal: {str(exc)[:350]}") from exc
+
+    metadata = dict(job.get("metadata") or {})
+    metadata["stems"] = mix_res["stems"]
+    metadata["stem_mix"] = {
+        "gains": mix_res["gains"],
+        "pitch_semitones": mix_res["pitch_semitones"],
+        "tempo": mix_res["tempo"],
+        "target_lufs": mix_res["target_lufs"],
+    }
+    updated = db.update_music_job(
+        job_id,
+        _user["google_sub"],
+        duration=mix_res.get("duration") or job.get("duration"),
+        metadata=json.dumps(metadata, ensure_ascii=False),
+    )
+    return {**_reconcile_finished_music_job(updated or job), "mix_result": mix_res}
+
+
+@app.get("/api/music/stems/{job_id}/zip")
+async def music_download_stems_zip(job_id: str, _user: dict = Depends(require_user)):
+    """Ensure 4 stems exist, bundle into stems_bundle.zip, and return signed download URL."""
+    from music_studio_pro import zip_stems_bundle
+
+    job, job_dir, audio = _resolve_completed_music_job(job_id, _user["google_sub"])
+    try:
+        zip_path = await asyncio.to_thread(zip_stems_bundle, job_dir, audio)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Gagal membuat ZIP stems: {str(exc)[:300]}") from exc
+    return {
+        "job_id": job_id,
+        "zip_url": f"/videos/{job_id}/stems/{zip_path.name}",
+        "filename": f"{(job.get('title') or job_id)[:40]}-stems.zip",
+    }
+
+
+@app.post("/api/music/humming")
+async def music_humming_to_song(
+    file: UploadFile = File(...),
+    title: str = Form("Humming Melodi"),
+    prompt: str = Form("modern studio arrangement"),
+    lyrics: str = Form(""),
+    genre: str = Form("pop"),
+    language: str = Form("id"),
+    vocal_gender: str = Form("auto"),
+    duration: float = Form(90.0),
+    restyle_strength: float = Form(0.55),
+    instrumental: bool = Form(False),
+    take_count: int = Form(2),
+    _user: dict = Depends(require_user),
+):
+    """Feature #4: Turn recorded humming / microphone melody into a full studio song."""
+    from music import (
+        GENRES, _mulacover_modal_enabled, _ace_modal_enabled,
+        _diffrhythm_modal_enabled,
+    )
+
+    raw = await file.read()
+    if len(raw) < 1024:
+        raise HTTPException(status_code=400, detail="Rekaman senandung terlalu pendek atau kosong.")
+    if len(raw) > 15_000_000:
+        raise HTTPException(status_code=400, detail="File rekaman maksimal 15 MB.")
+
+    genre_ids = {str(g.get("id")) for g in GENRES}
+    eff_genre = genre if genre in genre_ids else "pop"
+
+    job_dir = OUTPUT_DIR / ("music_" + _new_job_id())
+    job_dir.mkdir(parents=True, exist_ok=True)
+    suffix = (Path(file.filename or "hum.webm").suffix or ".webm").lower()
+    raw_hum = job_dir / f"hum_raw{suffix}"
+    raw_hum.write_bytes(raw)
+    ref_mp3 = job_dir / "hum_ref.mp3"
+
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if ffmpeg_bin:
+        conv = await asyncio.to_thread(
+            subprocess.run,
+            [
+                ffmpeg_bin, "-y", "-v", "error", "-i", str(raw_hum),
+                "-vn", "-ar", "44100", "-ac", "2",
+                "-af", "highpass=f=75,loudnorm=I=-16:TP=-1.5:LRA=11",
+                "-c:a", "libmp3lame", "-b:a", "192k", str(ref_mp3),
+            ],
+            capture_output=True, text=True, timeout=60,
+        )
+        if conv.returncode != 0 or not ref_mp3.is_file():
+            raise HTTPException(status_code=400, detail="Rekaman audio senandung gagal dikonversi.")
+    else:
+        ref_mp3 = raw_hum
+
+    if _mulacover_modal_enabled():
+        engine = "mulacover"
+    elif _ace_modal_enabled():
+        engine = "ace-step"
+    elif _diffrhythm_modal_enabled():
+        engine = "diffrhythm"
+    else:
+        engine = "heartmula"
+
+    eff_dur = max(20.0, min(float(duration or 90.0), 300.0))
+    eff_lyrics = (lyrics or "").strip() or ("" if instrumental else "[Verse]\nHumming melody inspired track")
+    base_spec = {
+        "title": (title or "Humming Melodi").strip()[:80],
+        "prompt": f"{(prompt or '').strip() or 'studio arrangement'}, based on hummed melody guide",
+        "lyrics": eff_lyrics,
+        "genre": eff_genre,
+        "language": (language or "id").strip().lower() or "id",
+        "language_override": True,
+        "vocal_gender": (vocal_gender or "auto").strip().lower(),
+        "provider": engine,
+        "cover_engine": engine,
+        "duration": eff_dur,
+        "seed": int(time.time()) % (2 ** 31 - 1),
+        "full_song": True,
+        "take_mode": "final",
+        "instrumental": bool(instrumental),
+        "bpm": 0,
+        "music_key": "",
+        "ref_audio_path": str(ref_mp3),
+        "ref_strength": max(0.2, min(0.85, float(restyle_strength or 0.55))),
+        "cover_mode": engine in ("mulacover", "ace-step"),
+        "humming_mode": True,
+    }
+    grouped = _create_music_group(
+        base_spec, _user["google_sub"], max(1, min(int(take_count or 1), 2)), "create", user=_user
+    )
+    return {**grouped, "humming_mode": True, "cover_engine": engine}
+
+
+@app.post("/api/music/export-video/{job_id}")
+async def music_export_lyric_video(job_id: str, req: MusicExportVideoRequest,
+                                   _user: dict = Depends(require_user)):
+    """Feature #5: Render synced MP4 lyric video (9:16 TikTok/Reels or 16:9 YouTube)."""
+    from music_studio_pro import render_lyric_video_mp4
+
+    job, job_dir, audio = _resolve_completed_music_job(job_id, _user["google_sub"])
+    try:
+        vid = await asyncio.to_thread(
+            render_lyric_video_mp4,
+            job, job_dir, audio, req.ratio, bool(req.show_waveform),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Export video lirik gagal: {str(exc)[:350]}") from exc
+
+    metadata = dict(job.get("metadata") or {})
+    videos = dict(metadata.get("lyric_videos") or {})
+    videos[vid["ratio"]] = vid["path"]
+    metadata["lyric_videos"] = videos
+    db.update_music_job(job_id, _user["google_sub"], metadata=json.dumps(metadata, ensure_ascii=False))
+    return {"job_id": job_id, **vid}
 
 
 @app.post("/api/music/align/{job_id}")

@@ -20,6 +20,7 @@ const Favorites = lazy(() => import('./Favorites.jsx'))
 const Settings = lazy(() => import('./Settings.jsx'))
 const Music = lazy(() => import('./Music.jsx'))
 const StudioWorkstation = lazy(() => import('./StudioWorkstation.jsx'))
+const ShareSong = lazy(() => import('./ShareSong.jsx'))
 
 function PageLoader() {
   return (
@@ -245,6 +246,9 @@ export default function App() {
                 initialJobId={route.jobId}
                 navigate={navigate}
               />
+            )}
+            {route.name === 'song' && (
+              <ShareSong jobId={route.jobId} navigate={navigate} />
             )}
           </Suspense>
         </Boundary>

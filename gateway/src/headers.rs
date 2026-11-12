@@ -101,7 +101,7 @@ pub fn decorate_json(req_headers: &HeaderMap, resp_headers: &mut HeaderMap) {
     resp_headers
         .entry(HeaderName::from_static("permissions-policy"))
         .or_insert(HeaderValue::from_static(
-            "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+            "camera=(), microphone=(self), geolocation=(), payment=(), usb=()",
         ));
 }
 

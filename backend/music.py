@@ -3601,6 +3601,14 @@ def normalize_studio_eq_spec(raw: dict | None = None) -> dict:
         raw.get("reverb", raw.get("eq_reverb")),
         float(base["reverb"]), 0.0, 0.8,
     )
+    target_lufs = _clamp_float(
+        raw.get("target_lufs", raw.get("eq_target_lufs")),
+        -14.0, -18.0, -7.0,
+    )
+    clarity = _clamp_float(
+        raw.get("clarity", raw.get("eq_clarity")),
+        0.0, 0.0, 1.0,
+    )
     normalize_lufs = bool(raw.get("normalize_lufs", True))
     reset = bool(raw.get("reset", False))
     active = bool(
@@ -3611,6 +3619,8 @@ def normalize_studio_eq_spec(raw: dict | None = None) -> dict:
             or compressor >= 0.05
             or abs(stereo_width - 1.0) >= 0.03
             or reverb >= 0.03
+            or clarity >= 0.05
+            or (normalize_lufs and abs(target_lufs - (-14.0)) >= 0.4)
         )
     )
     return {
@@ -3621,6 +3631,8 @@ def normalize_studio_eq_spec(raw: dict | None = None) -> dict:
         "compressor": 0.0 if reset else compressor,
         "stereo_width": 1.0 if reset else stereo_width,
         "reverb": 0.0 if reset else reverb,
+        "target_lufs": -14.0 if reset else target_lufs,
+        "clarity": 0.0 if reset else clarity,
         "normalize_lufs": normalize_lufs,
         "reset": reset,
         "active": active,
@@ -3696,8 +3708,20 @@ def apply_studio_eq(src: Path, eq_spec: dict | None = None, log=None) -> dict:
         decay = round(0.08 + rev * 0.24, 3)
         filters.append(f"aecho=0.82:0.86:{delay_ms}:{decay}")
 
+    clarity = float(spec.get("clarity") or 0.0)
+    if clarity >= 0.05:
+        mud_cut = -2.4 * clarity
+        pres_boost = 2.8 * clarity
+        air_boost = 2.2 * clarity
+        filters.extend([
+            f"equalizer=f=320:width_type=q:width=1.35:g={mud_cut:.2f}",
+            f"equalizer=f=3600:width_type=q:width=1.1:g={pres_boost:.2f}",
+            f"equalizer=f=10000:width_type=q:width=0.9:g={air_boost:.2f}",
+        ])
+
+    target_lufs = float(spec.get("target_lufs") or -14.0)
     if spec["normalize_lufs"]:
-        filters.append("loudnorm=I=-14:TP=-1.5:LRA=11")
+        filters.append(f"loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11")
     else:
         filters.append("alimiter=limit=0.96")
 
@@ -3728,7 +3752,10 @@ def apply_studio_eq(src: Path, eq_spec: dict | None = None, log=None) -> dict:
             ]
             if abs(spec["preamp_db"]) >= 0.1:
                 fallback_filters.insert(0, f"volume={spec['preamp_db']:.2f}dB")
-            fallback_filters.append("loudnorm=I=-14:TP=-1.5:LRA=11")
+            if spec["normalize_lufs"]:
+                fallback_filters.append(f"loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11")
+            else:
+                fallback_filters.append("alimiter=limit=0.96")
             cmd_fb = [
                 ffmpeg, "-y", "-v", "error", "-i", str(source_input),
                 "-map_metadata", "-1", "-af", ",".join(fallback_filters),
@@ -3833,20 +3860,10 @@ def export_wav_lufs(src: Path, job_dir: Path, log=None) -> str:
 
 
 def separate_stems(src: Path, job_dir: Path, log=None) -> dict:
-    """Demucs 4-stem (vocal/drums/bass/other). {} bila tidak tersedia."""
-    out_dir = job_dir / "stems"
+    """Separate audio into 4 stems (vocals/drums/bass/other) via Modal GPU, Demucs, or FFmpeg."""
     try:
-        r = subprocess.run(
-            ["python", "-m", "demucs", "--two-stems=vocals", "-o", str(out_dir), str(src)],
-            capture_output=True, text=True, timeout=1200)
-        if r.returncode != 0:
-            log and log(f"⚠️ Stems gagal: {r.stderr[-300:]}")
-            return {}
-        files = sorted(out_dir.rglob("*.wav"))
-        if not files:
-            return {}
-        log and log(f"🎚️ Stems siap: {len(files)} file")
-        return {"dir": "stems", "files": [f.name for f in files[:8]]}
+        from music_studio_pro import ensure_4stems
+        return ensure_4stems(src, job_dir, log=log)
     except Exception as exc:  # noqa: BLE001
         log and log(f"⚠️ Stems tidak tersedia ({exc})")
         return {}
@@ -4363,8 +4380,37 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
     # SUDAH disintesis langsung ke dalam track secara native stereo 48kHz dengan artikulasi lirik sempurna.
     # Menjalankan Demucs + Seed-VC di atas track generatif menyebabkan artikulasi cadel/pelo,
     # vokal ganda/campuran akibat kebocoran Demucs, dan runtuhnya stereo menjadi mono.
+    dub_meta: dict = {}
+    dub_preserve_music = bool(spec.get("dub_preserve_music"))
+    dub_preserve_voice = bool(spec.get("dub_preserve_voice"))
+    src_ref_for_dub = Path(str(spec.get("ref_audio_path") or "").strip())
+    if (
+        used != "fallback-bgm"
+        and (spec.get("dub_mode") or dub_preserve_music or dub_preserve_voice)
+        and src_ref_for_dub.is_file()
+    ):
+        try:
+            from music_studio_pro import apply_crosslingual_dub
+            dub_meta = apply_crosslingual_dub(
+                src_ref_for_dub,
+                output,
+                job_dir,
+                duration,
+                preserve_music=dub_preserve_music,
+                preserve_voice=dub_preserve_voice,
+                pitch_shift=int(spec.get("voice_pitch_shift") or 0),
+                auto_f0=bool(spec.get("voice_pitch_auto", True)),
+                log=log,
+            )
+            if dub_meta.get("voice_converted"):
+                voice_conversion = {"status": "applied", "method": "dub-seed-vc-original-timbre"}
+        except Exception as exc:  # noqa: BLE001
+            log and log(f"⚠️ Post-mix dubbing dilewati ({exc})")
+            dub_meta = {"applied": False, "error": str(exc)[:300]}
+
     run_voice_conversion = bool(
-        reference_path
+        not dub_meta.get("voice_converted")
+        and reference_path
         and (cover_engine == "voice" or spec.get("force_voice_conversion"))
         and not spec.get("_voice_restyle_done")
     )
@@ -4421,7 +4467,10 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
     if used != "fallback-bgm":
         master_audio(output, log=log, genre=info['id'])
     studio_eq_result = None
-    if spec.get("studio_eq") or spec.get("eq_preset") or spec.get("eq_bands"):
+    if (
+        spec.get("studio_eq") or spec.get("eq_preset") or spec.get("eq_bands")
+        or spec.get("eq_target_lufs") or spec.get("eq_clarity")
+    ):
         try:
             studio_eq_result = apply_studio_eq(
                 output,
@@ -4432,6 +4481,8 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
                     "compressor": spec.get("eq_compressor", 0.0),
                     "stereo_width": spec.get("eq_stereo_width", 1.0),
                     "reverb": spec.get("eq_reverb", 0.0),
+                    "target_lufs": spec.get("eq_target_lufs", -14.0),
+                    "clarity": spec.get("eq_clarity", 0.0),
                 },
                 log=log,
             )
@@ -4495,6 +4546,7 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         "downbeats": beat_grid.get("downbeats", []),
         "beat_source": beat_grid.get("source", ""),
         "gpu_sec": round(spec.get("_gpu_sec") or 0.0, 1),
+        "dub_meta": dub_meta or None,
         "seed": spec.get("seed"), "lora_id": spec.get("lora_id") or "",
         "take_mode": spec.get("take_mode", "final"),
         "persona_id": spec.get("persona_id") or "",

@@ -259,6 +259,27 @@ CREATE TABLE IF NOT EXISTS music_lyric_drafts (
 );
 CREATE INDEX IF NOT EXISTS idx_music_lyric_drafts_user
   ON music_lyric_drafts(user_id, updated_at DESC);
+CREATE TABLE IF NOT EXISTS music_playlists (
+  playlist_id TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  title       TEXT NOT NULL DEFAULT '',
+  description TEXT DEFAULT '',
+  cover_path  TEXT DEFAULT '',
+  is_public   INTEGER DEFAULT 0,
+  created_at  REAL,
+  updated_at  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_music_playlists_user
+  ON music_playlists(user_id, updated_at DESC);
+CREATE TABLE IF NOT EXISTS music_playlist_items (
+  playlist_id TEXT NOT NULL,
+  job_id      TEXT NOT NULL,
+  position    INTEGER DEFAULT 0,
+  added_at    REAL,
+  PRIMARY KEY (playlist_id, job_id)
+);
+CREATE INDEX IF NOT EXISTS idx_music_playlist_items_order
+  ON music_playlist_items(playlist_id, position ASC, added_at ASC);
 CREATE TABLE IF NOT EXISTS payments (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    TEXT NOT NULL,
@@ -1732,6 +1753,18 @@ def set_music_public(job_id: str, user_id: str, public: bool) -> dict | None:
     return get_music_job(job_id, user_id)
 
 
+def _sanitize_public_music_job(row) -> dict:
+    """Strip private fields and parse JSON metadata for public music responses."""
+    job = dict(row)
+    try:
+        job["metadata"] = json.loads(job.get("metadata") or "{}")
+    except (TypeError, ValueError):
+        job["metadata"] = {}
+    job.pop("user_id", None)
+    job.pop("error", None)
+    return job
+
+
 def public_music_feed(limit: int = 30) -> list:
     """Feed publik: hanya field aman (tanpa user_id)."""
     with _lock, _connect() as conn:
@@ -1740,17 +1773,183 @@ def public_music_feed(limit: int = 30) -> list:
             "ORDER BY created_at DESC LIMIT ?",
             (max(1, min(int(limit), 50)),),
         ).fetchall()
-    out = []
-    for r in rows:
-        job = dict(r)
-        try:
-            job["metadata"] = json.loads(job.get("metadata") or "{}")
-        except (TypeError, ValueError):
-            job["metadata"] = {}
-        job.pop("user_id", None)
-        job.pop("error", None)
-        out.append(job)
-    return out
+    return [_sanitize_public_music_job(r) for r in rows]
+
+
+def get_public_music_share(job_id: str, viewer_user_id: str | None = None) -> dict | None:
+    """Return a completed song's public share view + remix tree (owner may view unlisted)."""
+    with _lock, _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM music_jobs WHERE job_id = ? AND status = 'completed'",
+            (job_id,),
+        ).fetchone()
+        if not row:
+            return None
+        if not bool(row["is_public"]) and (not viewer_user_id or row["user_id"] != viewer_user_id):
+            return None
+        song = _sanitize_public_music_job(row)
+        parent_summary = None
+        parent_id = (row["parent_job_id"] or "").strip()
+        if parent_id:
+            p_row = conn.execute(
+                "SELECT job_id, title, genre, language, cover_path, audio_path, duration, is_public, user_id "
+                "FROM music_jobs WHERE job_id = ? AND status = 'completed'",
+                (parent_id,),
+            ).fetchone()
+            if p_row and (bool(p_row["is_public"]) or (viewer_user_id and p_row["user_id"] == viewer_user_id)):
+                parent_summary = {
+                    "job_id": p_row["job_id"],
+                    "title": p_row["title"],
+                    "genre": p_row["genre"],
+                    "language": p_row["language"],
+                    "cover_path": p_row["cover_path"],
+                    "audio_path": p_row["audio_path"],
+                    "duration": p_row["duration"],
+                }
+        remix_rows = conn.execute(
+            "SELECT job_id, title, genre, language, cover_path, audio_path, duration, created_at "
+            "FROM music_jobs WHERE parent_job_id = ? AND status = 'completed' AND is_public = 1 "
+            "ORDER BY created_at DESC LIMIT 12",
+            (job_id,),
+        ).fetchall()
+    return {
+        "song": song,
+        "parent": parent_summary,
+        "remixes": [dict(r) for r in remix_rows],
+    }
+
+
+def list_music_playlists(user_id: str) -> list[dict]:
+    """List a user's playlists with track counts and ordered job IDs."""
+    with _lock, _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM music_playlists WHERE user_id = ? ORDER BY updated_at DESC",
+            (user_id,),
+        ).fetchall()
+        playlists = []
+        for r in rows:
+            pl = dict(r)
+            pl["is_public"] = bool(pl.get("is_public"))
+            item_rows = conn.execute(
+                "SELECT i.job_id, i.position, j.title, j.genre, j.duration, j.cover_path, j.audio_path "
+                "FROM music_playlist_items i "
+                "LEFT JOIN music_jobs j ON j.job_id = i.job_id "
+                "WHERE i.playlist_id = ? ORDER BY i.position ASC, i.added_at ASC",
+                (pl["playlist_id"],),
+            ).fetchall()
+            pl["items"] = [dict(it) for it in item_rows]
+            pl["item_count"] = len(pl["items"])
+            if not pl.get("cover_path"):
+                first_cover = next((it.get("cover_path") for it in pl["items"] if it.get("cover_path")), "")
+                pl["cover_path"] = first_cover or ""
+            playlists.append(pl)
+    return playlists
+
+
+def create_music_playlist(user_id: str, title: str, description: str = "",
+                          is_public: bool = False) -> dict:
+    import secrets as _secrets
+    pid = "pl_" + _secrets.token_hex(6)
+    now = time.time()
+    clean_title = (title or "").strip()[:120] or "Playlist Baru"
+    clean_desc = (description or "").strip()[:500]
+    with _lock, _connect() as conn:
+        conn.execute(
+            "INSERT INTO music_playlists (playlist_id, user_id, title, description, is_public, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (pid, user_id, clean_title, clean_desc, 1 if is_public else 0, now, now),
+        )
+    return get_music_playlist(pid, user_id) or {}
+
+
+def get_music_playlist(playlist_id: str, user_id: str | None = None) -> dict | None:
+    with _lock, _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM music_playlists WHERE playlist_id = ?",
+            (playlist_id,),
+        ).fetchone()
+        if not row:
+            return None
+        if not bool(row["is_public"]) and (not user_id or row["user_id"] != user_id):
+            return None
+        pl = dict(row)
+        pl["is_public"] = bool(pl.get("is_public"))
+        items = conn.execute(
+            "SELECT i.position, i.added_at, j.* FROM music_playlist_items i "
+            "JOIN music_jobs j ON j.job_id = i.job_id "
+            "WHERE i.playlist_id = ? AND j.status = 'completed' "
+            "ORDER BY i.position ASC, i.added_at ASC",
+            (playlist_id,),
+        ).fetchall()
+    pl["songs"] = [_sanitize_public_music_job(it) for it in items]
+    pl["item_count"] = len(pl["songs"])
+    pl.pop("user_id", None)
+    return pl
+
+
+def delete_music_playlist(playlist_id: str, user_id: str) -> bool:
+    with _lock, _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM music_playlists WHERE playlist_id = ? AND user_id = ?",
+            (playlist_id, user_id),
+        )
+        if cur.rowcount:
+            conn.execute("DELETE FROM music_playlist_items WHERE playlist_id = ?", (playlist_id,))
+            return True
+    return False
+
+
+def add_music_playlist_item(playlist_id: str, user_id: str, job_id: str) -> dict | None:
+    with _lock, _connect() as conn:
+        pl = conn.execute(
+            "SELECT playlist_id FROM music_playlists WHERE playlist_id = ? AND user_id = ?",
+            (playlist_id, user_id),
+        ).fetchone()
+        if not pl:
+            return None
+        song = conn.execute(
+            "SELECT job_id, cover_path FROM music_jobs WHERE job_id = ? AND status = 'completed' "
+            "AND (user_id = ? OR is_public = 1)",
+            (job_id, user_id),
+        ).fetchone()
+        if not song:
+            return None
+        max_pos = conn.execute(
+            "SELECT COALESCE(MAX(position), -1) FROM music_playlist_items WHERE playlist_id = ?",
+            (playlist_id,),
+        ).fetchone()[0]
+        now = time.time()
+        conn.execute(
+            "INSERT OR IGNORE INTO music_playlist_items (playlist_id, job_id, position, added_at) "
+            "VALUES (?, ?, ?, ?)",
+            (playlist_id, job_id, int(max_pos) + 1, now),
+        )
+        conn.execute(
+            "UPDATE music_playlists SET updated_at = ?, "
+            "cover_path = CASE WHEN cover_path = '' THEN ? ELSE cover_path END "
+            "WHERE playlist_id = ?",
+            (now, song["cover_path"] or "", playlist_id),
+        )
+    return get_music_playlist(playlist_id, user_id)
+
+
+def remove_music_playlist_item(playlist_id: str, user_id: str, job_id: str) -> dict | None:
+    with _lock, _connect() as conn:
+        pl = conn.execute(
+            "SELECT playlist_id FROM music_playlists WHERE playlist_id = ? AND user_id = ?",
+            (playlist_id, user_id),
+        ).fetchone()
+        if not pl:
+            return None
+        conn.execute(
+            "DELETE FROM music_playlist_items WHERE playlist_id = ? AND job_id = ?",
+            (playlist_id, job_id),
+        )
+        conn.execute(
+            "UPDATE music_playlists SET updated_at = ? WHERE playlist_id = ?",
+            (time.time(), playlist_id),
+        )
+    return get_music_playlist(playlist_id, user_id)
 
 
 # ── Music personas (style & voice-signature lock) ─────────────────────

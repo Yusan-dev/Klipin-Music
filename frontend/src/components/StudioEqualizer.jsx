@@ -166,6 +166,8 @@ export default function StudioEqualizer({
   const [compressor, setCompressor] = useState(() => Number(initialEq?.compressor) || 0)
   const [stereoWidth, setStereoWidth] = useState(() => Number(initialEq?.stereo_width) || 1.0)
   const [reverb, setReverb] = useState(() => Number(initialEq?.reverb) || 0)
+  const [targetLufs, setTargetLufs] = useState(() => Number(initialEq?.target_lufs) || -14)
+  const [clarity, setClarity] = useState(() => Number(initialEq?.clarity) || 0)
   const [normalizeLufs, setNormalizeLufs] = useState(true)
   const [applying, setApplying] = useState(false)
   const [statusMsg, setStatusMsg] = useState('')
@@ -186,6 +188,8 @@ export default function StudioEqualizer({
       if (initialEq.compressor !== undefined) setCompressor(Number(initialEq.compressor) || 0)
       if (initialEq.stereo_width !== undefined) setStereoWidth(Number(initialEq.stereo_width) || 1.0)
       if (initialEq.reverb !== undefined) setReverb(Number(initialEq.reverb) || 0)
+      if (initialEq.target_lufs !== undefined) setTargetLufs(Number(initialEq.target_lufs) || -14)
+      if (initialEq.clarity !== undefined) setClarity(Number(initialEq.clarity) || 0)
     }
     setStatusMsg('')
     setErrorMsg('')
@@ -217,7 +221,11 @@ export default function StudioEqualizer({
       graph.preGain.gain.setTargetAtTime(linearGain, now, 0.02)
 
       graph.filters.forEach((f, idx) => {
-        const targetGain = enabled ? Number(bands[idx] || 0) : 0
+        let targetGain = enabled ? Number(bands[idx] || 0) : 0
+        if (enabled && clarity >= 0.05) {
+          if (idx === 2) targetGain -= 2.0 * clarity // reduce 400Hz mud
+          if (idx === 4 || idx === 5) targetGain += 2.6 * clarity // boost 2.4k-5k presence
+        }
         f.gain.setTargetAtTime(targetGain, now, 0.02)
       })
 
@@ -238,7 +246,7 @@ export default function StudioEqualizer({
     return () => {
       audioEl.removeEventListener('play', onPlay)
     }
-  }, [audioRef, bands, preampDb, compressor, enabled, jobId])
+  }, [audioRef, bands, preampDb, compressor, clarity, enabled, jobId])
 
   // Draw live FFT spectrum + EQ Frequency Response Curve on Canvas
   useEffect(() => {
@@ -385,6 +393,7 @@ export default function StudioEqualizer({
     setCompressor(found.compressor)
     setStereoWidth(found.stereo_width)
     setReverb(found.reverb)
+    setClarity(0)
     setStatusMsg('')
     setErrorMsg('')
     emitChange({
@@ -394,6 +403,8 @@ export default function StudioEqualizer({
       compressor: found.compressor,
       stereo_width: found.stereo_width,
       reverb: found.reverb,
+      target_lufs: targetLufs,
+      clarity: 0,
       normalize_lufs: normalizeLufs,
     })
   }
@@ -411,6 +422,8 @@ export default function StudioEqualizer({
       compressor,
       stereo_width: stereoWidth,
       reverb,
+      target_lufs: targetLufs,
+      clarity,
       normalize_lufs: normalizeLufs,
     })
   }
@@ -429,6 +442,8 @@ export default function StudioEqualizer({
             compressor: 0,
             stereo_width: 1.0,
             reverb: 0,
+            target_lufs: -14,
+            clarity: 0,
             normalize_lufs: true,
             reset: true,
           }
@@ -439,6 +454,8 @@ export default function StudioEqualizer({
             compressor,
             stereo_width: stereoWidth,
             reverb,
+            target_lufs: targetLufs,
+            clarity,
             normalize_lufs: normalizeLufs,
             reset: false,
           }
@@ -880,9 +897,108 @@ export default function StudioEqualizer({
                 normalize_lufs: normalizeLufs,
               })
             }}
-            style={{ width: '100%', accentColor: '#f59e0b' }}
+            style={{ width: '100%', accentColor: '#f59e0b', colorScheme: 'light dark' }}
           />
         </label>
+
+        <label
+          style={{
+            background: 'rgba(255,255,255,0.03)',
+            padding: '7px 9px',
+            borderRadius: 8,
+            border: '1px solid rgba(255,255,255,0.06)',
+            fontSize: 11,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ color: '#94a3b8' }}>Remaster Clarity</span>
+            <strong style={{ fontFamily: 'monospace', color: '#e2e8f0' }}>
+              {Math.round(clarity * 100)}%
+            </strong>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={clarity}
+            disabled={!enabled}
+            onChange={(e) => {
+              const v = Number(e.target.value)
+              setClarity(v)
+              emitChange({
+                preset,
+                bands,
+                preamp_db: preampDb,
+                compressor,
+                stereo_width: stereoWidth,
+                reverb,
+                target_lufs: targetLufs,
+                clarity: v,
+                normalize_lufs: normalizeLufs,
+              })
+            }}
+            style={{ width: '100%', accentColor: '#10b981', colorScheme: 'light dark' }}
+          />
+        </label>
+      </div>
+
+      {/* Platform Loudness Target (Feature #6) */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 6,
+          padding: '6px 9px',
+          marginBottom: 8,
+          borderRadius: 8,
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          fontSize: 11,
+        }}
+      >
+        <span style={{ color: '#94a3b8', fontWeight: 600 }}>Target Loudness Master:</span>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {[
+            { val: -16, label: '-16 LUFS (Apple/Akustik)' },
+            { val: -14, label: '-14 LUFS (Spotify/YT)' },
+            { val: -11, label: '-11 LUFS (Pop Loud)' },
+            { val: -9, label: '-9 LUFS (Club/Hot)' },
+          ].map((opt) => (
+            <button
+              key={opt.val}
+              type="button"
+              onClick={() => {
+                setTargetLufs(opt.val)
+                setNormalizeLufs(true)
+                emitChange({
+                  preset,
+                  bands,
+                  preamp_db: preampDb,
+                  compressor,
+                  stereo_width: stereoWidth,
+                  reverb,
+                  target_lufs: opt.val,
+                  clarity,
+                  normalize_lufs: true,
+                })
+              }}
+              style={{
+                fontSize: 10,
+                padding: '3px 8px',
+                borderRadius: 6,
+                border: targetLufs === opt.val ? '1px solid #22d3ee' : '1px solid rgba(148,163,184,0.25)',
+                background: targetLufs === opt.val ? 'rgba(34,211,238,0.18)' : 'rgba(15,23,42,0.5)',
+                color: targetLufs === opt.val ? '#67e8f9' : '#cbd5e1',
+                cursor: 'pointer',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Server-Side Permanent Bake Controls when inspecting a completed song */}
@@ -912,8 +1028,9 @@ export default function StudioEqualizer({
               type="checkbox"
               checked={normalizeLufs}
               onChange={(e) => setNormalizeLufs(e.target.checked)}
+              style={{ accentColor: '#22d3ee', colorScheme: 'light dark' }}
             />
-            <span>Kunci standar streaming (-14 LUFS True Peak)</span>
+            <span>Kunci standar streaming ({targetLufs} LUFS True Peak)</span>
           </label>
 
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

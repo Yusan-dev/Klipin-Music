@@ -4,6 +4,8 @@ import Icon from './components/Icon.jsx'
 import VoiceDesigner, { PrivateVoicePlayer } from './components/VoiceDesigner.jsx'
 import CoverCreate from './CoverCreate.jsx'
 import StudioEqualizer, { STUDIO_EQ_PRESETS } from './components/StudioEqualizer.jsx'
+import HummingRecorder from './components/HummingRecorder.jsx'
+import PlaylistStudioBar from './components/PlaylistStudioBar.jsx'
 import { Spinner } from './components/ui.jsx'
 import {
   addMusicProjectRevision,
@@ -2444,18 +2446,19 @@ export default function Music({ user, authChecked = false, onSignIn }) {
             {studioTab !== 'history' ? (
               <div className="inline-flex rounded-lg border border-border-soft bg-navy-1 p-0.5" role="group" aria-label="Mode pembuatan lagu">
                 {[
-                  { id: 'custom', label: 'Custom', on: studioTab !== 'cover' && !simpleMode, go: () => { setStudioTab('create'); setSimpleMode(false) } },
-                  { id: 'simple', label: 'Simple', on: studioTab !== 'cover' && simpleMode, go: () => { setStudioTab('create'); setSimpleMode(true) } },
+                  { id: 'custom', label: 'Custom', on: studioTab === 'create' && !simpleMode, go: () => { setStudioTab('create'); setSimpleMode(false) } },
+                  { id: 'simple', label: 'Simple', on: studioTab === 'create' && simpleMode, go: () => { setStudioTab('create'); setSimpleMode(true) } },
                   { id: 'cover', label: 'Cover', on: studioTab === 'cover', go: () => setStudioTab('cover') },
+                  { id: 'hum', label: '🎤 Senandung', on: studioTab === 'hum', go: () => setStudioTab('hum') },
                 ].map((m) => (
                   <button key={m.id} type="button" onClick={m.go} aria-pressed={m.on}
-                    className={`rounded-md px-3 py-1 text-[12px] font-medium transition ${m.on ? 'bg-navy-2 text-white shadow-sm' : 'text-white/65 hover:text-white'}`}>
+                    className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition ${m.on ? 'bg-navy-2 text-white shadow-sm' : 'text-white/65 hover:text-white'}`}>
                     {m.label}
                   </button>
                 ))}
               </div>
             ) : <span />}
-            {studioTab !== 'cover' && (
+            {studioTab === 'create' && (
               <label className="flex cursor-pointer items-center gap-2 text-[12px] text-white/75">
                 Instrumental
                 <button type="button" role="switch" aria-checked={instrumental} onClick={() => setInstrumental((v) => !v)}
@@ -2505,6 +2508,20 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               <p className="text-[12px] leading-5 text-white/65">
                 Tulis ide lagu lalu tekan Create. Pindah ke Custom untuk lirik, persona, bahasa ganda, dan kontrol lanjutan.
               </p>
+            )}
+
+            {studioTab === 'hum' && (
+              <HummingRecorder
+                user={user}
+                onSignIn={onSignIn}
+                genres={genres}
+                onCreated={(res) => {
+                  const firstId = res?.job_ids?.[0] || res?.job_id || ''
+                  if (res?.group_id) setGroupId(res.group_id)
+                  if (firstId) setJob({ job_id: firstId, status: 'queued' })
+                  setMobilePane('songs')
+                }}
+              />
             )}
 
             {studioTab === 'cover' && (
@@ -2904,7 +2921,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               </div>
             )}
 
-            {studioTab !== 'cover' && studioTab !== 'history' && (<>
+            {studioTab === 'create' && (<>
 
             <Group title="1 · Judul, Ide & Lirik Lagu" subtitle="Tulis judul, ide cerita, dan lirik lagu" defaultOpen>
             <div className="block">
@@ -3554,6 +3571,16 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                             )}
                           </div>
                           <div className="flex shrink-0 items-center gap-1.5">
+                            {entry.status === 'completed' && (
+                              <a
+                                href={`#/song/${entry.job_id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                title="Buka halaman Share publik lagu"
+                                className="inline-flex items-center gap-1 rounded border border-border bg-navy-1 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-white/80 transition hover:border-cyan/50 hover:text-cyan"
+                              >
+                                🔗 Share
+                              </a>
+                            )}
                             {entry.status === 'completed' && entry.audio_path && (
                               <a
                                 href={resolveDownloadAsset(entry.audio_path, `${entry.title || entry.job_id || 'klipin-music'}.mp3`)}
@@ -3585,6 +3612,16 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               </div>
             )}
           </div>
+
+          {/* Playlists & Album Studio (Feature #7) */}
+          <PlaylistStudioBar
+            user={user}
+            selectedJob={job}
+            onSelectSongJob={(targetJobId) => {
+              const found = historyList.find((item) => item.job_id === targetJobId)
+              if (found) openHistoryJob(found)
+            }}
+          />
 
           {/* Inspire Bar */}
           <div className="mt-4 rounded-xl border border-border bg-navy-1 p-3.5">

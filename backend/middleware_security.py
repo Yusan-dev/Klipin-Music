@@ -90,7 +90,7 @@ async def security_headers_middleware(request: Request, call_next):
         )
         h.setdefault(
             "Permissions-Policy",
-            "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+            "camera=(), microphone=(self), geolocation=(), payment=(), usb=()",
         )
     else:
         response.headers.setdefault("X-Content-Type-Options", "nosniff")

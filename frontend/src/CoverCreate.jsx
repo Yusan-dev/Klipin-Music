@@ -11,6 +11,7 @@ import {
   resolveDownloadAsset,
   resolveMediaAsset,
   streamMusicGroup,
+  translateMusicLyrics,
 } from './api.js'
 import { getLocale } from './i18n.js'
 
@@ -130,6 +131,10 @@ export default function CoverCreate({
   const [weirdness, setWeirdness] = useState(45)
   const [styleInfluence, setStyleInfluence] = useState(70)
   const [lyrics, setLyrics] = useState('')
+  const [targetLanguage, setTargetLanguage] = useState('id')
+  const [dubPreserveMusic, setDubPreserveMusic] = useState(true)
+  const [dubPreserveVoice, setDubPreserveVoice] = useState(true)
+  const [translatingLyrics, setTranslatingLyrics] = useState(false)
   const [stylePrompt, setStylePrompt] = useState('')
   const [seed, setSeed] = useState('')
   const [takes, setTakes] = useState(1)
@@ -310,6 +315,11 @@ export default function CoverCreate({
       if (eqConfig?.compressor !== undefined) fd.append('eq_compressor', String(eqConfig.compressor))
       if (eqConfig?.stereo_width !== undefined) fd.append('eq_stereo_width', String(eqConfig.stereo_width))
       if (eqConfig?.reverb !== undefined) fd.append('eq_reverb', String(eqConfig.reverb))
+      if (eqConfig?.target_lufs !== undefined) fd.append('eq_target_lufs', String(eqConfig.target_lufs))
+      if (eqConfig?.clarity !== undefined) fd.append('eq_clarity', String(eqConfig.clarity))
+      fd.append('target_language', targetLanguage || 'id')
+      fd.append('dub_preserve_music', targetLanguage !== 'id' && dubPreserveMusic ? 'true' : 'false')
+      fd.append('dub_preserve_voice', targetLanguage !== 'id' && dubPreserveVoice ? 'true' : 'false')
       const res = await coverUploadMusic(fd)
       setGroupId(res.group_id || '')
     } catch (e) {
@@ -386,14 +396,87 @@ export default function CoverCreate({
           </button>
 
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-white/70">{L.lyrics}</label>
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <label htmlFor="cover-lyrics-input" className="text-[11px] font-medium text-white/70">{L.lyrics}</label>
+              <button
+                type="button"
+                disabled={translatingLyrics || busy || targetLanguage === 'id' || lyrics.trim().length < 4}
+                onClick={async () => {
+                  if (!user) { onSignIn?.(); return }
+                  setTranslatingLyrics(true)
+                  setError('')
+                  try {
+                    const tr = await translateMusicLyrics({
+                      lyrics,
+                      target_language: targetLanguage,
+                      genre,
+                      title: file?.name || '',
+                    })
+                    if (tr?.translated_lyrics) setLyrics(tr.translated_lyrics)
+                  } catch (e) {
+                    setError(e?.message || 'Gagal menerjemahkan lirik.')
+                  } finally {
+                    setTranslatingLyrics(false)
+                  }
+                }}
+                className="rounded-md border border-cyan/40 bg-cyan/10 px-2 py-0.5 text-[10.5px] font-semibold text-cyan-soft transition hover:bg-cyan/20 disabled:opacity-40"
+              >
+                {translatingLyrics ? '⏳ Menerjemahkan…' : `🌐 Terjemahkan Lirik → ${targetLanguage.toUpperCase()}`}
+              </button>
+            </div>
             <textarea
+              id="cover-lyrics-input"
               value={lyrics}
               onChange={(e) => setLyrics(e.target.value)}
               rows={3}
               placeholder={L.lyricsHint}
               className="w-full resize-y rounded-lg border border-border bg-navy-2 px-2.5 py-2 text-xs text-white placeholder:text-white/40 outline-none focus:border-cyan"
             />
+          </div>
+
+          {/* Feature #1: AI Cross-Lingual Dubbing Controls */}
+          <div className="space-y-2 rounded-lg border border-border-soft bg-navy-2 p-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label htmlFor="cover-dub-lang" className="text-[11px] font-semibold text-white/85">
+                🌐 Bahasa Dubbing / Translate Lagu
+              </label>
+              <select
+                id="cover-dub-lang"
+                value={targetLanguage}
+                onChange={(e) => setTargetLanguage(e.target.value)}
+                className="rounded-md border border-border bg-navy-1 px-2 py-1 text-[11px] text-white outline-none focus:border-cyan"
+              >
+                <option value="id">Indonesia (Asli / Default)</option>
+                <option value="ja">🇯🇵 Bahasa Jepang (Japanese)</option>
+                <option value="en">🇺🇸 Bahasa Inggris (English)</option>
+                <option value="ko">🇰🇷 Bahasa Korea (Korean)</option>
+                <option value="jv">🇮🇩 Basa Jawa</option>
+                <option value="su">🇮🇩 Basa Sunda</option>
+                <option value="ar">🇸🇦 Bahasa Arab (Arabic)</option>
+              </select>
+            </div>
+            {targetLanguage !== 'id' && (
+              <div className="space-y-1.5 pt-1 text-[11px] text-white/80">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={dubPreserveMusic}
+                    onChange={(e) => setDubPreserveMusic(e.target.checked)}
+                    style={{ accentColor: '#22d3ee', colorScheme: 'light dark' }}
+                  />
+                  <span>Pertahankan instrumen/musik asli lagu sumber</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={dubPreserveVoice}
+                    onChange={(e) => setDubPreserveVoice(e.target.checked)}
+                    style={{ accentColor: '#22d3ee', colorScheme: 'light dark' }}
+                  />
+                  <span>Pertahankan warna suara penyanyi asli (Voice Cloning Dub)</span>
+                </label>
+              </div>
+            )}
           </div>
         </div>
 

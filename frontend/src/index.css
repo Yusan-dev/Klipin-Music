@@ -197,6 +197,14 @@ dialog.floating-player:is([open], :popover-open, .\:popover-open) {
   overscroll-behavior: contain;
 }
 
+dialog:modal {
+  overscroll-behavior: contain;
+}
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
 /* ── Studio visual helpers ──────────────────────────────────────────────── */
 
 /* Subtle horizon backdrop for marketing/hero panels (no distracting infinite glare) */
