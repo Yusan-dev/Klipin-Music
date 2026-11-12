@@ -2796,7 +2796,7 @@ async def music_remix_url(req: MusicRemixUrlRequest,
         "cfg_scale": req.cfg_scale,
         "topk": req.topk,
     }
-    if needs_ref:
+    if needs_ref or is_dub:
         base_spec["ref_audio_b64"] = ref["audio_b64"]
     elif cover_engine in ("voice", "voice_pure", "arrangement"):
         base_spec["cover_source_b64"] = ref["audio_b64"]

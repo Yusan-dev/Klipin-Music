@@ -4385,6 +4385,19 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
     dub_preserve_voice = bool(spec.get("dub_preserve_voice"))
     src_ref_for_dub = Path(str(spec.get("ref_audio_path") or "").strip())
     if (
+        (spec.get("dub_mode") or dub_preserve_music or dub_preserve_voice)
+        and not src_ref_for_dub.is_file()
+    ):
+        ref_b64_dub = str(spec.get("ref_audio_b64") or spec.get("cover_source_b64") or "").strip()
+        if ref_b64_dub:
+            import base64 as _b64_dub
+            tmp_dub_ref = job_dir / "source_dub_ref.mp3"
+            try:
+                tmp_dub_ref.write_bytes(_b64_dub.b64decode(ref_b64_dub))
+                src_ref_for_dub = tmp_dub_ref
+            except Exception:
+                pass
+    if (
         used != "fallback-bgm"
         and (spec.get("dub_mode") or dub_preserve_music or dub_preserve_voice)
         and src_ref_for_dub.is_file()

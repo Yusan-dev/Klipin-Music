@@ -681,6 +681,22 @@ export default function Music({ user, authChecked = false, onSignIn }) {
 
     const run = async () => {
       let ended = false
+      let lastSseAt = Date.now()
+      // Safety net: even while SSE stays open (or if user plays audio concurrently),
+      // verify group status every 15s if no SSE snapshot arrived recently.
+      const watchdog = setInterval(async () => {
+        if (stopped || ended || Date.now() - lastSseAt < 14000) return
+        try {
+          const g = await getMusicGroup(groupId)
+          if (stopped) return
+          lastSseAt = Date.now()
+          if (applyTakes(g.takes || [])) {
+            ended = true
+            clearInterval(watchdog)
+            controller?.abort()
+          }
+        } catch { /* ignore transient watchdog error */ }
+      }, 15000)
       try {
         controller = typeof AbortController !== 'undefined' ? new AbortController() : null
         setRequestError('')
@@ -688,16 +704,19 @@ export default function Music({ user, authChecked = false, onSignIn }) {
           signal: controller?.signal,
           onGroup: (g) => {
             if (stopped) return
+            lastSseAt = Date.now()
             if (applyTakes(g.takes || [])) ended = true
           },
           onEnd: () => { ended = true },
         })
+        clearInterval(watchdog)
         if (stopped || ended) return
       } catch {
+        clearInterval(watchdog)
         if (stopped || controller?.signal.aborted) return
         // Streaming tidak tersedia — lanjut lewat polling biasa.
       }
-      if (!stopped) poll()
+      if (!stopped && !ended) poll()
     }
 
     run()
@@ -772,19 +791,26 @@ export default function Music({ user, authChecked = false, onSignIn }) {
       return `Lagu siap diputar.${al}`
     }
     if (job.status === 'queued') return 'Menunggu slot worker GPU…'
+    if (['queued-cover', 'queued-draft', 'queued-final'].includes(stage)) {
+      return `Memulai proses di worker klipin-music… (${elapsed} dtk)`
+    }
     if (stage === 'writing') return 'Menyusun lirik & aransemen…'
     if (stage === 'generating') {
       if (job.take_mode === 'draft' || job.provider?.includes('ace-step')) return 'Draft klipin-music berjalan…'
-      return 'Worker klipin-music menyusun lagu & vokal…'
+      return `Worker klipin-music menyusun lagu & vokal… (${elapsed} dtk)`
     }
     if (stage === 'mixing') return 'Menggabungkan vokal & musik…'
     if (stage === 'cover') return 'Menyiapkan cover art…'
     if (stage === 'aligning') return 'Menyelaraskan lirik otomatis…'
     if (stage === 'mastering') return 'Mastering audio (LUFS + WAV)…'
     if (stage === 'stale') return 'Worker tidak merespons — job dihentikan.'
-    if (stage === 'draft-render') return 'Menyusun draft…'
-    if (stage === 'final-render') return 'Menyusun lagu final…'
-    if (job.status === 'processing') return 'Menghubungkan ke worker klipin-music…'
+    if (stage === 'draft-render') return `Menyusun draft… (${elapsed} dtk)`
+    if (stage === 'final-render') return `Menyusun lagu final… (${elapsed} dtk)`
+    if (job.status === 'processing') {
+      return elapsed > 8
+        ? `Worker klipin-music sedang memproses lagu… (${elapsed} dtk)`
+        : 'Menghubungkan ke worker klipin-music…'
+    }
     return stage || ''
   }, [job, elapsed])
 
@@ -1710,6 +1736,23 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   }
 
   const openHistoryJob = (entry) => {
+    // Jika user sedang memproses lagu baru lalu klik lagu lain di Library untuk didengarkan,
+    // putar langsung di MiniPlayer tanpa membatalkan monitor progres lagu yang sedang dirender.
+    if ((busy || groupRunning) && groupId && entry.status === 'completed' && entry.audio_path && entry.group_id !== groupId) {
+      loadTrack({
+        jobId: entry.job_id,
+        title: entry.title || 'Klipin Song',
+        genreLabel: entry.metadata?.genre_label || entry.genre || 'Klipin Music',
+        provider: entry.provider || 'klipin-music',
+        coverUrl: resolveMediaAsset(entry.cover_path || entry.metadata?.cover_path || ''),
+        audioUrl: resolveMediaAsset(entry.audio_path),
+        audioPath: entry.audio_path,
+        wavUrl: entry.wav_path ? resolveMediaAsset(entry.wav_path) : '',
+        lyricsLines: Array.isArray(entry.metadata?.lyrics_timeline) ? entry.metadata.lyrics_timeline : [],
+        duration: Number(entry.duration || entry.metadata?.duration || 0),
+      }, { autoPlay: true, openPopup: true })
+      return
+    }
     setRequestError('')
     setCoverUrl('')
     setCoverBust(Date.now())
@@ -3715,6 +3758,7 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                       <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md bg-navy-3">
                         {thumb ? (
                           <img src={resolveMediaAsset(thumb)} alt="" loading="lazy"
+                            onError={(e) => { e.currentTarget.style.display = 'none' }}
                             className="h-full w-full object-cover" />
                         ) : (
                           <span className="flex h-full w-full items-center justify-center text-white/50">
