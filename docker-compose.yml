@@ -7,8 +7,13 @@ name: klipin-music
 # Run standalone:
 #   docker compose -f docker-compose.music.yml up -d --build
 #
-# Backend API : http://localhost:8002  (FastAPI music_service:app)
+# Backend API : http://localhost:8002  (Rust gateway -> FastAPI music_service:app)
 # Frontend UI : http://localhost:5175  (VITE_APP_MODE=music -> opens Music Studio directly)
+#
+# Request flow (hybrid "Rust gateway + Python AI worker"):
+#   browser/Vite -> music-gateway (Rust, :8002) -> music-api (Python, internal)
+#   /videos/* media is streamed natively by Rust; everything else is proxied.
+# Rollback without code changes: set GATEWAY_NATIVE_MEDIA=0 (pure proxy).
 
 services:
   music-api:
@@ -18,13 +23,36 @@ services:
     environment:
       - KLIPIN_SERVICE_MODE=music
     command: ["uvicorn", "music_service:app", "--host", "0.0.0.0", "--port", "8000"]
-    ports:
-      - "8002:8000"
+    # Internal only: all traffic enters through music-gateway.
+    expose:
+      - "8000"
     volumes:
       - ./backend:/app
       - ${MODAL_CONFIG_PATH:-C:/Users/xpass/.modal.toml}:/app/.modal.toml:ro
       - ./backend/output:/app/output
     restart: unless-stopped
+
+  music-gateway:
+    build: ./gateway
+    container_name: klipin-music-gateway
+    # Same env as the API so the media HMAC secret (KLIPIN_MEDIA_SECRET /
+    # AUTH_SECRET) matches byte-for-byte.
+    env_file: backend/.env
+    environment:
+      - GATEWAY_LISTEN=0.0.0.0:8000
+      - GATEWAY_UPSTREAM=http://music-api:8000
+      - GATEWAY_MEDIA_ROOT=/srv/output
+      - GATEWAY_NATIVE_MEDIA=1
+      - GATEWAY_DB_PATH=/srv/data/projects.db
+      - GATEWAY_NATIVE_DB=1
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./backend/output:/srv/output:ro
+      - ./backend/data:/srv/data
+    restart: unless-stopped
+    depends_on:
+      - music-api
 
   music-web:
     build: ./frontend
@@ -34,7 +62,7 @@ services:
       - VITE_APP_MODE=music
       # Must match the host side of `ports` below (HMR websocket).
       - VITE_HMR_CLIENT_PORT=5175
-      - VITE_PROXY_TARGET=http://music-api:8000
+      - VITE_PROXY_TARGET=http://music-gateway:8000
     ports:
       - "5175:5173"
     volumes:
@@ -42,7 +70,7 @@ services:
       - /app/node_modules
     restart: unless-stopped
     depends_on:
-      - music-api
+      - music-gateway
 
 volumes:
   klipin_music_output:

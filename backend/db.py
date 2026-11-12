@@ -277,12 +277,20 @@ def _connect() -> sqlite3.Connection:
     # 30s busy timeout: concurrent writers (jobs, timers, CLI tools) wait for
     # the lock instead of failing immediately with "database is locked".
     conn = sqlite3.connect(str(DB_PATH), timeout=30)
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init() -> None:
     with _lock, _connect() as conn:
+        # WAL lets Python writers and the Rust gateway's concurrent read pool
+        # access projects.db without blocking each other.
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+        except sqlite3.Error:
+            pass
         conn.executescript(_SCHEMA)
         _migrate(conn)
 
@@ -1478,6 +1486,16 @@ def update_music_job(job_id: str, user_id: str = "", **changes) -> dict | None:
     return get_music_job(job_id, user_id)
 
 
+def _music_job_from_row(row) -> dict:
+    """Shape one ``music_jobs`` row exactly like ``get_music_job`` returns it."""
+    result = dict(row)
+    try:
+        result["metadata"] = json.loads(result.get("metadata") or "{}")
+    except (TypeError, ValueError):
+        result["metadata"] = {}
+    return result
+
+
 def get_music_job(job_id: str, user_id: str = "") -> dict | None:
     where = "job_id = ?" + (" AND user_id = ?" if user_id else "")
     args = [job_id] + ([user_id] if user_id else [])
@@ -1485,12 +1503,7 @@ def get_music_job(job_id: str, user_id: str = "") -> dict | None:
         row = conn.execute(f"SELECT * FROM music_jobs WHERE {where}", args).fetchone()
     if not row:
         return None
-    result = dict(row)
-    try:
-        result["metadata"] = json.loads(result.get("metadata") or "{}")
-    except (TypeError, ValueError):
-        result["metadata"] = {}
-    return result
+    return _music_job_from_row(row)
 
 
 def list_music_jobs(user_id: str, limit: int = 50, query: str = "") -> list:
@@ -1510,7 +1523,9 @@ def list_music_jobs(user_id: str, limit: int = 50, query: str = "") -> list:
                 "SELECT * FROM music_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
                 (user_id, limit),
             ).fetchall()
-    return [get_music_job(r["job_id"], user_id) for r in rows]
+    # Rows were already fetched with SELECT *; shape them directly instead of
+    # re-querying every job (N+1: one connection + lock round-trip per row).
+    return [_music_job_from_row(r) for r in rows]
 
 
 # ── Music studio projects (versioned song workspace) ──────────────────────
@@ -1885,7 +1900,9 @@ def list_music_group(group_id: str, user_id: str) -> list:
             "SELECT * FROM music_jobs WHERE group_id = ? AND user_id = ? ORDER BY take_index ASC",
             (group_id, user_id),
         ).fetchall()
-    return [get_music_job(r["job_id"], user_id) for r in rows]
+    # Rows were already fetched with SELECT *; shape them directly instead of
+    # re-querying every job (N+1: one connection + lock round-trip per row).
+    return [_music_job_from_row(r) for r in rows]
 
 
 def find_music_by_cache(user_id: str, cache_key: str,

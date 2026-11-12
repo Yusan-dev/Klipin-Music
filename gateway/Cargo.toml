@@ -1,0 +1,30 @@
+[package]
+name = "klipin-gateway"
+version = "0.1.0"
+edition = "2021"
+description = "Rust edge gateway for Klipin Music: native signed-media streaming, WAL SQLite read endpoints, native SSE, and streaming reverse proxy"
+publish = false
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "fs", "sync", "time"] }
+tokio-stream = "0.1"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs"] }
+# Raw hyper client: forwards the request target byte-for-byte without URI normalization.
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+mime_guess = "2"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+subtle = "2"
+percent-encoding = "2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
