@@ -199,13 +199,15 @@ export default function MiniPlayer({ sidebarCollapsed = false, onNavigate }) {
             className="flex min-w-0 max-w-[270px] items-center gap-3 rounded-lg px-1.5 py-1 text-left transition hover:bg-white/5"
             title={sheetOpen ? 'Sembunyikan pop-up pemutar' : 'Buka pop-up pemutar yang bisa digeser'}
           >
-            <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-border bg-navy-2">
-              {track.coverUrl ? (
-                <img src={track.coverUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center text-white/45">
-                  <Icon name="music" className="h-4 w-4" />
-                </span>
+            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-navy-2 text-white/45">
+              <Icon name="music" className="h-4 w-4" />
+              {track.coverUrl && (
+                <img
+                  src={track.coverUrl}
+                  alt=""
+                  onError={(e) => { e.currentTarget.style.display = 'none' }}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
               )}
             </div>
             <div className="min-w-0">
@@ -343,13 +345,15 @@ export default function MiniPlayer({ sidebarCollapsed = false, onNavigate }) {
         <div className="max-h-[calc(100dvh-96px)] space-y-3 overflow-y-auto p-4">
           {/* Song Identity + Cover */}
           <div className="flex items-start gap-3">
-            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-border bg-navy-2">
-              {track.coverUrl ? (
-                <img src={track.coverUrl} alt="Cover art" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-white/40">
-                  <Icon name="music" className="h-6 w-6" />
-                </div>
+            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-navy-2 text-white/40">
+              <Icon name="music" className="h-6 w-6" />
+              {track.coverUrl && (
+                <img
+                  src={track.coverUrl}
+                  alt="Cover art"
+                  onError={(e) => { e.currentTarget.style.display = 'none' }}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
               )}
             </div>
             <div className="min-w-0 flex-1">

@@ -3029,14 +3029,12 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                             job?.job_id === entry.job_id
                               ? 'border-cyan/50 bg-navy-2'
                               : 'border-border-soft bg-navy-1/70 hover:border-border'}`}>
-                          <div className="h-8 w-8 shrink-0 overflow-hidden rounded bg-white/5">
-                            {entry.cover_path ? (
+                          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded bg-white/5 text-white/30">
+                            <Icon name="music" className="h-3.5 w-3.5" />
+                            {entry.cover_path && (
                               <img src={resolveMediaAsset(entry.cover_path)} alt="" loading="lazy"
-                                className="h-full w-full object-cover" />
-                            ) : (
-                              <span className="flex h-full w-full items-center justify-center text-white/30">
-                                <Icon name="music" className="h-3.5 w-3.5" />
-                              </span>
+                                onError={(e) => { e.currentTarget.style.display = 'none' }}
+                                className="absolute inset-0 h-full w-full object-cover" />
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
@@ -3755,15 +3753,12 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         isSelected
                           ? 'border-cyan/60 bg-navy-2 ring-1 ring-cyan/25'
                           : 'border-transparent bg-navy-2/70 hover:border-border hover:bg-navy-2'}`}>
-                      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md bg-navy-3">
-                        {thumb ? (
+                      <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md bg-navy-3 text-white/50">
+                        <Icon name="music" className="h-4 w-4" />
+                        {thumb && (
                           <img src={resolveMediaAsset(thumb)} alt="" loading="lazy"
                             onError={(e) => { e.currentTarget.style.display = 'none' }}
-                            className="h-full w-full object-cover" />
-                        ) : (
-                          <span className="flex h-full w-full items-center justify-center text-white/50">
-                            <Icon name="music" className="h-4 w-4" />
-                          </span>
+                            className="absolute inset-0 h-full w-full object-cover" />
                         )}
                         {isSelected && playing && (
                           <span className="absolute inset-0 flex items-center justify-center bg-black/60">
@@ -3874,14 +3869,14 @@ export default function Music({ user, authChecked = false, onSignIn }) {
               <div className="grid gap-2 sm:grid-cols-2">
                 {feed.map((song) => (
                   <div key={song.job_id} className="flex items-start gap-2.5 rounded-lg border border-border bg-navy-2 p-2.5">
-                    {song.cover_path ? (
-                      <img src={resolveMediaAsset(song.cover_path)} alt="" loading="lazy"
-                        className="h-10 w-10 shrink-0 rounded object-cover" />
-                    ) : (
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-navy-3 text-white/50">
-                        <Icon name="music" className="h-4 w-4" />
-                      </span>
-                    )}
+                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-navy-3 text-white/50">
+                      <Icon name="music" className="h-4 w-4" />
+                      {song.cover_path && (
+                        <img src={resolveMediaAsset(song.cover_path)} alt="" loading="lazy"
+                          onError={(e) => { e.currentTarget.style.display = 'none' }}
+                          className="absolute inset-0 h-full w-full object-cover" />
+                      )}
+                    </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-medium text-white">{song.title}</div>
                       <div className="mt-0.5 font-mono text-[10px] text-white/60">

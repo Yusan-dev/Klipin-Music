@@ -484,8 +484,9 @@ export default function StudioWorkstation({
                           : 'border-transparent bg-navy-2/70 hover:border-border hover:bg-navy-2'
                       }`}
                     >
-                      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-navy-3">
-                        {thumb ? (
+                      <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-navy-3 text-white/55">
+                        <Icon name="music" className="h-4 w-4" />
+                        {thumb && (
                           <img
                             src={resolveMediaAsset(thumb)}
                             alt=""
@@ -493,12 +494,8 @@ export default function StudioWorkstation({
                             onError={(e) => {
                               e.currentTarget.style.display = 'none'
                             }}
-                            className="h-full w-full object-cover"
+                            className="absolute inset-0 h-full w-full object-cover"
                           />
-                        ) : (
-                          <span className="flex h-full w-full items-center justify-center text-white/55">
-                            <Icon name="music" className="h-4 w-4" />
-                          </span>
                         )}
                       </div>
                       <div className="min-w-0 flex-1">

@@ -5620,6 +5620,16 @@ class _VideosApp:
                             except Exception:
                                 pass
                             break
+                    # Auto-heal missing cover art on demand with an elegant gradient cover:
+                    if not target_file.is_file() and fname.lower() in ("cover.jpg", "cover.png", "cover.jpeg", "cover.webp"):
+                        try:
+                            import music as _music
+                            job_row = db.get_music_job(parts_check[0]) or {}
+                            cover_title = (job_row.get("title") or "Klipin Music").strip()
+                            target_file.parent.mkdir(parents=True, exist_ok=True)
+                            _music._render_gradient_cover(target_file, cover_title)
+                        except Exception:
+                            pass
 
             if "download" in query:
                 rel = (scope.get("path") or "").lstrip("/")
