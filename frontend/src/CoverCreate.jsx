@@ -299,7 +299,8 @@ export default function CoverCreate({
       if (activePersonaId) fd.append('persona_id', activePersonaId)
       if (directVoiceFile) fd.append('voice_file', directVoiceFile)
       fd.append('vocal_style', vocalStyle)
-      fd.append('cover_engine', isOriginalGenre ? 'voice' : 'yue2_comfy')
+      const dubActive = targetLanguage !== 'id' || dubPreserveMusic || dubPreserveVoice
+      fd.append('cover_engine', isOriginalGenre && !dubActive ? 'voice' : 'yue2_comfy')
       fd.append('pitch_shift', pitchShift)
       fd.append('restyle_strength', String(restyleStrength))
       fd.append('weirdness', String(weirdness))
@@ -757,7 +758,11 @@ export default function CoverCreate({
           disabled={busy || engineBlocked}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan px-4 py-3 text-[13px] font-bold text-navy shadow-md transition hover:brightness-110 disabled:opacity-45"
         >
-          {busy ? (<><Spinner className="h-3.5 w-3.5" /> {L.creating}</>) : (isOriginalGenre ? '🎤 Buat Cover Ganti Vokal (Musik Asli)' : '🎵 Buat Cover Lagu')}
+          {busy
+            ? (<><Spinner className="h-3.5 w-3.5" /> {L.creating}</>)
+            : (targetLanguage !== 'id'
+              ? `🌐 Buat Cover Dubbing (${targetLanguage.toUpperCase()})`
+              : (isOriginalGenre ? '🎤 Buat Cover Ganti Vokal (Musik Asli)' : '🎵 Buat Cover Lagu'))}
         </button>
 
         {groupId && (

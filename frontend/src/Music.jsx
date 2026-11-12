@@ -43,6 +43,7 @@ import {
   restoreMusicProjectRevision,
   shareMusic,
   streamMusicGroup,
+  translateMusicLyrics,
   updateMusicLyricsDraft,
   updateMusicPersona,
   uploadMusicVoicePersona,
@@ -355,6 +356,13 @@ export default function Music({ user, authChecked = false, onSignIn }) {
   const [remixAsrSource, setRemixAsrSource] = useState('')
   const [remixAsrReviewed, setRemixAsrReviewed] = useState(false)
   const [remixTranscribing, setRemixTranscribing] = useState(false)
+  const [remixTargetLang, setRemixTargetLang] = useState('id')
+  const [remixDubPreserveMusic, setRemixDubPreserveMusic] = useState(true)
+  const [remixDubPreserveVoice, setRemixDubPreserveVoice] = useState(true)
+  const [remixTranslating, setRemixTranslating] = useState(false)
+  const [songDubLang, setSongDubLang] = useState('ja')
+  const [songDubPreserveMusic, setSongDubPreserveMusic] = useState(true)
+  const [songDubPreserveVoice, setSongDubPreserveVoice] = useState(true)
   const [shareBusy, setShareBusy] = useState(false)
   const [coverSourceTab, setCoverSourceTab] = useState('url')
   const [remixVoiceFile, setRemixVoiceFile] = useState(null)
@@ -1887,19 +1895,27 @@ export default function Music({ user, authChecked = false, onSignIn }) {
     }
   }
 
-  const coverSong = async () => {
+  const coverSong = async (opts = {}) => {
     if (!user) { onSignIn(); return }
     if (!job?.job_id || job.status !== 'completed' || coverSongBusy) return
     setCoverSongBusy(true)
     setRequestError('')
     try {
+      const targetLang = (opts.target_language ?? songDubLang ?? 'id').trim() || 'id'
+      const isDub = targetLang !== (job.language || 'id') || Boolean(opts.target_language)
       const res = await coverSongMusic(job.job_id, {
-        prompt: prompt.trim(), genre, vocal_gender: effectiveGender,
+        prompt: prompt.trim(),
+        genre: opts.genre || genre,
+        vocal_gender: effectiveGender,
+        target_language: isDub ? targetLang : '',
+        dub_preserve_music: Boolean(opts.dub_preserve_music ?? songDubPreserveMusic),
+        dub_preserve_voice: Boolean(opts.dub_preserve_voice ?? songDubPreserveVoice),
         take_count: 2,
       })
       setGroupId(res.group_id || '')
+      const suffix = isDub ? `${targetLang.toUpperCase()} Dub` : `cover ${genreInfo?.label || genre}`
       const initialTakes = (res.jobs || []).map((t) => ({
-        ...t, title: `${job.title} (cover ${genreInfo?.label || genre})`,
+        ...t, title: `${job.title} (${suffix})`,
         metadata: { stage: 'queued-cover', cover_mode: 'audio-to-audio',
           lyrics_locked: true, lyrics_timeline: [] },
       }))
@@ -1974,7 +1990,8 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         })
       }
       const coverGender = remixGender === 'auto' ? effectiveGender : remixGender
-      const isPureVoice = isOriginalGenre || remixEngine === 'voice_pure'
+      const isDubUrl = remixTargetLang !== 'id' || remixDubPreserveMusic || remixDubPreserveVoice
+      const isPureVoice = (isOriginalGenre || remixEngine === 'voice_pure') && !isDubUrl
       const effEngine = isPureVoice ? 'voice' : 'yue2_comfy'
       const effRestyle = isPureVoice ? false : remixRestyle
       const res = await remixMusicUrl({
@@ -1994,12 +2011,17 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         pitch_shift: remixPitch,
         restyle: effRestyle,
         voice_mode: remixVoiceMode,
+        target_language: remixTargetLang || 'id',
+        dub_preserve_music: Boolean(remixTargetLang !== 'id' && remixDubPreserveMusic),
+        dub_preserve_voice: Boolean(remixTargetLang !== 'id' && remixDubPreserveVoice),
         eq_preset: preEqConfig.preset,
         eq_bands: preEqConfig.bands,
         eq_preamp_db: preEqConfig.preamp_db,
         eq_compressor: preEqConfig.compressor,
         eq_stereo_width: preEqConfig.stereo_width,
         eq_reverb: preEqConfig.reverb,
+        eq_target_lufs: preEqConfig.target_lufs,
+        eq_clarity: preEqConfig.clarity,
       })
       setGroupId(res.group_id || '')
       const initialTakes = (res.jobs || []).map((t) => ({
@@ -2590,6 +2612,77 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                         <textarea value={remixLyrics} onChange={(e) => setRemixLyrics(e.target.value)} rows={4}
                           placeholder={'Kosongkan untuk ekstraksi otomatis dari lagu asli.\n[Verse]\nsatu baris = satu frasa vokal'}
                           className={`${fieldCls} resize-y font-mono text-[12px] leading-5`} />
+                      </div>
+
+                      <div className="space-y-2 rounded-lg border border-cyan/30 bg-cyan/5 p-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <label className="text-[11px] font-semibold text-white/85">
+                            🌐 Cross-Lingual Dubbing (mis. ID → Jepang / Inggris / Korea)
+                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={remixTargetLang}
+                              onChange={(e) => setRemixTargetLang(e.target.value)}
+                              aria-label="Bahasa target dubbing link"
+                              className="rounded-md border border-border bg-navy-2 px-2 py-1 text-[11px] text-white outline-none focus:border-cyan"
+                            >
+                              <option value="id">Indonesia (Asli)</option>
+                              <option value="ja">Jepang (Japanese)</option>
+                              <option value="en">Inggris (English)</option>
+                              <option value="ko">Korea (Korean)</option>
+                              <option value="jv">Jawa</option>
+                              <option value="su">Sunda</option>
+                              <option value="ar">Arab</option>
+                            </select>
+                            {remixTargetLang !== 'id' && remixLyrics.trim() && (
+                              <button
+                                type="button"
+                                disabled={remixTranslating}
+                                onClick={async () => {
+                                  setRemixTranslating(true)
+                                  setRequestError('')
+                                  try {
+                                    const tr = await translateMusicLyrics({
+                                      lyrics: remixLyrics,
+                                      target_language: remixTargetLang,
+                                      genre: remixGenre,
+                                    })
+                                    if (tr?.translated_lyrics) setRemixLyrics(tr.translated_lyrics)
+                                  } catch (err) {
+                                    setRequestError(`Gagal menerjemahkan lirik: ${err?.message || err}`)
+                                  } finally {
+                                    setRemixTranslating(false)
+                                  }
+                                }}
+                                className="rounded-md border border-cyan/40 bg-cyan/15 px-2 py-1 text-[11px] font-semibold text-cyan-soft hover:bg-cyan/25 disabled:opacity-45"
+                              >
+                                {remixTranslating ? 'Menerjemahkan…' : `🌐 Terjemahkan → ${remixTargetLang.toUpperCase()}`}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {remixTargetLang !== 'id' && (
+                          <div className="grid gap-1.5 text-[11px] text-white/75 sm:grid-cols-2">
+                            <label className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={remixDubPreserveMusic}
+                                onChange={(e) => setRemixDubPreserveMusic(e.target.checked)}
+                                style={{ accentColor: '#22d3ee', colorScheme: 'light dark' }}
+                              />
+                              <span>Pertahankan musik asli lagu sumber</span>
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={remixDubPreserveVoice}
+                                onChange={(e) => setRemixDubPreserveVoice(e.target.checked)}
+                                style={{ accentColor: '#22d3ee', colorScheme: 'light dark' }}
+                              />
+                              <span>Pertahankan warna suara asli (Cloning)</span>
+                            </label>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -3486,6 +3579,82 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                     action={{ label: 'Coba lagi', onClick: retryJob }} />
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Active Song Studio Shortcuts & Cross-Lingual Dubbing */}
+          {job?.status === 'completed' && job?.job_id && (
+            <div className="mb-4 rounded-xl border border-cyan/30 bg-navy-1 p-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-mono text-[10px] font-semibold uppercase tracking-wider text-cyan-soft">
+                    Lagu Aktif Siap Diedit &amp; Dubbing
+                  </div>
+                  <div className="truncate text-sm font-bold text-white">
+                    {job.title || job.job_id}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => { window.location.hash = `#/studio/${job.job_id}` }}
+                    className="rounded-lg bg-cyan px-3 py-1.5 text-[11px] font-bold text-navy hover:brightness-110"
+                  >
+                    🎚️ Workstation (4-Stem / Replace / Video)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { window.location.hash = `#/song/${job.job_id}` }}
+                    className="rounded-lg border border-border bg-navy-2 px-2.5 py-1.5 text-[11px] font-semibold text-white/85 hover:border-cyan/50 hover:text-cyan"
+                  >
+                    🔗 Halaman Share
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-border-soft pt-2.5 text-[11px]">
+                <span className="font-semibold text-white/80">🌐 Dubbing / Cover Lagu Ini:</span>
+                <select
+                  value={songDubLang}
+                  onChange={(e) => setSongDubLang(e.target.value)}
+                  aria-label="Bahasa dubbing lagu aktif"
+                  className="rounded-md border border-border bg-navy-2 px-2 py-1 text-[11px] text-white outline-none focus:border-cyan"
+                >
+                  <option value="ja">Jepang (Japanese)</option>
+                  <option value="en">Inggris (English)</option>
+                  <option value="ko">Korea (Korean)</option>
+                  <option value="id">Indonesia (Aransemen Baru)</option>
+                  <option value="jv">Jawa</option>
+                  <option value="su">Sunda</option>
+                  <option value="ar">Arab</option>
+                </select>
+                <label className="flex cursor-pointer items-center gap-1.5 text-white/75">
+                  <input
+                    type="checkbox"
+                    checked={songDubPreserveMusic}
+                    onChange={(e) => setSongDubPreserveMusic(e.target.checked)}
+                    style={{ accentColor: '#22d3ee', colorScheme: 'light dark' }}
+                  />
+                  <span>Musik Asli</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-1.5 text-white/75">
+                  <input
+                    type="checkbox"
+                    checked={songDubPreserveVoice}
+                    onChange={(e) => setSongDubPreserveVoice(e.target.checked)}
+                    style={{ accentColor: '#22d3ee', colorScheme: 'light dark' }}
+                  />
+                  <span>Suara Asli</span>
+                </label>
+                <button
+                  type="button"
+                  disabled={coverSongBusy}
+                  onClick={() => coverSong({ target_language: songDubLang })}
+                  className="rounded-md border border-cyan/40 bg-cyan/15 px-2.5 py-1 font-semibold text-cyan-soft hover:bg-cyan/25 disabled:opacity-45"
+                >
+                  {coverSongBusy ? 'Memproses…' : `🚀 Buat Versi ${songDubLang.toUpperCase()}`}
+                </button>
+              </div>
             </div>
           )}
 

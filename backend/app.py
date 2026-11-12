@@ -1992,6 +1992,11 @@ class MusicRemixUrlRequest(BaseModel):
     eq_compressor: float = 0.0
     eq_stereo_width: float = 1.0
     eq_reverb: float = 0.0
+    eq_target_lufs: float = -14.0
+    eq_clarity: float = 0.0
+    target_language: str = "id"
+    dub_preserve_music: bool = False
+    dub_preserve_voice: bool = False
     vocal_style: str = ""
     weirdness: int = 50
     style_influence: int = 50
@@ -2231,10 +2236,29 @@ async def music_cover_upload(
     genre_ids = {str(g.get("id")) for g in GENRES} | {"original"}
     if genre not in genre_ids:
         raise HTTPException(status_code=400, detail=f"Genre '{genre}' tidak dikenal.")
+    cover_lang = (target_language or "id").strip().lower() or "id"
+    is_dub = bool(dub_preserve_music or dub_preserve_voice or cover_lang != "id")
     engine = (cover_engine or "mulacover").strip().lower()
-    if genre == "original":
+    if genre == "original" and not is_dub:
         engine = "voice"
         keep_original_vocal = False
+    elif genre == "original" and is_dub:
+        dub_preserve_music = True
+        if engine in ("", "voice", "voice_pure", "arrangement"):
+            engine = next(
+                (
+                    cand
+                    for cand, ok in (
+                        ("yue2_comfy", _yue2_comfy_enabled()),
+                        ("mulacover", _mulacover_modal_enabled()),
+                        ("diffrhythm", _diffrhythm_modal_enabled()),
+                        ("ace-step", _ace_modal_enabled()),
+                        ("yue2_native", _yue2_native_enabled()),
+                    )
+                    if ok
+                ),
+                "yue2_comfy",
+            )
     if engine in ("acestep", "ace"):
         engine = "ace-step"
     availability = {
@@ -2365,6 +2389,22 @@ async def music_cover_upload(
     combined_style_tags = ", ".join(p for p in ((prompt or "").strip(), persona_tags) if p)
     cover_lang = (target_language or "id").strip().lower() or "id"
     is_dub = bool(dub_preserve_music or dub_preserve_voice or cover_lang != "id")
+    if cover_lang != "id" and not (lyrics or "").strip() and text:
+        try:
+            from music_studio_pro import translate_lyrics_matched
+            tr = await asyncio.to_thread(
+                translate_lyrics_matched,
+                text,
+                cover_lang,
+                genre,
+                stem,
+                0,
+            )
+            if tr.get("translated_lyrics"):
+                text = tr["translated_lyrics"]
+                timed_lines = []
+        except Exception:  # noqa: BLE001
+            pass
     cover_title = (
         f"{stem} — {cover_lang.upper()} Dub"
         if is_dub
@@ -2491,9 +2531,21 @@ async def music_remix_url(req: MusicRemixUrlRequest,
         "mulacover": mulacover_enabled,
         "heartmula": heartmula_enabled,
     }
+    cover_lang = (req.target_language or "id").strip().lower() or "id"
+    dub_preserve_music = bool(req.dub_preserve_music)
+    dub_preserve_voice = bool(req.dub_preserve_voice)
+    is_dub = bool(dub_preserve_music or dub_preserve_voice or cover_lang != "id")
     requested_engine = (req.cover_engine or "").strip().lower()
-    if req.genre == "original":
+    if req.genre == "original" and not is_dub:
         requested_engine = "voice"
+    elif req.genre == "original" and is_dub:
+        dub_preserve_music = True
+        if requested_engine in ("", "voice", "voice_pure", "arrangement"):
+            requested_engine = next(
+                (eng for eng in ("yue2_comfy", "mulacover", "diffrhythm", "ace-step", "yue2_native")
+                 if engine_available.get(eng)),
+                "yue2_comfy",
+            )
     if requested_engine and requested_engine not in engine_available:
         raise HTTPException(status_code=400, detail=(
             "Engine cover tidak dikenal. Pilih salah satu: yue2_comfy, yue2_native, yue2, "
@@ -2676,16 +2728,41 @@ async def music_remix_url(req: MusicRemixUrlRequest,
                 "reggae", "ska", "dub", "dangdut-koplo", "dangdut-remix", "dj-remix", "edm"))
     )
     source_duration = ref["duration"]
-    keep_original_vocal = False if req.genre == "original" else bool(req.keep_original_vocal or cover_engine == "arrangement")
-    cover_title = f"{title} — Cover Vokal" if req.genre == "original" else f"{title} — {req.genre}"
+    keep_original_vocal = False if (req.genre == "original" and not is_dub) else bool(req.keep_original_vocal or cover_engine == "arrangement")
+    remix_lyrics = ref["lyrics"]
+    remix_timed = ref.get("timed_lines", [])
+    if cover_lang != "id" and not (req.lyrics or "").strip() and remix_lyrics:
+        try:
+            from music_studio_pro import translate_lyrics_matched
+            tr = await asyncio.to_thread(
+                translate_lyrics_matched,
+                remix_lyrics,
+                cover_lang,
+                req.genre,
+                title,
+                0,
+            )
+            if tr.get("translated_lyrics"):
+                remix_lyrics = tr["translated_lyrics"]
+                remix_timed = []
+        except Exception:  # noqa: BLE001
+            pass
+    cover_title = (
+        f"{title} — {cover_lang.upper()} Dub"
+        if is_dub
+        else (f"{title} — Cover Vokal" if req.genre == "original" else f"{title} — {req.genre}")
+    )
     voice_b64 = (req.voice_b64 or "").strip()
     if voice_b64 and len(voice_b64) > 35_000_000:
         raise HTTPException(status_code=400, detail="File suara target terlalu besar (maks. 25 MB).")
     base_spec = {
         "title": cover_title, "prompt": prompt,
-        "lyrics": ref["lyrics"],
-        "lyrics_timed": ref.get("timed_lines", []),
-        "genre": req.genre, "language": "id", "language_override": True,
+        "lyrics": remix_lyrics,
+        "lyrics_timed": remix_timed,
+        "genre": req.genre, "language": cover_lang, "language_override": True,
+        "dub_mode": is_dub,
+        "dub_preserve_music": dub_preserve_music,
+        "dub_preserve_voice": dub_preserve_voice,
         "vocal_gender": vocal_gender, "provider": cover_engine,
         "duration": source_duration,
         "seed": int(time.time()) % (2 ** 31 - 1), "full_song": True,
@@ -2710,6 +2787,8 @@ async def music_remix_url(req: MusicRemixUrlRequest,
         "eq_compressor": req.eq_compressor,
         "eq_stereo_width": req.eq_stereo_width,
         "eq_reverb": req.eq_reverb,
+        "eq_target_lufs": req.eq_target_lufs,
+        "eq_clarity": req.eq_clarity,
         "vocal_style": (req.vocal_style or "").strip(),
         "weirdness": int(req.weirdness if req.weirdness is not None else 50),
         "style_influence": int(req.style_influence if req.style_influence is not None else 50),

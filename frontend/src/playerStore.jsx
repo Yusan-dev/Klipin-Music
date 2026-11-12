@@ -16,10 +16,16 @@ export function PlayerProvider({ children }) {
   const [error, setError] = useState('')
   const [sheetOpen, setSheetOpen] = useState(false)
   const [trackActions, setTrackActions] = useState(null)
+  const [queue, setQueue] = useState([])
+  const [queueIndex, setQueueIndex] = useState(-1)
 
   const retryKeyRef = useRef('')
   const trackRef = useRef(null)
   trackRef.current = track
+  const queueRef = useRef([])
+  queueRef.current = queue
+  const queueIndexRef = useRef(-1)
+  queueIndexRef.current = queueIndex
 
   const startPlayback = useCallback(() => {
     const el = audioRef.current
@@ -60,7 +66,11 @@ export function PlayerProvider({ children }) {
   )
 
   const loadTrack = useCallback(
-    (nextTrack, { autoPlay = false, openPopup } = {}) => {
+    (nextTrack, { autoPlay = false, openPopup, keepQueue = false } = {}) => {
+      if (!keepQueue) {
+        setQueue([])
+        setQueueIndex(-1)
+      }
       if (!nextTrack?.audioUrl) {
         setTrack(null)
         setPlaying(false)
@@ -83,6 +93,18 @@ export function PlayerProvider({ children }) {
       }
     },
     [startPlayback],
+  )
+
+  const playQueue = useCallback(
+    (tracks, startIndex = 0) => {
+      const list = Array.isArray(tracks) ? tracks.filter((t) => t?.audioUrl) : []
+      if (!list.length) return
+      const idx = Math.max(0, Math.min(startIndex, list.length - 1))
+      setQueue(list)
+      setQueueIndex(idx)
+      loadTrack(list[idx], { autoPlay: true, openPopup: true, keepQueue: true })
+    },
+    [loadTrack],
   )
 
   const updateTrackMeta = useCallback((partial) => {
@@ -165,6 +187,9 @@ export function PlayerProvider({ children }) {
         setPopupOpen: setSheetOpen,
         trackActions,
         setTrackActions,
+        queue,
+        queueIndex,
+        playQueue,
         loadTrack,
         updateTrackMeta,
         play: startPlayback,
@@ -181,7 +206,16 @@ export function PlayerProvider({ children }) {
         preload="metadata"
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
+        onEnded={() => {
+          const list = queueRef.current || []
+          const nextIdx = (queueIndexRef.current ?? -1) + 1
+          if (list.length > 0 && nextIdx >= 0 && nextIdx < list.length) {
+            setQueueIndex(nextIdx)
+            loadTrack(list[nextIdx], { autoPlay: true, openPopup: true, keepQueue: true })
+          } else {
+            setPlaying(false)
+          }
+        }}
         onEmptied={() => setPlaying(false)}
         onError={handleError}
         onTimeUpdate={() => {

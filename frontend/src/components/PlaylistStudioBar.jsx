@@ -3,15 +3,19 @@ import {
   addMusicPlaylistItem,
   createMusicPlaylist,
   deleteMusicPlaylist,
+  getMusicStatus,
   listMusicPlaylists,
   removeMusicPlaylistItem,
+  resolveMediaAsset,
 } from '../api.js'
+import { usePlayer } from '../playerStore.jsx'
 
 export default function PlaylistStudioBar({
   user,
   selectedJob,
   onSelectSongJob,
 }) {
+  const { playQueue } = usePlayer()
   const [playlists, setPlaylists] = useState([])
   const [activeId, setActiveId] = useState('')
   const [newTitle, setNewTitle] = useState('')
@@ -82,22 +86,65 @@ export default function PlaylistStudioBar({
     }
   }
 
+  const handlePlayAll = async () => {
+    const items = activePlaylist?.items || []
+    if (!items.length || busy) return
+    setBusy(true)
+    setMsg('')
+    try {
+      const jobs = await Promise.all(items.map((it) => getMusicStatus(it.job_id).catch(() => null)))
+      const tracks = jobs
+        .filter((j) => j && j.status === 'completed' && j.audio_path)
+        .map((j) => ({
+          jobId: j.job_id,
+          title: j.title || j.job_id,
+          genreLabel: j.genre || 'Klipin Music',
+          audioUrl: resolveMediaAsset(j.audio_path),
+          audioPath: j.audio_path,
+          wavUrl: j.wav_path ? resolveMediaAsset(j.wav_path) : '',
+          coverUrl: j.cover_path ? resolveMediaAsset(j.cover_path) : '',
+          duration: Number(j.duration || j.metadata?.duration || 0),
+          lyricsTimeline: j.metadata?.lyrics_timeline || [],
+        }))
+      if (tracks.length) {
+        playQueue(tracks, 0)
+        setMsg(`▶ Memutar ${tracks.length} lagu berurutan.`)
+      } else {
+        setMsg('Belum ada lagu selesai yang bisa diputar di playlist ini.')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="mt-4 rounded-xl border border-border bg-navy-1 p-3.5">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-white/90">
           📂 Playlist &amp; Album Studio
         </h3>
-        {selectedJob?.status === 'completed' && activePlaylist && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleAddCurrent}
-            className="rounded-md border border-cyan/40 bg-cyan/15 px-2.5 py-1 text-[11px] font-semibold text-cyan-soft hover:bg-cyan/25 disabled:opacity-40"
-          >
-            + Masukkan Lagu Aktif ke "{activePlaylist.title}"
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {activePlaylist && (activePlaylist.items || []).length > 0 && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handlePlayAll}
+              className="rounded-md bg-cyan px-2.5 py-1 text-[11px] font-bold text-navy hover:brightness-110 disabled:opacity-40"
+            >
+              ▶ Putar Semua ({activePlaylist.items.length})
+            </button>
+          )}
+          {selectedJob?.status === 'completed' && activePlaylist && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleAddCurrent}
+              className="rounded-md border border-cyan/40 bg-cyan/15 px-2.5 py-1 text-[11px] font-semibold text-cyan-soft hover:bg-cyan/25 disabled:opacity-40"
+            >
+              + Masukkan Lagu Aktif ke "{activePlaylist.title}"
+            </button>
+          )}
+        </div>
       </div>
 
       <form onSubmit={handleCreate} className="mb-2.5 flex gap-2">

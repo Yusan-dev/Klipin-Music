@@ -421,6 +421,20 @@ export default function MiniPlayer({ sidebarCollapsed = false, onNavigate }) {
                 🎚️ Studio EQ
               </button>
             )}
+            {track.jobId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSheetOpen(false)
+                  const path = `#/song/${track.jobId}`
+                  if (onNavigate) onNavigate(path)
+                  else window.location.hash = path
+                }}
+                className="rounded-lg border border-border bg-navy-2 px-2.5 py-1 text-[11px] font-medium text-white/85 transition hover:border-cyan/50"
+              >
+                🔗 Share
+              </button>
+            )}
             {track.audioPath && (
               <a
                 href={resolveDownloadAsset(track.audioPath, `${track.title || 'klipin-music'}.mp3`)}
