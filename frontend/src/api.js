@@ -60,12 +60,21 @@ export function withCacheBust(url = '', bust = Date.now()) {
 const TOKEN_KEY = 'klipin_token'
 
 export function getAuthToken() {
-  return localStorage.getItem(TOKEN_KEY)
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null
+  } catch {
+    return null
+  }
 }
 
 export function setAuthToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token)
-  else localStorage.removeItem(TOKEN_KEY)
+  try {
+    if (typeof localStorage === 'undefined') return
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    /* ignore storage errors */
+  }
 }
 
 function authHeaders(extra = {}) {
@@ -774,7 +783,7 @@ export function getAuthConfig() {
 // ── Mock Payment Gateway (dev/testing only) ──────────────────────────
 // Simulasi checkout QRIS/Stripe tanpa payment provider asli. Cocok buat
 // staging/dev atau demo produk. Aktif otomatis bila billing DISABLED di server.
-const _isMock = (typeof window !== 'undefined') && window.location.search.includes('mock_payments=1')
+const _isMock = typeof window !== 'undefined' && Boolean(window.location?.search?.includes('mock_payments=1'))
 export function mockCheckout(packId = 'mulai', method = 'qris') {
   return postJSON('/payment/mock/checkout', { pack_id: packId, method })
 }

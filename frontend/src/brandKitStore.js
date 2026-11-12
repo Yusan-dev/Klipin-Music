@@ -11,9 +11,30 @@ const KEY = 'klipin_brand_kit'
 const UPDATED_KEY = 'klipin_brand_kit_updated' // ms epoch of last local edit
 const SYNCED_KEY = 'klipin_brand_kit_synced' // ms epoch of last server-confirmed sync
 
+function storageGet(key) {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null
+  } catch {
+    return null
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(key, value)
+  } catch {}
+}
+
+function storageRemove(key) {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(key)
+  } catch {}
+}
+
 export function loadKit() {
   try {
-    const kit = JSON.parse(localStorage.getItem(KEY))
+    const raw = storageGet(KEY)
+    const kit = raw ? JSON.parse(raw) : {}
     return kit && typeof kit === 'object' ? kit : {}
   } catch {
     return {}
@@ -22,25 +43,29 @@ export function loadKit() {
 
 // Epoch ms of the last server-confirmed kit state (null = never synced).
 export function lastKitSyncAt() {
-  const v = Number(localStorage.getItem(SYNCED_KEY) || 0)
+  const v = Number(storageGet(SYNCED_KEY) || 0)
   return v > 0 ? v : null
 }
 
 function markSynced() {
-  localStorage.setItem(SYNCED_KEY, String(Date.now()))
-  window.dispatchEvent(new CustomEvent('klipin:brand-kit-synced'))
+  storageSet(SYNCED_KEY, String(Date.now()))
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('klipin:brand-kit-synced'))
+  }
 }
 
 function markUnsynced() {
-  localStorage.removeItem(SYNCED_KEY)
-  window.dispatchEvent(new CustomEvent('klipin:brand-kit-synced'))
+  storageRemove(SYNCED_KEY)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('klipin:brand-kit-synced'))
+  }
 }
 
 // Save locally + push to the account (best-effort). Never blocks the UI.
 export function saveKit(kit) {
   const clean = kit && typeof kit === 'object' ? kit : {}
-  localStorage.setItem(KEY, JSON.stringify(clean))
-  localStorage.setItem(UPDATED_KEY, String(Date.now()))
+  storageSet(KEY, JSON.stringify(clean))
+  storageSet(UPDATED_KEY, String(Date.now()))
   if (getAuthToken()) {
     putBrandKit(clean)
       .then(() => markSynced())
@@ -62,9 +87,9 @@ export function syncBrandKit() {
     .then((d) => {
       const server = d.kit && typeof d.kit === 'object' ? d.kit : {}
       const serverAt = (d.updated_at || 0) * 1000
-      const localAt = Number(localStorage.getItem(UPDATED_KEY) || 0)
+      const localAt = Number(storageGet(UPDATED_KEY) || 0)
       if (Object.keys(server).length && serverAt >= localAt) {
-        localStorage.setItem(KEY, JSON.stringify(server))
+        storageSet(KEY, JSON.stringify(server))
         markSynced()
         return server
       }

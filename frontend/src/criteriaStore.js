@@ -24,9 +24,24 @@ const SYNC_KEY = 'klipin_criteria_synced' // prompts confirmed stored on the ser
 const LAST_SYNC_KEY = 'klipin_criteria_last_sync' // ms epoch of last server-confirmed sync
 const MAX = 12
 
+function storageGet(key) {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null
+  } catch {
+    return null
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(key, value)
+  } catch {}
+}
+
 function loadSyncedSet() {
   try {
-    const arr = JSON.parse(localStorage.getItem(SYNC_KEY))
+    const raw = storageGet(SYNC_KEY)
+    const arr = raw ? JSON.parse(raw) : []
     return new Set(Array.isArray(arr) ? arr : [])
   } catch {
     return new Set()
@@ -34,11 +49,13 @@ function loadSyncedSet() {
 }
 
 function persistSyncedSet(set) {
-  localStorage.setItem(SYNC_KEY, JSON.stringify([...set]))
+  storageSet(SYNC_KEY, JSON.stringify([...set]))
   // Every caller reaches this point after the server confirmed a write, so
   // stamp the last-sync time here (only meaningful while signed in).
-  if (getAuthToken()) localStorage.setItem(LAST_SYNC_KEY, String(Date.now()))
-  window.dispatchEvent(new CustomEvent('klipin:criteria-synced'))
+  if (getAuthToken()) storageSet(LAST_SYNC_KEY, String(Date.now()))
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('klipin:criteria-synced'))
+  }
 }
 
 // Failure toast with a short debounce — several components pull on mount,
@@ -64,7 +81,8 @@ const MAX_ATTEMPTS = BACKOFF.length
 
 function loadPending() {
   try {
-    const arr = JSON.parse(localStorage.getItem(PENDING_KEY))
+    const raw = storageGet(PENDING_KEY)
+    const arr = raw ? JSON.parse(raw) : []
     return Array.isArray(arr) ? arr : []
   } catch {
     return []
@@ -72,7 +90,7 @@ function loadPending() {
 }
 
 function savePending(queue) {
-  localStorage.setItem(PENDING_KEY, JSON.stringify(queue))
+  storageSet(PENDING_KEY, JSON.stringify(queue))
 }
 
 // op -> raw api call. `rename` covers label/move-prompt/rename-prompt (the
@@ -205,7 +223,7 @@ export function retryPendingNow() {
 
 // Epoch ms of the last server-confirmed sync (null = never synced).
 export function lastSyncAt() {
-  const v = Number(localStorage.getItem(LAST_SYNC_KEY) || 0)
+  const v = Number(storageGet(LAST_SYNC_KEY) || 0)
   return v > 0 ? v : null
 }
 
@@ -231,7 +249,8 @@ function asFav(item) {
 
 export function loadFavorites() {
   try {
-    const arr = JSON.parse(localStorage.getItem(KEY))
+    const raw = storageGet(KEY)
+    const arr = raw ? JSON.parse(raw) : []
     if (!Array.isArray(arr)) return []
     return arr.map(asFav).filter((f) => f.prompt)
   } catch {
@@ -240,7 +259,7 @@ export function loadFavorites() {
 }
 
 function persist(list) {
-  localStorage.setItem(KEY, JSON.stringify(list))
+  storageSet(KEY, JSON.stringify(list))
   return list
 }
 
