@@ -491,9 +491,19 @@ export function getVoicePreview(id) {
 export function saveVoicePreview(id, name) {
   return postJSON(`/music/voice-previews/${encodeURIComponent(id)}/save`, { name })
 }
+export function getPersonaAudioUrl(id, savedPersona = true) {
+  const route = savedPersona ? 'personas' : 'voice-previews'
+  const token = getAuthToken()
+  const q = token ? `?token=${encodeURIComponent(token)}` : ''
+  return `${API}/music/${route}/${encodeURIComponent(id)}/audio${q}`
+}
+
 export async function fetchVoiceAudio(id, savedPersona = false) {
   const route = savedPersona ? 'personas' : 'voice-previews'
-  const res = await fetch(`${API}/music/${route}/${encodeURIComponent(id)}/audio`, { headers: authHeaders() })
+  const res = await fetch(`${API}/music/${route}/${encodeURIComponent(id)}/audio`, {
+    headers: authHeaders(),
+    credentials: 'include',
+  })
   if (!res.ok) await handle(res)
   return res.blob()
 }

@@ -3,6 +3,7 @@ import {
   createDesignedMusicPersona,
   createVoicePreview,
   fetchVoiceAudio,
+  getPersonaAudioUrl,
   getVoicePreview,
   listVoicePreviews,
   saveVoicePreview,
@@ -33,31 +34,141 @@ const initial = () => ({
 const signature = (s) => JSON.stringify(['vocal_gender', 'warmth', 'brightness', 'texture', 'energy', 'register', 'seed'].map((k) => s?.[k]))
 const summary = (s) => ['vocal_gender', 'texture', 'register'].map((k) => options[k]?.find(([v]) => v === s?.[k])?.[1] || s?.[k]).filter(Boolean).join(' · ')
 
-export function PrivateVoicePlayer({ id, savedPersona = false, onHeard }) {
+export function PrivateVoicePlayer({ id, savedPersona = false, onHeard, autoPlay = true, title = '' }) {
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const audioRef = useRef(null)
+
   useEffect(() => {
     let alive = true
     let blobUrl = ''
-    setUrl('')
+    setLoading(true)
     setError('')
+    setIsPlaying(false)
+    setCurrentTime(0)
+    setDuration(0)
+
     fetchVoiceAudio(id, savedPersona)
       .then((blob) => {
         if (!alive) return
         blobUrl = URL.createObjectURL(blob)
         setUrl(blobUrl)
+        setLoading(false)
       })
       .catch((e) => {
-        if (alive) setError(e.message)
+        if (!alive) return
+        // Fallback to direct stream URL with query token
+        try {
+          const directUrl = getPersonaAudioUrl(id, savedPersona)
+          setUrl(directUrl)
+          setLoading(false)
+        } catch {
+          setError(e?.message || 'Gagal memuat audio')
+          setLoading(false)
+        }
       })
+
     return () => {
       alive = false
       if (blobUrl) URL.revokeObjectURL(blobUrl)
     }
   }, [id, savedPersona])
-  if (error) return <p role="alert" className="text-xs text-danger">Audio belum bisa diputar: {error}</p>
-  if (!url) return <p role="status" className="text-xs text-white/55">Memuat contoh suara…</p>
-  return <audio controls preload="metadata" src={url} onPlay={onHeard} className="h-10 w-full" aria-label="Dengarkan contoh suara persona" />
+
+  const togglePlay = () => {
+    if (!audioRef.current) return
+    if (audioRef.current.paused) {
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {})
+      onHeard?.()
+    } else {
+      audioRef.current.pause()
+      setIsPlaying(false)
+    }
+  }
+
+  const formatSec = (s) => {
+    if (!Number.isFinite(s) || s <= 0) return '0:00'
+    const m = Math.floor(s / 60)
+    const sec = Math.floor(s % 60)
+    return `${m}:${sec.toString().padStart(2, '0')}`
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-emerald-500/35 bg-emerald-950/30 p-2.5 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={togglePlay}
+            aria-label={isPlaying ? 'Jeda suara' : 'Putar suara'}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-400 text-black font-bold shadow hover:bg-emerald-300 transition disabled:opacity-50"
+          >
+            {loading ? (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-black border-t-transparent" />
+            ) : isPlaying ? (
+              <span className="text-xs">⏸</span>
+            ) : (
+              <span className="text-xs ml-0.5">▶</span>
+            )}
+          </button>
+          <div className="min-w-0">
+            <div className="truncate text-xs font-semibold text-emerald-300">
+              {title || (savedPersona ? '🎙️ Contoh Suara Persona' : '🎧 Audisi Karakter Suara')}
+            </div>
+            <div className="font-mono text-[10px] text-emerald-400/75">
+              {loading ? 'Memuat audio…' : `${formatSec(currentTime)} / ${formatSec(duration || 0)}`}
+            </div>
+          </div>
+        </div>
+        {isPlaying && (
+          <div className="flex items-end gap-0.5 h-4 px-2" aria-hidden>
+            <span className="w-1 bg-emerald-400 animate-pulse h-2 rounded-full" />
+            <span className="w-1 bg-emerald-400 animate-pulse h-4 rounded-full delay-75" />
+            <span className="w-1 bg-emerald-400 animate-pulse h-3 rounded-full delay-150" />
+            <span className="w-1 bg-emerald-400 animate-pulse h-4 rounded-full delay-100" />
+          </div>
+        )}
+      </div>
+
+      {url && (
+        <audio
+          ref={audioRef}
+          src={url}
+          autoPlay={autoPlay}
+          preload="auto"
+          onPlay={() => { setIsPlaying(true); onHeard?.() }}
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => { setIsPlaying(false); setCurrentTime(0) }}
+          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+          onError={() => setError('Audio belum dapat dimuat.')}
+          className="hidden"
+        />
+      )}
+
+      {duration > 0 && (
+        <input
+          type="range"
+          min={0}
+          max={duration || 1}
+          step={0.1}
+          value={currentTime}
+          onChange={(e) => {
+            const t = Number(e.target.value)
+            setCurrentTime(t)
+            if (audioRef.current) audioRef.current.currentTime = t
+          }}
+          className="h-1 w-full accent-emerald-400 cursor-pointer"
+        />
+      )}
+
+      {error && <p role="alert" className="text-[11px] text-danger">{error}</p>}
+    </div>
+  )
 }
 
 export default function VoiceDesigner({ user, onSignIn, onSaved }) {

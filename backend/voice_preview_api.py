@@ -65,10 +65,27 @@ def router_for(require_user):
 
     @router.get("/personas/{persona_id}/audio")
     async def persona_audio(persona_id: str, user=Depends(require_user)):
-        row = db.get_music_persona(persona_id, user["google_sub"])
-        if not row or not row.get("voice_ref_path"):
+        user_id = user.get("google_sub") or user.get("id") or str(user.get("email") or "")
+        row = db.get_music_persona(persona_id, user_id)
+        if not row:
+            raise HTTPException(404, "Persona tidak ditemukan.")
+        ref_path = row.get("voice_ref_path")
+        if not ref_path:
+            try:
+                row = previews.materialize_persona_voice(user_id, row)
+                ref_path = row.get("voice_ref_path")
+            except Exception:
+                pass
+        if not ref_path:
             raise HTTPException(404, "Persona ini belum memiliki contoh suara.")
-        data = await _call(voice_personas.read_sample, user["google_sub"], persona_id, row["voice_ref_path"])
-        return Response(data, media_type="audio/wav", headers={"Cache-Control": "private, no-store"})
+        data = await _call(voice_personas.read_sample, user_id, persona_id, ref_path)
+        return Response(
+            data,
+            media_type="audio/wav",
+            headers={
+                "Cache-Control": "private, no-store",
+                "Content-Disposition": f'inline; filename="{persona_id}.wav"',
+            },
+        )
 
     return router

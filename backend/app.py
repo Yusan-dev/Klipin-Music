@@ -289,6 +289,9 @@ def _bearer_token(request: Request) -> str:
     header = request.headers.get("Authorization", "")
     if header.lower().startswith("bearer "):
         return header[7:].strip()
+    token_param = request.query_params.get("token")
+    if token_param:
+        return token_param.strip()
     return ""
 
 

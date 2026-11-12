@@ -2157,6 +2157,56 @@ export default function Music({ user, authChecked = false, onSignIn }) {
           </div>
         </div>
 
+        {personas.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {personas.map((p) => {
+              const isSelected = personaId === p.persona_id
+              const isListening = personaListenId === p.persona_id
+              return (
+                <div
+                  key={p.persona_id}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs transition ${
+                    isSelected
+                      ? 'border-cyan/60 bg-cyan/15 text-white ring-1 ring-cyan/30'
+                      : 'border-white/10 bg-navy-2/60 text-white/70 hover:border-white/20 hover:text-white'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPersonaId(p.persona_id)
+                      if (p?.vocal_gender === 'female' || p?.vocal_gender === 'male') {
+                        setVocalGender(p.vocal_gender)
+                        setRemixGender(p.vocal_gender)
+                      }
+                    }}
+                    className="flex items-center gap-1 font-medium truncate max-w-[130px]"
+                  >
+                    <span>{p.vocal_gender === 'male' ? '👨' : '👩'}</span>
+                    <span className="truncate">{p.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    title={isListening ? 'Hentikan pemutaran suara' : `Dengarkan suara ${p.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setPersonaId(p.persona_id)
+                      setPersonaListenId(isListening ? '' : p.persona_id)
+                    }}
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold transition shadow ${
+                      isListening
+                        ? 'bg-emerald-400 text-black animate-pulse'
+                        : 'bg-emerald-500/25 text-emerald-300 hover:bg-emerald-400 hover:text-black'
+                    }`}
+                  >
+                    {isListening ? '⏹' : '▶'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         <div>
           <select
             value={personaId}
@@ -2204,37 +2254,52 @@ export default function Music({ user, authChecked = false, onSignIn }) {
           </select>
 
           {selectedPersonaObj && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/80">
-                {selectedPersonaObj.vocal_gender === 'male' ? '👨 Cowok' : '👩 Cewek'} · <b>{selectedPersonaObj.name}</b>
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setPersonaEditName(selectedPersonaObj.name || '')
-                  setPersonaEditGender(selectedPersonaObj.vocal_gender === 'male' ? 'male' : 'female')
-                  setPersonaEditOpen((v) => !v)
-                }}
-                className="rounded-md border border-cyan/40 bg-cyan/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-soft hover:border-cyan"
-              >
-                ✏️ Ubah
-              </button>
-              {selectedPersonaObj.has_voice_sample && (
+            <div className="mt-2.5 space-y-2">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/80">
+                  {selectedPersonaObj.vocal_gender === 'male' ? '👨 Cowok' : '👩 Cewek'} · <b>{selectedPersonaObj.name}</b>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPersonaEditName(selectedPersonaObj.name || '')
+                    setPersonaEditGender(selectedPersonaObj.vocal_gender === 'male' ? 'male' : 'female')
+                    setPersonaEditOpen((v) => !v)
+                  }}
+                  className="rounded-md border border-cyan/40 bg-cyan/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-soft hover:border-cyan"
+                >
+                  ✏️ Ubah
+                </button>
                 <button
                   type="button"
                   onClick={() => setPersonaListenId(personaListenId === personaId ? '' : personaId)}
-                  className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300"
+                  className={`rounded-md border px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                    personaListenId === personaId
+                      ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
+                      : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400'
+                  }`}
                 >
-                  {personaListenId === personaId ? '⏹ Tutup' : '▶ Putar'}
+                  {personaListenId === personaId ? '⏹ Sembunyikan Pemutar' : '▶ Putar Contoh Suara'}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => removePersona(personaId)}
+                  className="ml-auto font-mono text-[10px] text-danger/80 hover:text-danger"
+                >
+                  🗑 Hapus
+                </button>
+              </div>
+
+              {personaListenId === personaId && (
+                <div className="pt-0.5">
+                  <PrivateVoicePlayer
+                    id={personaId}
+                    savedPersona
+                    autoPlay
+                    title={`🎙️ Dengarkan Suara: ${selectedPersonaObj.name}`}
+                  />
+                </div>
               )}
-              <button
-                type="button"
-                onClick={() => removePersona(personaId)}
-                className="ml-auto font-mono text-[10px] text-danger/80 hover:text-danger"
-              >
-                🗑 Hapus
-              </button>
             </div>
           )}
 
@@ -2298,7 +2363,6 @@ export default function Music({ user, authChecked = false, onSignIn }) {
         </div>
 
         {personaFeedback && <p role="status" className="text-[11px] leading-5 text-signal">{personaFeedback}</p>}
-        {personaListenId && <PrivateVoicePlayer id={personaListenId} savedPersona />}
 
         {personaMode === 'record' && (
           <section className="rounded-xl border border-magenta/25 bg-magenta/5 p-3">

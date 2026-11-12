@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './components/Icon.jsx'
 import StudioEqualizer, { STUDIO_EQ_PRESETS } from './components/StudioEqualizer.jsx'
+import { PrivateVoicePlayer } from './components/VoiceDesigner.jsx'
 import { Button, Field, Panel, Select, Spinner, TextInput } from './components/ui.jsx'
 import {
   coverUploadMusic,
@@ -935,6 +936,25 @@ export default function CoverCreate({
                 </Select>
               </Field>
             </div>
+
+            {activePersona && (
+              <div className="space-y-1.5 rounded-xl border border-emerald-500/30 bg-navy-2/60 p-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-white/90">
+                    {activePersona.vocal_gender === 'male' ? '👨' : '👩'} {activePersona.name}
+                  </span>
+                  <span className="font-mono text-[10px] text-emerald-300">
+                    Contoh Suara Siap Diputar
+                  </span>
+                </div>
+                <PrivateVoicePlayer
+                  id={activePersona.persona_id}
+                  savedPersona
+                  autoPlay={false}
+                  title={`Dengarkan Suara: ${activePersona.name}`}
+                />
+              </div>
+            )}
 
             <div className="flex items-center justify-between rounded-xl border border-cyan/30 bg-cyan/5 px-3.5 py-2.5 text-xs">
               <span className="font-medium text-white">✨ Engine Cover: klipin-music</span>

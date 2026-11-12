@@ -150,3 +150,4 @@ def clean_and_enhance_vocal(
 
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
