@@ -2272,14 +2272,14 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPersonaListenId(personaListenId === personaId ? '' : personaId)}
+                  onClick={() => setPersonaListenId((prev) => (prev === personaId ? '' : personaId))}
                   className={`rounded-md border px-2.5 py-0.5 text-[11px] font-semibold transition ${
                     personaListenId === personaId
                       ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
                       : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400'
                   }`}
                 >
-                  {personaListenId === personaId ? '⏹ Sembunyikan Pemutar' : '▶ Putar Contoh Suara'}
+                  {personaListenId === personaId ? '⏹ Berhenti Putar' : '▶ Putar Suara'}
                 </button>
                 <button
                   type="button"
@@ -2290,16 +2290,14 @@ export default function Music({ user, authChecked = false, onSignIn }) {
                 </button>
               </div>
 
-              {personaListenId === personaId && (
-                <div className="pt-0.5">
-                  <PrivateVoicePlayer
-                    id={personaId}
-                    savedPersona
-                    autoPlay
-                    title={`🎙️ Dengarkan Suara: ${selectedPersonaObj.name}`}
-                  />
-                </div>
-              )}
+              <div className="pt-0.5">
+                <PrivateVoicePlayer
+                  id={personaId}
+                  savedPersona
+                  autoPlay={personaListenId === personaId}
+                  title={`🎙️ Contoh Suara: ${selectedPersonaObj.name}`}
+                />
+              </div>
             </div>
           )}
 

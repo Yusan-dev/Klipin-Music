@@ -221,14 +221,13 @@ def _denoise_speech_neural(source: Path, destination: Path, work: Path,
     _run(["ffmpeg", "-y", "-v", "error", "-i", str(final_src), "-t", str(max_sec),
           "-ac", "1", "-ar", str(sample_rate),
           "-af",
-          "highpass=f=95:poles=2,"
-          "afftdn=nr=8:nf=-45:tn=1,"
-          "equalizer=f=280:t=q:w=1.3:g=-3.0,"
-          "equalizer=f=3500:t=q:w=1.2:g=4.0,"
-          "aexciter=freq=3600:amount=1.6:drive=8.0:ceil=16000,"
-          "crystalizer=i=1.2,"
-          "equalizer=f=11000:t=q:w=1.0:g=2.2,"
-          "deesser=i=0.35:m=0.5:f=0.55,"
+          "silenceremove=start_periods=1:start_duration=0.08:start_threshold=-40dB,"
+          "highpass=f=85:poles=2,"
+          "afftdn=nr=8:nf=-42:tn=1,"
+          "equalizer=f=280:t=q:w=1.4:g=-3.0,"
+          "equalizer=f=3400:t=q:w=1.2:g=4.0,"
+          "equalizer=f=10500:t=q:w=1.0:g=2.5,"
+          "deesser=i=0.3:m=0.5:f=0.5,"
           "loudnorm=I=-16:TP=-1.5:LRA=7",
           "-c:a", "pcm_s16le", str(destination)])
     return destination

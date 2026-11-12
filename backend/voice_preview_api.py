@@ -1,7 +1,7 @@
 """Authenticated persona audition API; media is never put in /videos."""
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 import db
@@ -50,10 +50,16 @@ def router_for(require_user):
     async def status(preview_id: str, user=Depends(require_user)):
         return await _call(previews.poll, preview_id, user["google_sub"])
 
-    @router.get("/voice-previews/{preview_id}/audio")
-    async def audio(preview_id: str, user=Depends(require_user)):
+    @router.api_route("/voice-previews/{preview_id}/audio", methods=["GET", "HEAD"])
+    async def audio(preview_id: str, request: Request, user=Depends(require_user)):
         data = await _call(previews.audio, preview_id, user["google_sub"])
-        return Response(data, media_type="audio/wav", headers={"Cache-Control": "private, no-store"})
+        headers = {
+            "Cache-Control": "private, no-store",
+            "Content-Length": str(len(data)),
+            "Accept-Ranges": "bytes",
+        }
+        body = b"" if request.method == "HEAD" else data
+        return Response(body, media_type="audio/wav", headers=headers)
 
     @router.post("/voice-previews/{preview_id}/save")
     async def save(preview_id: str, req: SaveRequest, user=Depends(require_user)):
@@ -63,8 +69,8 @@ def router_for(require_user):
         row["voice_conversion_ready"] = (await _call(previews.capability))["ready"]
         return {"persona": row}
 
-    @router.get("/personas/{persona_id}/audio")
-    async def persona_audio(persona_id: str, user=Depends(require_user)):
+    @router.api_route("/personas/{persona_id}/audio", methods=["GET", "HEAD"])
+    async def persona_audio(persona_id: str, request: Request, user=Depends(require_user)):
         user_id = user.get("google_sub") or user.get("id") or str(user.get("email") or "")
         row = db.get_music_persona(persona_id, user_id)
         if not row:
@@ -79,13 +85,13 @@ def router_for(require_user):
         if not ref_path:
             raise HTTPException(404, "Persona ini belum memiliki contoh suara.")
         data = await _call(voice_personas.read_sample, user_id, persona_id, ref_path)
-        return Response(
-            data,
-            media_type="audio/wav",
-            headers={
-                "Cache-Control": "private, no-store",
-                "Content-Disposition": f'inline; filename="{persona_id}.wav"',
-            },
-        )
+        headers = {
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f'inline; filename="{persona_id}.wav"',
+            "Content-Length": str(len(data)),
+            "Accept-Ranges": "bytes",
+        }
+        body = b"" if request.method == "HEAD" else data
+        return Response(body, media_type="audio/wav", headers=headers)
 
     return router

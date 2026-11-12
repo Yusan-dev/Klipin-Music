@@ -18,35 +18,34 @@ from pathlib import Path
 
 
 # Studio vocal clarity & articulation filter chain:
-# 1. highpass 95Hz (2-pole): strips mic pops, wind, handling rumble, proximity sub-bass.
-# 2. afftdn (gentle 8dB reduction with -45dB noise floor): suppresses stationary hiss without phasing or swallowing consonants.
-# 3. equalizer 280Hz (-3.0dB, Q=1.3): removes boxy, hollow room resonance / phone-mic cardboard mud.
-# 4. equalizer 3500Hz (+4.0dB, Q=1.2): boosts human speech intelligibility & consonant burst energy (T, K, S, P, D, C).
-# 5. aexciter (freq 3600Hz, amount 1.6, drive 8.0, ceil 16000Hz): synthesizes upper harmonics for low-pass muffled audio.
-# 6. crystalizer (i=1.2): sharpens micro-transients for clear phoneme delineation.
-# 7. equalizer 11000Hz (+2.2dB, Q=1.0): adds smooth studio condenser mic "air" sheen.
-# 8. deesser (intensity 0.35, freq 0.55): controls sibilance so sharp S/Z sounds remain natural, not piercing.
-# 9. loudnorm (I=-16 LUFS, TP=-1.5 dBFS, LRA=7): broadcast loudness leveling for optimal neural model driving.
+# 1. silenceremove: strips leading dead air/silence so the user hears speech instantly at 0.0s.
+# 2. highpass 85Hz (2-pole): strips mic pops, handling rumble, proximity sub-bass without thinning pitch.
+# 3. afftdn (gentle 8dB reduction with -42dB noise floor): suppresses stationary hiss without phasing consonants.
+# 4. equalizer 280Hz (-3.0dB, Q=1.4): removes boxy, hollow room resonance / phone-mic cardboard mud.
+# 5. equalizer 3400Hz (+4.0dB, Q=1.2): boosts human speech intelligibility & consonant burst energy (T, K, S, P, D, C).
+# 6. equalizer 10500Hz (+2.5dB, Q=1.0): adds smooth studio condenser mic "air" sheen.
+# 7. deesser (intensity 0.3, freq 0.5): controls sibilance so sharp S/Z sounds remain natural, not piercing.
+# 8. loudnorm (I=-16 LUFS, TP=-1.5 dBFS, LRA=7): broadcast loudness leveling for optimal neural model driving.
 VOCAL_CLARITY_FILTER_CHAIN = (
-    "highpass=f=95:poles=2,"
-    "afftdn=nr=8:nf=-45:tn=1,"
-    "equalizer=f=280:t=q:w=1.3:g=-3.0,"
-    "equalizer=f=3500:t=q:w=1.2:g=4.0,"
-    "aexciter=freq=3600:amount=1.6:drive=8.0:ceil=16000,"
-    "crystalizer=i=1.2,"
-    "equalizer=f=11000:t=q:w=1.0:g=2.2,"
-    "deesser=i=0.35:m=0.5:f=0.55,"
+    "silenceremove=start_periods=1:start_duration=0.08:start_threshold=-40dB,"
+    "highpass=f=85:poles=2,"
+    "afftdn=nr=8:nf=-42:tn=1,"
+    "equalizer=f=280:t=q:w=1.4:g=-3.0,"
+    "equalizer=f=3400:t=q:w=1.2:g=4.0,"
+    "equalizer=f=10500:t=q:w=1.0:g=2.5,"
+    "deesser=i=0.3:m=0.5:f=0.5,"
     "loudnorm=I=-16:TP=-1.5:LRA=7"
 )
 
-# Lightweight fallback chain if exciter/crystalizer are missing in non-standard ffmpeg builds
+# Lightweight fallback chain if specific filters are unavailable
 VOCAL_CLARITY_FILTER_BASIC = (
-    "highpass=f=90:poles=2,"
+    "silenceremove=start_periods=1:start_duration=0.08:start_threshold=-40dB,"
+    "highpass=f=85:poles=2,"
     "afftdn=nr=8:nf=-42:tn=1,"
     "equalizer=f=300:t=q:w=1.4:g=-3.0,"
-    "equalizer=f=3600:t=q:w=1.2:g=3.8,"
-    "equalizer=f=10500:t=q:w=1.0:g=2.5,"
-    "deesser=i=0.35:m=0.5:f=0.55,"
+    "equalizer=f=3400:t=q:w=1.2:g=3.8,"
+    "equalizer=f=10500:t=q:w=1.0:g=2.2,"
+    "deesser=i=0.3:m=0.5:f=0.5,"
     "loudnorm=I=-16:TP=-1.5:LRA=7"
 )
 
@@ -132,14 +131,24 @@ def clean_and_enhance_vocal(
             if p2.returncode != 0 or not output_path.is_file() or output_path.stat().st_size < 1024:
                 raise RuntimeError(f"Gagal memproses kejernihan audio: {p2.stderr or p.stderr}")
 
-        # Step 3: Validate audio properties (non-empty, non-silent)
+        # Step 3: Validate audio properties, remove DC bias, and ensure clean broadcast level
         try:
             import soundfile as sf
             import numpy as np
             samples, sr = sf.read(str(output_path))
+            # Remove any DC offset
+            mean_val = float(np.mean(samples))
+            if abs(mean_val) > 0.001:
+                samples = samples - mean_val
+            peak_val = float(np.max(np.abs(samples)))
+            if peak_val > 0.005:
+                # Target -1.5 dBFS (~0.841)
+                samples = samples / peak_val * 0.8414
+                sf.write(str(output_path), samples.astype(np.float32), sr, subtype="PCM_16")
+
             rms = float(np.sqrt(np.mean(samples ** 2)))
             dur = len(samples) / sr
-            if dur < 1.0 or rms < 0.001:
+            if dur < 1.0 or rms < 0.005:
                 raise RuntimeError("Hasil audio terlalu hening atau tidak mencukupi durasi minimal.")
         except Exception as check_exc:
             if "terlalu hening" in str(check_exc):

@@ -35,54 +35,48 @@ const signature = (s) => JSON.stringify(['vocal_gender', 'warmth', 'brightness',
 const summary = (s) => ['vocal_gender', 'texture', 'register'].map((k) => options[k]?.find(([v]) => v === s?.[k])?.[1] || s?.[k]).filter(Boolean).join(' · ')
 
 export function PrivateVoicePlayer({ id, savedPersona = false, onHeard, autoPlay = true, title = '' }) {
-  const [url, setUrl] = useState('')
+  const streamUrl = useMemo(() => (id ? getPersonaAudioUrl(id, savedPersona) : ''), [id, savedPersona])
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const audioRef = useRef(null)
 
   useEffect(() => {
-    let alive = true
-    let blobUrl = ''
-    setLoading(true)
     setError('')
     setIsPlaying(false)
     setCurrentTime(0)
     setDuration(0)
-
-    fetchVoiceAudio(id, savedPersona)
-      .then((blob) => {
-        if (!alive) return
-        blobUrl = URL.createObjectURL(blob)
-        setUrl(blobUrl)
-        setLoading(false)
-      })
-      .catch((e) => {
-        if (!alive) return
-        // Fallback to direct stream URL with query token
-        try {
-          const directUrl = getPersonaAudioUrl(id, savedPersona)
-          setUrl(directUrl)
-          setLoading(false)
-        } catch {
-          setError(e?.message || 'Gagal memuat audio')
-          setLoading(false)
-        }
-      })
-
-    return () => {
-      alive = false
-      if (blobUrl) URL.revokeObjectURL(blobUrl)
-    }
   }, [id, savedPersona])
+
+  useEffect(() => {
+    if (!audioRef.current || !streamUrl || !autoPlay) return
+    const a = audioRef.current
+    const p = a.play()
+    if (p !== undefined) {
+      p.then(() => {
+        setIsPlaying(true)
+        onHeard?.()
+      }).catch(() => {
+        // Autoplay policy may require manual click on some browsers
+        setIsPlaying(false)
+      })
+    }
+  }, [streamUrl, autoPlay, onHeard])
 
   const togglePlay = () => {
     if (!audioRef.current) return
     if (audioRef.current.paused) {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {})
-      onHeard?.()
+      audioRef.current.play()
+        .then(() => {
+          setIsPlaying(true)
+          onHeard?.()
+        })
+        .catch((err) => {
+          console.warn('Audio play error:', err)
+          setError('Klik untuk memutar audio.')
+        })
     } else {
       audioRef.current.pause()
       setIsPlaying(false)
@@ -102,7 +96,7 @@ export function PrivateVoicePlayer({ id, savedPersona = false, onHeard, autoPlay
         <div className="flex items-center gap-2.5 min-w-0">
           <button
             type="button"
-            disabled={loading}
+            disabled={loading || !streamUrl}
             onClick={togglePlay}
             aria-label={isPlaying ? 'Jeda suara' : 'Putar suara'}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-400 text-black font-bold shadow hover:bg-emerald-300 transition disabled:opacity-50"
@@ -120,7 +114,7 @@ export function PrivateVoicePlayer({ id, savedPersona = false, onHeard, autoPlay
               {title || (savedPersona ? '🎙️ Contoh Suara Persona' : '🎧 Audisi Karakter Suara')}
             </div>
             <div className="font-mono text-[10px] text-emerald-400/75">
-              {loading ? 'Memuat audio…' : `${formatSec(currentTime)} / ${formatSec(duration || 0)}`}
+              {loading ? 'Menyiapkan audio…' : `${formatSec(currentTime)} / ${formatSec(duration || 0)}`}
             </div>
           </div>
         </div>
@@ -134,18 +128,24 @@ export function PrivateVoicePlayer({ id, savedPersona = false, onHeard, autoPlay
         )}
       </div>
 
-      {url && (
+      {streamUrl && (
         <audio
           ref={audioRef}
-          src={url}
-          autoPlay={autoPlay}
+          src={streamUrl}
           preload="auto"
           onPlay={() => { setIsPlaying(true); onHeard?.() }}
           onPause={() => setIsPlaying(false)}
           onEnded={() => { setIsPlaying(false); setCurrentTime(0) }}
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-          onError={() => setError('Audio belum dapat dimuat.')}
+          onLoadedMetadata={(e) => {
+            setDuration(e.currentTarget.duration)
+            setLoading(false)
+          }}
+          onCanPlay={() => setLoading(false)}
+          onError={() => {
+            setError('Audio belum dapat dimuat.')
+            setLoading(false)
+          }}
           className="hidden"
         />
       )}
