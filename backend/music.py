@@ -4403,7 +4403,13 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
         and src_ref_for_dub.is_file()
     ):
         try:
+            stage("dubbing")
             from music_studio_pro import apply_crosslingual_dub
+            persona_ref_path = (
+                Path(reference_path)
+                if (reference_path and Path(reference_path).is_file())
+                else None
+            )
             dub_meta = apply_crosslingual_dub(
                 src_ref_for_dub,
                 output,
@@ -4413,10 +4419,19 @@ def generate_music(spec: dict, job_dir: Path, log=None, on_stage=None) -> dict:
                 preserve_voice=dub_preserve_voice,
                 pitch_shift=int(spec.get("voice_pitch_shift") or 0),
                 auto_f0=bool(spec.get("voice_pitch_auto", True)),
+                persona_voice_path=persona_ref_path,
+                on_stage=stage,
                 log=log,
             )
             if dub_meta.get("voice_converted"):
-                voice_conversion = {"status": "applied", "method": "dub-seed-vc-original-timbre"}
+                voice_conversion = {
+                    "status": "applied",
+                    "method": (
+                        "dub-seed-vc-persona"
+                        if dub_meta.get("voice_source") == "persona"
+                        else "dub-seed-vc-original-timbre"
+                    ),
+                }
         except Exception as exc:  # noqa: BLE001
             log and log(f"⚠️ Post-mix dubbing dilewati ({exc})")
             dub_meta = {"applied": False, "error": str(exc)[:300]}

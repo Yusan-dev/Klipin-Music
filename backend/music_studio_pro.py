@@ -141,17 +141,23 @@ def apply_crosslingual_dub(
     preserve_voice: bool = True,
     pitch_shift: int = 0,
     auto_f0: bool = True,
+    persona_voice_path: Path | None = None,
+    on_stage=None,
     log=None,
 ) -> dict:
-    """Blend dubbed vocal over original instrumental and/or convert vocal back to source singer timbre.
+    """Blend dubbed vocal over original instrumental and/or clone target voice onto dubbed vocal.
 
     - preserve_music=True: keeps the isolated backing instruments from `source_audio`.
-    - preserve_voice=True: clones timbre from `source_audio` vocals onto `generated_dub_audio` vocals.
+    - persona_voice_path (explicit user Persona): takes priority for voice cloning onto the dubbed vocal.
+    - preserve_voice=True (when no Persona overrides): clones timbre from `source_audio` vocals onto `generated_dub_audio` vocals.
     """
     if not source_audio.is_file() or not generated_dub_audio.is_file():
         return {"applied": False, "reason": "missing_audio"}
 
-    if not preserve_music and not preserve_voice:
+    has_persona_voice = bool(
+        persona_voice_path and persona_voice_path.is_file() and persona_voice_path.stat().st_size > 1024
+    )
+    if not preserve_music and not preserve_voice and not has_persona_voice:
         return {"applied": False, "reason": "none_requested"}
 
     from music import _separate_source_stems, apply_voice_persona
@@ -162,12 +168,18 @@ def apply_crosslingual_dub(
     src_dir.mkdir(parents=True, exist_ok=True)
     new_dir.mkdir(parents=True, exist_ok=True)
 
-    log and log("🌐 Memisahkan stem lagu asli untuk dubbing lintas bahasa…")
-    src_b64 = base64.b64encode(source_audio.read_bytes()).decode("ascii")
-    src_vocals, src_backing, src_method = _separate_source_stems(
-        src_b64, dur, src_dir, pitch_shift=0, log=log
-    )
+    src_vocals = Path()
+    src_backing = Path()
+    src_method = "skipped"
+    if preserve_music or (preserve_voice and not has_persona_voice):
+        on_stage and on_stage("dub-stem-src")
+        log and log("🌐 Memisahkan stem lagu asli untuk dubbing lintas bahasa…")
+        src_b64 = base64.b64encode(source_audio.read_bytes()).decode("ascii")
+        src_vocals, src_backing, src_method = _separate_source_stems(
+            src_b64, dur, src_dir, pitch_shift=0, log=log
+        )
 
+    on_stage and on_stage("dub-stem-new")
     log and log("🎙️ Memisahkan stem vokal dubbing baru…")
     new_b64 = base64.b64encode(generated_dub_audio.read_bytes()).decode("ascii")
     new_vocals, new_backing, new_method = _separate_source_stems(
@@ -176,12 +188,26 @@ def apply_crosslingual_dub(
 
     vocal_track = new_vocals
     voice_applied = False
-    if preserve_voice and src_vocals.is_file() and src_vocals.stat().st_size > 1024:
+    voice_source = "target"
+    voice_ref: Path | None = None
+    if has_persona_voice:
+        voice_ref = persona_voice_path
+        voice_source = "persona"
+    elif preserve_voice and src_vocals.is_file() and src_vocals.stat().st_size > 1024:
+        voice_ref = src_vocals
+        voice_source = "source_singer"
+
+    if voice_ref is not None:
         try:
-            log and log("🧬 Mengalihkan warna vokal penyanyi asli ke bahasa target…")
+            on_stage and on_stage("dub-voice")
+            log and log(
+                "🧬 Mengalihkan vokal dubbing ke suara Persona pilihan…"
+                if voice_source == "persona"
+                else "🧬 Mengalihkan warna vokal penyanyi asli ke bahasa target…"
+            )
             converted = apply_voice_persona(
                 new_vocals,
-                src_vocals,
+                voice_ref,
                 new_dir,
                 dur,
                 log=log,
@@ -194,7 +220,11 @@ def apply_crosslingual_dub(
         except Exception as exc:  # noqa: BLE001
             log and log(f"⚠️ Konversi warna suara dilewati ({exc}); memakai vokal target")
 
-    backing_track = src_backing if preserve_music else new_backing
+    on_stage and on_stage("dub-mix")
+    backing_track = (
+        src_backing if (preserve_music and src_backing.is_file() and src_backing.stat().st_size > 1024)
+        else new_backing
+    )
     ffmpeg = _ffmpeg_bin()
     mixed_out = job_dir / f"{generated_dub_audio.stem}.dub_mixed{generated_dub_audio.suffix}"
     codec = (
@@ -230,6 +260,7 @@ def apply_crosslingual_dub(
         "preserve_music": bool(preserve_music),
         "preserve_voice": bool(preserve_voice),
         "voice_converted": voice_applied,
+        "voice_source": voice_source if voice_applied else "target",
         "source_sep_method": src_method,
         "dub_sep_method": new_method,
     }

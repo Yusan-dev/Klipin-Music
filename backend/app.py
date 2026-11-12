@@ -144,11 +144,12 @@ _semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
 # without letting a long song queue starve the video render pool.
 MAX_CONCURRENT_MUSIC_JOBS = int(os.environ.get("MAX_CONCURRENT_MUSIC_JOBS", "6"))
 _music_semaphore = asyncio.Semaphore(MAX_CONCURRENT_MUSIC_JOBS)
-# A long song can legitimately spend 20+ minutes on Modal + local mastering.
-# Past this window a queued/processing row with no artifact is treated as an
-# orphaned task and failed so the UI stops polling forever.
+# A long song (especially YuE2 + cross-lingual Demucs + Seed-VC dubbing) can
+# legitimately spend 20+ minutes on Modal + local mastering. Past this window
+# without any heartbeat (`updated_at`), a queued/processing row with no
+# artifact is treated as an orphaned task and failed so the UI stops polling.
 MUSIC_JOB_STALE_SECONDS = int(os.environ.get(
-    "KLIPIN_MUSIC_STALE_SECONDS", str(10 * 60)))
+    "KLIPIN_MUSIC_STALE_SECONDS", str(25 * 60)))
 # asyncio only keeps a weak reference to a task created with create_task, so an
 # un-referenced music task can be garbage-collected mid `await` while the Modal
 # worker is still running. That left the DB row stuck in `processing` even
@@ -1365,8 +1366,9 @@ async def music_generate(req: MusicGenerateRequest, _user: dict = Depends(requir
 
 
 def _music_job_age_seconds(job: dict) -> float:
+    """Seconds since the last worker heartbeat (`updated_at`), falling back to `created_at`."""
     try:
-        base = float(job.get("created_at") or job.get("updated_at") or 0)
+        base = float(job.get("updated_at") or job.get("created_at") or 0)
     except (TypeError, ValueError):
         return 0.0
     return max(0.0, time.time() - base)
@@ -1421,7 +1423,7 @@ def _reconcile_finished_music_job(job: dict | None) -> dict | None:
             if (job_dir / "lyrics.txt").is_file() else (job.get("lyrics") or "")
         metadata = {**metadata, "stage": "done", "reconciled": True}
         updated = db.update_music_job(
-            job_id, user_id, status="completed",
+            job_id, user_id, status="completed", error="",
             provider=metadata.get("provider") or job.get("provider") or "heartmula-modal-duet",
             duration=float(metadata.get("duration") or job.get("duration") or 0),
             audio_path=f"/videos/{job_id}/{audio.name}",
@@ -1664,7 +1666,7 @@ async def _run_music_take(job_id: str, spec: dict, user_id: str):
                     on_stage=_set_stage)
             finally:
                 shutil.rmtree(voice_tmp, ignore_errors=True)
-        elif voice_persona_id and (cover_engine == "voice" or spec.get("force_voice_conversion")):
+        elif voice_persona_id and (cover_engine == "voice" or spec.get("force_voice_conversion") or spec.get("dub_mode")):
             persona = db.get_music_persona(voice_persona_id, user_id)
             if not persona or not persona.get("voice_ref_path"):
                 raise RuntimeError("Persona suara tidak ditemukan; lagu belum dijalankan.")
@@ -1686,7 +1688,7 @@ async def _run_music_take(job_id: str, spec: dict, user_id: str):
         cover_path = f"/videos/{job_id}/{result['cover_filename']}" if result.get("cover_filename") else ""
         wav_path = f"/videos/{job_id}/{result['wav_filename']}" if result.get("wav_filename") else ""
         db.update_music_job(
-            job_id, user_id, status="completed", provider=result["provider"],
+            job_id, user_id, status="completed", error="", provider=result["provider"],
             duration=result["duration"], audio_path=f"/videos/{job_id}/{result['audio_filename']}",
             lyrics_path=f"/videos/{job_id}/lyrics.lrc",
             lyrics=result.get("lyrics_text", spec.get("lyrics", ""))[:6000],
