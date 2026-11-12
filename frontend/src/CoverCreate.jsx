@@ -223,18 +223,38 @@ export default function CoverCreate({
     }
     const run = async () => {
       let ended = false
+      let lastSseAt = Date.now()
+      const watchdog = setInterval(async () => {
+        if (stopped || ended || Date.now() - lastSseAt < 14000) return
+        try {
+          const g = await getMusicGroup(groupId)
+          if (stopped) return
+          lastSseAt = Date.now()
+          if (applyTakes(g.takes || [])) {
+            ended = true
+            clearInterval(watchdog)
+            controller?.abort()
+          }
+        } catch { /* ignore transient watchdog error */ }
+      }, 15000)
       try {
         controller = typeof AbortController !== 'undefined' ? new AbortController() : null
         await streamMusicGroup(groupId, {
           signal: controller?.signal,
-          onGroup: (g) => { if (!stopped && applyTakes(g.takes || [])) ended = true },
+          onGroup: (g) => {
+            if (stopped) return
+            lastSseAt = Date.now()
+            if (applyTakes(g.takes || [])) ended = true
+          },
           onEnd: () => { ended = true },
         })
+        clearInterval(watchdog)
         if (stopped || ended) return
       } catch {
+        clearInterval(watchdog)
         if (stopped || controller?.signal.aborted) return
       }
-      if (!stopped) poll()
+      if (!stopped && !ended) poll()
     }
     run()
     return () => {
@@ -254,7 +274,8 @@ export default function CoverCreate({
   const result = useMemo(() => preferredTake(groupTakes), [groupTakes])
   const running = groupTakes.some((t) => ['queued', 'processing'].includes(t.status))
   const isOriginalGenre = genre === 'original'
-  const effectiveEngine = isOriginalGenre ? 'voice' : engine
+  const dubActivePreview = targetLanguage !== 'id' || dubPreserveMusic || dubPreserveVoice
+  const effectiveEngine = isOriginalGenre && !dubActivePreview ? 'voice' : 'yue2_comfy'
   const engineStatus = useMemo(() => {
     if (!coverEngines.length) return null
     return coverEngines.find((e) => e.id === effectiveEngine) || null
