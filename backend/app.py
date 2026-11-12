@@ -1652,13 +1652,11 @@ async def _run_music_take(job_id: str, spec: dict, user_id: str):
                 raw_path = voice_tmp / "raw-voice"
                 raw_path.write_bytes(raw_voice)
                 norm_path = voice_tmp / "voice-reference.wav"
-                ffmpeg_bin = shutil.which("ffmpeg")
-                if ffmpeg_bin:
-                    await asyncio.to_thread(
-                        subprocess.run,
-                        [ffmpeg_bin, "-y", "-v", "error", "-i", str(raw_path), "-t", "30",
-                         "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", str(norm_path)],
-                        capture_output=True, text=True, timeout=60)
+                from voice_enhancer import clean_and_enhance_vocal
+                await asyncio.to_thread(
+                    clean_and_enhance_vocal,
+                    raw_path, norm_path, target_sr=24000, max_sec=30.0, use_cloud_neural=True
+                )
                 ref_to_use = norm_path if norm_path.is_file() else raw_path
                 result = await asyncio.to_thread(
                     generate_music,
@@ -1673,9 +1671,18 @@ async def _run_music_take(job_id: str, spec: dict, user_id: str):
             from voice_personas import decrypt_sample
             voice_tmp = Path(tempfile.mkdtemp(prefix="music-voice-job-", dir=str(db.DATA_DIR)))
             try:
-                reference = decrypt_sample(
+                decrypted = decrypt_sample(
                     user_id, voice_persona_id, persona["voice_ref_path"],
-                    voice_tmp / "voice-reference.wav")
+                    voice_tmp / "voice-reference-raw.wav")
+                from voice_enhancer import clean_and_enhance_vocal
+                reference = voice_tmp / "voice-reference.wav"
+                try:
+                    await asyncio.to_thread(
+                        clean_and_enhance_vocal,
+                        decrypted, reference, target_sr=24000, max_sec=30.0, use_cloud_neural=False
+                    )
+                except Exception:
+                    reference = decrypted
                 result = await asyncio.to_thread(
                     generate_music,
                     {**spec, "_voice_reference_path": str(reference)}, job_dir,
@@ -1813,14 +1820,22 @@ async def music_persona_voice_create(
             raise HTTPException(status_code=400, detail=(
                 "Pilih rekaman suara minimal 2 detik yang jelas, tanpa musik latar (otomatis dipotong maks. 30 detik)."))
         canonical = temp_root / "reference.wav"
-        converted = await asyncio.to_thread(
-            subprocess.run,
-            [ffmpeg, "-y", "-v", "error", "-i", str(upload_path), "-t", "30",
-             "-vn", "-ac", "1", "-ar", "24000", "-af", "highpass=f=85",
-             "-c:a", "pcm_s16le", str(canonical)],
-            capture_output=True, text=True, timeout=60)
-        if converted.returncode != 0 or not canonical.exists():
-            raise HTTPException(status_code=400, detail="Audio gagal dinormalisasi.")
+        from voice_enhancer import clean_and_enhance_vocal
+        try:
+            await asyncio.to_thread(
+                clean_and_enhance_vocal,
+                upload_path, canonical, target_sr=24000, max_sec=30.0, use_cloud_neural=True
+            )
+        except Exception as enhance_err:
+            # Fallback to basic normalization if enhancement fails
+            converted = await asyncio.to_thread(
+                subprocess.run,
+                [ffmpeg, "-y", "-v", "error", "-i", str(upload_path), "-t", "30",
+                 "-vn", "-ac", "1", "-ar", "24000", "-af", "highpass=f=90",
+                 "-c:a", "pcm_s16le", str(canonical)],
+                capture_output=True, text=True, timeout=60)
+            if converted.returncode != 0 or not canonical.exists():
+                raise HTTPException(status_code=400, detail=f"Audio gagal dinormalisasi: {enhance_err}")
         sample = canonical.read_bytes()
         persona_id = "persona_" + secrets.token_hex(6)
         from voice_personas import store_sample

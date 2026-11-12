@@ -220,7 +220,16 @@ def _denoise_speech_neural(source: Path, destination: Path, work: Path,
     final_src = denoised_raw if denoised_raw.is_file() else source
     _run(["ffmpeg", "-y", "-v", "error", "-i", str(final_src), "-t", str(max_sec),
           "-ac", "1", "-ar", str(sample_rate),
-          "-af", "highpass=f=85,loudnorm=I=-18:TP=-2:LRA=7",
+          "-af",
+          "highpass=f=95:poles=2,"
+          "afftdn=nr=8:nf=-45:tn=1,"
+          "equalizer=f=280:t=q:w=1.3:g=-3.0,"
+          "equalizer=f=3500:t=q:w=1.2:g=4.0,"
+          "aexciter=freq=3600:amount=1.6:drive=8.0:ceil=16000,"
+          "crystalizer=i=1.2,"
+          "equalizer=f=11000:t=q:w=1.0:g=2.2,"
+          "deesser=i=0.35:m=0.5:f=0.55,"
+          "loudnorm=I=-16:TP=-1.5:LRA=7",
           "-c:a", "pcm_s16le", str(destination)])
     return destination
 
@@ -458,9 +467,11 @@ def convert_stems(audio_b64: str, reference_b64: str = "", duration: float = 180
         cap = str(max(3, min(float(duration), 600)))
         vout, bout = work / "vocals.mp3", work / "backing.mp3"
         dout, bass_out, oout = work / "drums.mp3", work / "bass.mp3", work / "other.mp3"
-        for src, dst in ((converted_wav, vout), (backing, bout),
-                         (stems4["drums"], dout), (stems4["bass"], bass_out),
-                         (stems4["other"], oout)):
+        _run(["ffmpeg", "-y", "-v", "error", "-i", str(converted_wav), "-t", cap,
+              "-af", "highpass=f=80,equalizer=f=300:t=q:w=1.4:g=-2.0,equalizer=f=3500:t=q:w=1.2:g=2.8,equalizer=f=11000:t=q:w=1.0:g=2.0,deesser=i=0.3:m=0.5:f=0.6,volume=1.08",
+              "-c:a", "libmp3lame", "-b:a", "256k", str(vout)])
+        for src, dst in ((backing, bout), (stems4["drums"], dout),
+                         (stems4["bass"], bass_out), (stems4["other"], oout)):
             _run(["ffmpeg", "-y", "-v", "error", "-i", str(src), "-t", cap,
                   "-c:a", "libmp3lame", "-b:a", "192k", str(dst)])
         models.commit()
@@ -542,11 +553,12 @@ def convert_song(audio_b64: str, reference_b64: str = "", duration: float = 180.
             output_dir = work / "converted"
             clean_vocals = work / "clean_vocals.wav"
             _run(["ffmpeg", "-y", "-v", "error", "-i", str(vocals),
-                  "-af", "highpass=f=85,afftdn=nr=16:nf=-34,equalizer=f=3500:t=q:w=1.0:g=1.0",
+                  "-ar", "24000", "-ac", "1",
+                  "-af", "highpass=f=80,afftdn=nr=6:nf=-45:tn=1,equalizer=f=3400:t=q:w=1.2:g=2.2",
                   "-c:a", "pcm_s16le", str(clean_vocals)])
             _run([sys.executable, "/opt/seed-vc/inference.py", "--source", str(clean_vocals),
                   "--target", str(reference), "--output", str(output_dir),
-                  "--diffusion-steps", "40", "--f0-condition", "True",
+                  "--diffusion-steps", "45", "--f0-condition", "True",
                   "--auto-f0-adjust", "True" if auto_f0 else "False",
                   "--semi-tone-shift", str(int(semi_tone_shift))],
                  timeout=1500, cwd="/opt/seed-vc")
@@ -557,12 +569,11 @@ def convert_song(audio_b64: str, reference_b64: str = "", duration: float = 180.
             method_name = "seed-vc-vocal-stem"
 
         target = work / "song.mp3"
-        # Studio vocal chain: cut sub-85Hz rumble + mild de-noise + presence 3.2kHz + tame diffusion fizz above 8.5kHz
-        # Gain staging: backing at 0.86, vocal at 1.06 gives a clear center pocket without amplifying static
+        # Studio vocal chain: scoop mud at 300Hz, boost 3.5kHz clarity & 11kHz sparkle, de-ess, gain stage vocal in front
         _run(["ffmpeg", "-y", "-v", "error", "-i", str(backing), "-i", str(converted_wav),
               "-filter_complex",
-              "[1:a]highpass=f=85,afftdn=nr=10:nf=-40,equalizer=f=3200:t=q:w=1.2:g=1.4,treble=g=-1.5:f=8500,volume=1.06[voc];"
-              "[0:a]volume=0.86[bg];"
+              "[1:a]highpass=f=80,equalizer=f=300:t=q:w=1.4:g=-2.2,equalizer=f=3500:t=q:w=1.2:g=2.8,equalizer=f=11000:t=q:w=1.0:g=2.0,deesser=i=0.3:m=0.5:f=0.6,volume=1.12[voc];"
+              "[0:a]volume=0.84[bg];"
               "[bg][voc]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.98[out]",
               "-map", "[out]", "-t", str(max(3, min(float(duration), 600))),
               "-c:a", "libmp3lame", "-b:a", "256k", str(target)])

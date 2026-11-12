@@ -882,8 +882,8 @@ def apply_voice_persona(src: Path, reference_path: Path, job_dir: Path,
         mixed = subprocess.run(
             [ffmpeg, "-y", "-v", "error", "-i", str(backing_candidates[0]),
              "-i", str(converted), "-filter_complex",
-             "[1:a]highpass=f=80,equalizer=f=3500:t=q:w=1.2:g=1.8,equalizer=f=10500:t=q:w=1.0:g=2.5,volume=1.08[v];"
-             "[0:a]volume=0.86[bg];"
+             "[1:a]highpass=f=80,equalizer=f=300:t=q:w=1.4:g=-2.2,equalizer=f=3500:t=q:w=1.2:g=2.8,equalizer=f=11000:t=q:w=1.0:g=2.2,deesser=i=0.3:m=0.5:f=0.6,volume=1.12[v];"
+             "[0:a]volume=0.84[bg];"
              "[bg][v]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
              "alimiter=limit=0.98[out]",
              "-map", "[out]", "-t", f"{float(duration):.3f}",
@@ -1571,7 +1571,14 @@ def _voice_restyle_cover(spec: dict, job_dir: Path, output: Path, log=None) -> P
         if not reference_path:
             reference_path = _synthesize_voice_reference(spec, job_dir, log=log)
             spec["_voice_reference_path"] = reference_path
-        ref_b64 = base64.b64encode(Path(reference_path).read_bytes()).decode("ascii")
+        from voice_enhancer import clean_and_enhance_vocal
+        enhanced_ref = job_dir / "reference_enhanced.wav"
+        try:
+            clean_and_enhance_vocal(Path(reference_path), enhanced_ref, target_sr=24000, use_cloud_neural=False)
+            reference_to_send = enhanced_ref if enhanced_ref.is_file() else Path(reference_path)
+        except Exception:
+            reference_to_send = Path(reference_path)
+        ref_b64 = base64.b64encode(reference_to_send.read_bytes()).decode("ascii")
         voice_engine = str(spec.get("voice_engine") or os.environ.get("KLIPIN_VOICE_ENGINE", "rvc")).strip().lower()
         log and log(f"🎤 Memisah & menyelaraskan warna vokal sumber (Demucs + {voice_engine.upper()})…")
         try:

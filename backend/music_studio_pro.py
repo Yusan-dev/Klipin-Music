@@ -238,8 +238,9 @@ def apply_crosslingual_dub(
         "-i", str(vocal_track),
         "-filter_complex",
         (
-            "[0:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=0.95[bg];"
-            "[1:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=1.10[vo];"
+            "[0:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=0.90[bg];"
+            "[1:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,"
+            "highpass=f=80,equalizer=f=300:t=q:w=1.4:g=-2.2,equalizer=f=3500:t=q:w=1.2:g=2.8,equalizer=f=11000:t=q:w=1.0:g=2.0,deesser=i=0.3:m=0.5:f=0.6,volume=1.15[vo];"
             "[bg][vo]amix=inputs=2:duration=first:dropout_transition=2:normalize=0,"
             "highpass=f=26,alimiter=limit=0.96[out]"
         ),
