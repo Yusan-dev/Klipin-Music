@@ -1340,7 +1340,8 @@ async def music_generate(req: MusicGenerateRequest, _user: dict = Depends(requir
         capability = await asyncio.to_thread(voice_persona_capability)
         if capability.get("ready"):
             base_spec.update({"provider": "heartmula", "take_count": 1,
-                              "take_mode": "final", "voice_persona_id": persona["persona_id"]})
+                              "take_mode": "final", "voice_persona_id": persona["persona_id"],
+                              "force_voice_conversion": True, "voice_pitch_auto": True})
             take_count, take_mode = 1, "final"
         else:
             base_spec.update({"provider": "heartmula", "take_mode": "final"})
@@ -2470,11 +2471,15 @@ async def music_cover_upload(
     }
     if direct_voice_path:
         base_spec["_voice_reference_path"] = direct_voice_path
+        if not base_spec.get("keep_original_vocal"):
+            base_spec["force_voice_conversion"] = True
     elif persona and persona.get("voice_ref_path"):
         from music import voice_persona_capability
         cap = await asyncio.to_thread(voice_persona_capability)
         if cap.get("ready"):
             base_spec["voice_persona_id"] = clean_persona_id
+            if not base_spec.get("keep_original_vocal"):
+                base_spec["force_voice_conversion"] = True
     grouped = _create_music_group(
         base_spec, _user["google_sub"],
         max(1, min(int(take_count or 1), 2)), "cover", user=_user)
@@ -2822,8 +2827,12 @@ async def music_remix_url(req: MusicRemixUrlRequest,
         base_spec["cover_source_b64"] = ref["audio_b64"]
     if voice_b64:
         base_spec["_voice_reference_b64"] = voice_b64
+        if not base_spec.get("keep_original_vocal"):
+            base_spec["force_voice_conversion"] = True
     elif persona and persona.get("voice_ref_path") and persona_voice_ready:
         base_spec["voice_persona_id"] = persona_id
+        if not base_spec.get("keep_original_vocal"):
+            base_spec["force_voice_conversion"] = True
     grouped = _create_music_group(base_spec, _user["google_sub"], 1, "final",
                                   user=_user)
     return {**grouped, "remix_source_title": title, "remix_source_url": url,

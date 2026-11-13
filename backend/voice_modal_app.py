@@ -230,7 +230,59 @@ def _denoise_speech_neural(source: Path, destination: Path, work: Path,
           "deesser=i=0.3:m=0.5:f=0.5,"
           "loudnorm=I=-16:TP=-1.5:LRA=7",
           "-c:a", "pcm_s16le", str(destination)])
+    try:
+        samples, sr = sf.read(str(destination), dtype="float32")
+        if samples.ndim > 1:
+            samples = np.mean(samples, axis=1)
+        mean_val = float(np.mean(samples))
+        if abs(mean_val) > 0.001:
+            samples = samples - mean_val
+        peak_val = float(np.max(np.abs(samples)))
+        if peak_val > 0.005:
+            samples = samples / peak_val * 0.8414
+        sf.write(str(destination), samples.astype(np.float32), sr, subtype="PCM_16")
+    except Exception as norm_exc:
+        print(f"[Denoise] Post-norm note: {norm_exc}")
     return destination
+
+
+def _auto_octave_shift(source_wav: Path, reference_wav: Path) -> int:
+    """Compute a clean musical octave shift (-12, 0, or +12) so singing stays in key."""
+    import librosa
+    import numpy as np
+    import soundfile as sf
+
+    def _median_f0(path: Path, max_sec: float) -> float:
+        y, sr = sf.read(str(path), dtype="float32")
+        if y.ndim > 1:
+            y = np.mean(y, axis=1)
+        y = y[: int(sr * max_sec)]
+        if len(y) < sr:
+            return 0.0
+        rms_thr = max(1e-4, float(np.max(np.abs(y))) * 0.08)
+        f0 = librosa.yin(y, fmin=60.0, fmax=550.0, sr=sr, frame_length=2048, hop_length=512)
+        voiced = []
+        for i, pitch in enumerate(f0):
+            seg = y[i * 512 : i * 512 + 2048]
+            if len(seg) > 0 and float(np.sqrt(np.mean(seg ** 2))) > rms_thr and 65.0 < float(pitch) < 520.0:
+                voiced.append(float(pitch))
+        return float(np.median(voiced)) if len(voiced) >= 10 else 0.0
+
+    try:
+        src_f0 = _median_f0(source_wav, 35.0)
+        ref_f0 = _median_f0(reference_wav, 25.0)
+        if src_f0 <= 0 or ref_f0 <= 0:
+            return 0
+        semitones = 12.0 * float(np.log2(ref_f0 / src_f0))
+        print(f"[Pitch] src_f0={src_f0:.1f}Hz, ref_f0={ref_f0:.1f}Hz, diff={semitones:+.1f}st")
+        if semitones >= 6.5:
+            return 12
+        if semitones <= -6.5:
+            return -12
+        return 0
+    except Exception as exc:
+        print(f"[Pitch] Auto octave shift skipped ({exc})")
+        return 0
 
 
 def _clean_target_reference(reference: Path, work: Path) -> Path:
@@ -450,12 +502,15 @@ def convert_stems(audio_b64: str, reference_b64: str = "", duration: float = 180
             reference = work / "reference.wav"
             reference.write_bytes(base64.b64decode(reference_b64, validate=True))
             reference = _clean_target_reference(reference, work)
+            eff_shift = int(semi_tone_shift or 0)
+            if auto_f0 and eff_shift == 0:
+                eff_shift = _auto_octave_shift(vocals, reference)
             output_dir = work / "converted"
             _run([sys.executable, "/opt/seed-vc/inference.py", "--source", str(vocals),
                   "--target", str(reference), "--output", str(output_dir),
-                  "--diffusion-steps", "30", "--f0-condition", "True",
-                  "--auto-f0-adjust", "True" if auto_f0 else "False",
-                  "--semi-tone-shift", str(int(semi_tone_shift))],
+                  "--diffusion-steps", "45", "--f0-condition", "True",
+                  "--auto-f0-adjust", "False",
+                  "--semi-tone-shift", str(eff_shift)],
                  timeout=1500, cwd="/opt/seed-vc")
             flist = list(output_dir.glob("*.wav"))
             if not flist:
@@ -555,11 +610,14 @@ def convert_song(audio_b64: str, reference_b64: str = "", duration: float = 180.
                   "-ar", "24000", "-ac", "1",
                   "-af", "highpass=f=80,afftdn=nr=6:nf=-45:tn=1,equalizer=f=3400:t=q:w=1.2:g=2.2",
                   "-c:a", "pcm_s16le", str(clean_vocals)])
+            eff_shift = int(semi_tone_shift or 0)
+            if auto_f0 and eff_shift == 0:
+                eff_shift = _auto_octave_shift(clean_vocals, reference)
             _run([sys.executable, "/opt/seed-vc/inference.py", "--source", str(clean_vocals),
                   "--target", str(reference), "--output", str(output_dir),
                   "--diffusion-steps", "45", "--f0-condition", "True",
-                  "--auto-f0-adjust", "True" if auto_f0 else "False",
-                  "--semi-tone-shift", str(int(semi_tone_shift))],
+                  "--auto-f0-adjust", "False",
+                  "--semi-tone-shift", str(eff_shift)],
                  timeout=1500, cwd="/opt/seed-vc")
             flist = list(output_dir.glob("*.wav"))
             if not flist:
